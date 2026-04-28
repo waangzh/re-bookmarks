@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "ReMarks",
+  "version": "0.1.0",
+  "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
+  "permissions": ["bookmarks", "storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "optional_permissions": ["history"],
+  "action": {
+    "default_title": "打开 ReMarks",
+    "default_icon": {
+      "16": "dist/icons/icon16.png",
+      "32": "dist/icons/icon32.png",
+      "48": "dist/icons/icon48.png",
+      "128": "dist/icons/icon128.png"
+    }
+  },
+  "options_page": "dist/options/index.html",
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle",
+      "match_about_blank": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/popup/index.html", "dist/popup.js", "dist/assets/*", "dist/chunks/*", "dist/icons/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "dist/icons/icon16.png",
+    "32": "dist/icons/icon32.png",
+    "48": "dist/icons/icon48.png",
+    "128": "dist/icons/icon128.png"
+  }
+}
