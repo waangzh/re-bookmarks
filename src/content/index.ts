@@ -31,7 +31,6 @@
         all: initial;
         position: fixed;
         right: 18px;
-        bottom: 18px;
         z-index: 2147483647;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
@@ -119,7 +118,6 @@
       @media (max-width: 420px) {
         :host {
           right: 10px;
-          bottom: 10px;
         }
 
         .remarks-floating__panel {
@@ -158,7 +156,7 @@
     const setOpen = (open: boolean) => {
       shell.classList.toggle("is-open", open);
       if (open) {
-        requestAnimationFrame(() => keepPanelInViewport(host));
+        requestAnimationFrame(() => centerPanelVertically(host));
       }
     };
 
@@ -175,6 +173,22 @@
     document.documentElement.append(host);
 
     return host;
+  }
+
+  function centerPanelVertically(host: HTMLElement) {
+    const rect = host.getBoundingClientRect();
+    const margin = 8;
+    const panelHeight = rect.height;
+    const viewportHeight = window.innerHeight;
+
+    // 计算垂直居中位置，确保不超出视口
+    const idealTop = (viewportHeight - panelHeight) / 2;
+    const top = Math.max(margin, Math.min(idealTop, viewportHeight - panelHeight - margin));
+
+    host.style.top = `${top}px`;
+    host.style.right = "18px";
+    host.style.left = "auto";
+    host.style.bottom = "auto";
   }
 
   function keepPanelInViewport(host: HTMLElement) {
@@ -261,6 +275,6 @@
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type !== openMessage || !(shell instanceof HTMLElement)) return;
     shell.classList.add("is-open");
-    keepPanelInViewport(host);
+    centerPanelVertically(host);
   });
 })();
