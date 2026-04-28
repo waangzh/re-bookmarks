@@ -1,6 +1,5 @@
 import type {
   BookmarkBackup,
-  ClassificationRule,
   OrganizeReport,
   PendingRecommendation,
   PreviewPlanCache,
@@ -12,7 +11,6 @@ export const STORAGE_KEYS = {
   pendingRecommendations: "remarks.pendingRecommendations",
   lastBackup: "remarks.lastBackup",
   lastReport: "remarks.lastReport",
-  classificationRules: "remarks.classificationRules",
   previewPlan: "remarks.previewPlan",
 } as const;
 
@@ -104,10 +102,6 @@ export function getLastReport(): Promise<OrganizeReport | null> {
 
 export function saveLastReport(report: OrganizeReport): Promise<void> {
   return setStorageValue(STORAGE_KEYS.lastReport, report);
-}
-
-export function getClassificationRules(): Promise<ClassificationRule[]> {
-  return getStorageValue<ClassificationRule[]>(STORAGE_KEYS.classificationRules, []);
 }
 
 export function getPreviewPlan(): Promise<PreviewPlanCache | null> {

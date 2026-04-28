@@ -1,6 +1,6 @@
 import type { FrequentBookmark } from "../types";
 import { getAllBookmarks } from "./bookmarks";
-import { classifyWithRules, sanitizeUrl } from "./rules";
+import { sanitizeUrl } from "./rules";
 
 function hasChromeHistory() {
   return typeof chrome !== "undefined" && Boolean(chrome.history);
@@ -52,7 +52,6 @@ export async function getFrequentBookmarks(): Promise<FrequentBookmark[]> {
       if (!item.url) return [];
       const bookmark = byUrl.get(sanitizeUrl(item.url));
       if (!bookmark?.url) return [];
-      const suggestion = classifyWithRules(bookmark);
       return [
         {
           id: bookmark.id,
@@ -61,8 +60,6 @@ export async function getFrequentBookmarks(): Promise<FrequentBookmark[]> {
           visitCount: item.visitCount ?? 0,
           lastVisit: item.lastVisitTime ?? 0,
           currentFolder: bookmark.path.join(" / ") || "书签栏",
-          suggestedFolder: suggestion?.categoryPath?.join(" / "),
-          confidence: suggestion?.confidence,
         },
       ];
     })

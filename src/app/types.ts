@@ -99,13 +99,6 @@ export type PreviewPlanCache = {
   movePlan: MovePlan[];
 };
 
-export type ClassificationRule = {
-  id: string;
-  match: string;
-  folderPath: string[];
-  confidence: number;
-};
-
 export type FrequentBookmark = {
   id: string;
   title: string;
@@ -113,6 +106,4 @@ export type FrequentBookmark = {
   visitCount: number;
   lastVisit: number;
   currentFolder?: string;
-  suggestedFolder?: string;
-  confidence?: number;
 };

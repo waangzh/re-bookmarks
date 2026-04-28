@@ -14,9 +14,8 @@ import {
   normalizeFolderPath,
 } from "./bookmarks";
 import { classifyWithAI } from "./aiProvider";
-import { classifyWithRules, normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
+import { normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
 import {
-  getClassificationRules,
   getLastBackup,
   getPendingRecommendations,
   getSettings,
@@ -70,28 +69,16 @@ function chunkBookmarks<T>(items: T[], size: number) {
 }
 
 export async function generateMovePlans(): Promise<MovePlan[]> {
-  const [settings, learnedRules, bookmarks] = await Promise.all([
+  const [settings, bookmarks] = await Promise.all([
     getSettings(),
-    getClassificationRules(),
     getAllBookmarks(),
   ]);
   const urlBookmarks = bookmarks.filter((bookmark) => bookmark.url);
-  const localResults = new Map<string, ClassificationResult>();
-  const needsAI = [];
+  const results = new Map<string, ClassificationResult>();
+  const failureReasons = new Map<string, string>();
 
-  for (const bookmark of urlBookmarks) {
-    const local = classifyWithRules(bookmark, learnedRules);
-    if (local) {
-      localResults.set(bookmark.id, local);
-    } else {
-      needsAI.push(bookmark);
-    }
-  }
-
-  const aiFailureReasons = new Map<string, string>();
-
-  if (needsAI.length && settings.provider.apiKey) {
-    for (const batch of chunkBookmarks(needsAI, 20)) {
+  if (urlBookmarks.length && settings.provider.apiKey) {
+    for (const batch of chunkBookmarks(urlBookmarks, 20)) {
       try {
         const requestedIds = new Set(batch.map((bookmark) => bookmark.id));
         const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, settings.sendFullUrl));
@@ -100,26 +87,26 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
 
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) {
-            localResults.set(result.id, result);
+            results.set(result.id, result);
             returnedIds.add(result.id);
           }
         }
 
         for (const bookmark of batch) {
           if (!returnedIds.has(bookmark.id)) {
-            aiFailureReasons.set(bookmark.id, "AI 未返回此书签的分类结果");
+            failureReasons.set(bookmark.id, "AI 未返回此书签的分类结果");
           }
         }
       } catch (error) {
         const reason = error instanceof Error ? error.message : "AI 分类失败";
         for (const bookmark of batch) {
-          aiFailureReasons.set(bookmark.id, reason);
+          failureReasons.set(bookmark.id, reason);
         }
       }
     }
-  } else if (needsAI.length) {
-    for (const bookmark of needsAI) {
-      aiFailureReasons.set(bookmark.id, "未配置 API Key，无法调用 AI");
+  } else if (urlBookmarks.length) {
+    for (const bookmark of urlBookmarks) {
+      failureReasons.set(bookmark.id, "未配置 API Key，无法调用 AI");
     }
   }
 
@@ -133,7 +120,7 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
     const duplicateReason = firstSameUrl ? `可能与「${firstSameUrl}」重复` : undefined;
     return buildMovePlan(
       bookmark,
-      localResults.get(bookmark.id) ?? fallbackResult(bookmark.id, aiFailureReasons.get(bookmark.id) || undefined),
+      results.get(bookmark.id) ?? fallbackResult(bookmark.id, failureReasons.get(bookmark.id) || undefined),
       settings,
       duplicateReason
     );
@@ -242,17 +229,17 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     path: [],
     type: "url" as const,
   };
-  const local = classifyWithRules(bookmarkNode);
-  let classification = local ?? fallbackResult(bookmark.id, "新增书签暂未匹配本地规则");
 
-  if (!local && settings.provider.apiKey) {
+  let classification = fallbackResult(bookmark.id, "新增书签等待 AI 分类");
+
+  if (settings.provider.apiKey) {
     try {
       const [aiResult] = await classifyWithAI(settings.provider, [
         toBookmarkForAI(bookmarkNode, settings.sendFullUrl),
       ]);
       if (aiResult) classification = aiResult;
     } catch {
-      // 新增推荐失败时保留本地待整理建议。
+      // AI 分类失败时保留待整理建议
     }
   }
 
