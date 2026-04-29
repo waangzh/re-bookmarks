@@ -29,6 +29,20 @@ import {
   savePendingRecommendations,
 } from "./storage";
 
+function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId: string): string[] | null {
+  function search(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]): string[] | null {
+    for (const node of nodes) {
+      if (node.id === targetId) return path;
+      if (node.children) {
+        const result = search(node.children, node.title && !node.url ? [...path, node.title] : path);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+  return search(tree, []);
+}
+
 function fallbackResult(id: string, reason = "未能可靠分类，已放入待整理"): ClassificationResult {
   return {
     id,
@@ -383,7 +397,16 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
 
   for (const plan of backup.movePlan) {
     try {
-      await moveBookmark(plan.bookmarkId, plan.fromParentId, plan.fromIndex);
+      let targetParentId = plan.fromParentId;
+      // 检查原文件夹是否仍然存在（可能被清理逻辑删除了）
+      const existing = await getBookmark(targetParentId);
+      if (!existing) {
+        const folderPath = findFolderPathById(backup.tree, targetParentId);
+        if (folderPath && folderPath.length > 0) {
+          targetParentId = await ensureFolderPath(folderPath);
+        }
+      }
+      await moveBookmark(plan.bookmarkId, targetParentId, plan.fromIndex);
       movedCount += 1;
     } catch (error) {
       failedItems.push({
