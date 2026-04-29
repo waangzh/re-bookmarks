@@ -137,6 +137,37 @@ body {
   color: var(--foreground);
 }
 
+/* 全局滚动栏 hover 显示 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+html:hover {
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+html::-webkit-scrollbar {
+  width: 8px;
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+html:hover::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+html:hover::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
 html:has(.bookmark-popup-window),
 body:has(.bookmark-popup-window),
 #root:has(.bookmark-popup-window) {
@@ -145,6 +176,44 @@ body:has(.bookmark-popup-window),
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+html:has(.bookmark-popup-window):hover,
+body:has(.bookmark-popup-window):hover {
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+html:has(.bookmark-popup-window)::-webkit-scrollbar,
+body:has(.bookmark-popup-window)::-webkit-scrollbar,
+#root:has(.bookmark-popup-window)::-webkit-scrollbar {
+  width: 6px;
+}
+
+html:has(.bookmark-popup-window)::-webkit-scrollbar-track,
+body:has(.bookmark-popup-window)::-webkit-scrollbar-track,
+#root:has(.bookmark-popup-window)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html:has(.bookmark-popup-window)::-webkit-scrollbar-thumb,
+body:has(.bookmark-popup-window)::-webkit-scrollbar-thumb,
+#root:has(.bookmark-popup-window)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+html:has(.bookmark-popup-window):hover::-webkit-scrollbar-thumb,
+body:has(.bookmark-popup-window):hover::-webkit-scrollbar-thumb,
+#root:has(.bookmark-popup-window):hover::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+html:has(.bookmark-popup-window):hover::-webkit-scrollbar-track,
+body:has(.bookmark-popup-window):hover::-webkit-scrollbar-track,
+#root:has(.bookmark-popup-window):hover::-webkit-scrollbar-track {
+  background: #f1f5f9;
 }
 
 h1 {
