@@ -719,6 +719,87 @@ input {
   gap: 18px;
 }
 
+.extension-page--settings .extension-page__inner > * + * {
+  margin-top: 18px;
+}
+
+.extension-page--settings .extension-page__header {
+  margin-bottom: 0;
+}
+
+.extension-page--settings .settings-section + .settings-section {
+  margin-top: 20px;
+}
+
+.settings-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-disclosure {
+  width: 100%;
+}
+
+.settings-disclosure__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 66px;
+  padding: 14px 16px;
+  color: inherit;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color 160ms ease;
+}
+
+.settings-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-disclosure__summary:hover {
+  background: #f8fafc;
+}
+
+.settings-disclosure__summary .extension-section__title {
+  margin: 0;
+}
+
+.settings-disclosure__hint {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.settings-disclosure__chevron {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  color: #94a3b8;
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.settings-disclosure__summary:hover .settings-disclosure__chevron {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.settings-disclosure[open] .settings-disclosure__chevron {
+  transform: rotate(90deg);
+}
+
+.settings-disclosure__body {
+  border-top: 1px solid #eef2f7;
+  padding: 16px;
+}
+
 .extension-section {
   width: 100%;
   border: 1px solid #e5eaf0;

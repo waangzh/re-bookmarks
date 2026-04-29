@@ -95,7 +95,7 @@ export function Options() {
   };
 
   return (
-    <div className="extension-page">
+    <div className="extension-page extension-page--settings">
       <div className="extension-page__inner">
         <div className="extension-page__header">
           <div className="extension-page__heading">
@@ -109,9 +109,16 @@ export function Options() {
           </div>
         </div>
 
-        <section className="extension-section">
-          <div>
-            <h2 className="extension-section__title">AI Provider 配置</h2>
+        <section className="extension-section settings-section">
+          <details className="settings-disclosure">
+            <summary className="settings-disclosure__summary">
+              <span>
+                <h2 className="extension-section__title">AI Provider 配置</h2>
+                <span className="settings-disclosure__hint">配置 AI 服务、模型和连接测试</span>
+              </span>
+              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
+            </summary>
+            <div className="settings-disclosure__body">
             <div className="extension-form">
               <div className="extension-field">
                 <label>Provider</label>
@@ -174,12 +181,20 @@ export function Options() {
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </details>
         </section>
 
-        <section className="extension-section">
-          <div>
-            <h2 className="extension-section__title">分类习惯学习</h2>
+        <section className="extension-section settings-section">
+          <details className="settings-disclosure">
+            <summary className="settings-disclosure__summary">
+              <span>
+                <h2 className="extension-section__title">分类习惯学习</h2>
+                <span className="settings-disclosure__hint">分析现有文件夹偏好并保存本地画像</span>
+              </span>
+              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
+            </summary>
+            <div className="settings-disclosure__body">
             <div className="extension-settings-list">
               <div className="extension-privacy">
                 <p>
@@ -206,12 +221,20 @@ export function Options() {
                 {habitStatus === "analyzing" ? "正在分析分类习惯..." : habitProfile ? "重新分析分类习惯" : "分析当前分类习惯"}
               </button>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
 
-        <section className="extension-section">
-          <div>
-            <h2 className="extension-section__title">整理选项</h2>
+        <section className="extension-section settings-section">
+          <details className="settings-disclosure">
+            <summary className="settings-disclosure__summary">
+              <span>
+                <h2 className="extension-section__title">整理选项</h2>
+                <span className="settings-disclosure__hint">控制文件夹层级、数量和 URL 发送策略</span>
+              </span>
+              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
+            </summary>
+            <div className="settings-disclosure__body">
             <div className="extension-settings-list">
               <div className="extension-switch-row">
                 <div>
@@ -279,12 +302,20 @@ export function Options() {
                 </label>
               </div>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
 
-        <section className="extension-section">
-          <div>
-            <h2 className="extension-section__title">隐私与权限</h2>
+        <section className="extension-section settings-section">
+          <details className="settings-disclosure">
+            <summary className="settings-disclosure__summary">
+              <span>
+                <h2 className="extension-section__title">隐私与权限</h2>
+                <span className="settings-disclosure__hint">管理历史权限和本地数据说明</span>
+              </span>
+              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
+            </summary>
+            <div className="settings-disclosure__body">
             <div className="extension-settings-list">
               <div className="extension-switch-row">
                 <div>
@@ -306,7 +337,8 @@ export function Options() {
                 </p>
               </div>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
 
         {message && testStatus !== "error" && (
