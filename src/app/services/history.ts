@@ -47,22 +47,30 @@ export async function getFrequentBookmarks(): Promise<FrequentBookmark[]> {
       .map((bookmark) => [sanitizeUrl(bookmark.url ?? ""), bookmark])
   );
 
-  return historyItems
-    .flatMap((item) => {
-      if (!item.url) return [];
-      const bookmark = byUrl.get(sanitizeUrl(item.url));
-      if (!bookmark?.url) return [];
-      return [
-        {
-          id: bookmark.id,
-          title: bookmark.title,
-          url: bookmark.url,
-          visitCount: item.visitCount ?? 0,
-          lastVisit: item.lastVisitTime ?? 0,
-          currentFolder: bookmark.path.join(" / ") || "书签栏",
-        },
-      ];
-    })
+  const byBookmarkId = new Map<string, FrequentBookmark>();
+
+  for (const item of historyItems) {
+    if (!item.url) continue;
+    const bookmark = byUrl.get(sanitizeUrl(item.url));
+    if (!bookmark?.url) continue;
+    const existing = byBookmarkId.get(bookmark.id);
+    const visitCount = item.visitCount ?? 0;
+    if (existing) {
+      existing.visitCount += visitCount;
+      existing.lastVisit = Math.max(existing.lastVisit, item.lastVisitTime ?? 0);
+    } else {
+      byBookmarkId.set(bookmark.id, {
+        id: bookmark.id,
+        title: bookmark.title,
+        url: bookmark.url,
+        visitCount,
+        lastVisit: item.lastVisitTime ?? 0,
+        currentFolder: bookmark.path.join(" / ") || "书签栏",
+      });
+    }
+  }
+
+  return [...byBookmarkId.values()]
     .filter((bookmark) => bookmark.visitCount > 0)
     .sort((a, b) => b.visitCount - a.visitCount)
     .slice(0, 50);
