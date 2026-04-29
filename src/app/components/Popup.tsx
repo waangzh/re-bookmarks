@@ -1,14 +1,22 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles } from "lucide-react";
+import { Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles, CheckCircle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
+import { getPreviewPlan } from "../services/storage";
 
 export function Popup() {
-  const { bookmarks, pendingRecommendations, loadAll, loading } = useAppStore();
+  const { bookmarks, pendingRecommendations, lastReport, loadAll, loading } = useAppStore();
+  const [hasPreviewCache, setHasPreviewCache] = useState(false);
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    void getPreviewPlan().then((cache) => {
+      setHasPreviewCache(!!cache?.movePlan?.length);
+    });
+  }, []);
 
   const bookmarkCount = bookmarks.length;
   const pendingCount = pendingRecommendations.length;
@@ -52,13 +60,33 @@ export function Popup() {
       )}
 
       <div className="bookmark-popup__actions">
-        <Link to="/preview" className="bookmark-popup__action bookmark-popup__action--primary">
-          <div className="bookmark-popup__action-main">
-            <FileText className="bookmark-popup__action-icon" />
-            <span>开始智能整理</span>
-          </div>
-          <span className="bookmark-popup__arrow">→</span>
-        </Link>
+        {hasPreviewCache ? (
+          <Link to="/preview" className="bookmark-popup__action bookmark-popup__action--primary">
+            <div className="bookmark-popup__action-main">
+              <FileText className="bookmark-popup__action-icon" />
+              <span>继续上次预览</span>
+            </div>
+            <span className="bookmark-popup__arrow">→</span>
+          </Link>
+        ) : (
+          <Link to="/preview" className="bookmark-popup__action bookmark-popup__action--primary">
+            <div className="bookmark-popup__action-main">
+              <FileText className="bookmark-popup__action-icon" />
+              <span>开始智能整理</span>
+            </div>
+            <span className="bookmark-popup__arrow">→</span>
+          </Link>
+        )}
+
+        {lastReport && (
+          <Link to="/report" className="bookmark-popup__action bookmark-popup__action--secondary">
+            <div className="bookmark-popup__action-main">
+              <CheckCircle className="bookmark-popup__action-icon" />
+              <span>上次整理结果</span>
+            </div>
+            <span className="bookmark-popup__arrow">→</span>
+          </Link>
+        )}
 
         <Link to="/history" className="bookmark-popup__action bookmark-popup__action--secondary">
           <div className="bookmark-popup__action-main">
