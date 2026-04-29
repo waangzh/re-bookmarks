@@ -6,6 +6,7 @@ import { Report } from "./components/Report";
 import { Recommendations } from "./components/Recommendations";
 import { History } from "./components/History";
 import { ManageBookmarks } from "./components/ManageBookmarks";
+import { HabitPresets } from "./components/HabitPresets";
 
 type AppProps = {
   defaultView?: "popup" | "options";
@@ -32,6 +33,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
         <Route path="/recommendations" element={<Recommendations />} />
         <Route path="/history" element={<History />} />
         <Route path="/manage" element={<ManageBookmarks />} />
+        <Route path="/habits" element={<HabitPresets />} />
       </Routes>
     </div>
   );

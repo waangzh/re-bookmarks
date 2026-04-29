@@ -12,6 +12,12 @@ type ClassificationOptions = {
   allowNestedFolders: boolean;
   habitProfile?: FolderHabitProfile | null;
   customPrompt?: string;
+  existingCategories?: string[];
+};
+
+export type CategoryScheme = {
+  topLevelCategories: string[];
+  subCategories: Record<string, string[]>;
 };
 
 function endpointFor(config: AIProviderConfig) {
@@ -228,7 +234,12 @@ export async function classifyWithAI(
 
   const maxTopLevelFolders = options?.maxTopLevelFolders ?? 8;
   const maxSubfoldersPerFolder = options?.allowNestedFolders === false ? 0 : options?.maxSubfoldersPerFolder ?? 4;
-  const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数最多 ${maxTopLevelFolders} 个；每个一级分类下最多 ${maxSubfoldersPerFolder} 个二级分类。不要为单个网站、单篇文章或小众主题创建独立文件夹。无法确定时归入较宽泛的父级分类或“待整理”。`;
+  const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数最多 ${maxTopLevelFolders} 个；每个一级分类下最多 ${maxSubfoldersPerFolder} 个二级分类。不要为单个网站、单篇文章或小众主题创建独立文件夹。无法确定时归入较宽泛的父级分类或"待整理"。`;
+
+  const existingCategoriesInstruction = options?.existingCategories?.length
+    ? `\n你必须严格使用以下已有的一级分类名称，不得创建新的一级分类：${options.existingCategories.join("、")}。只有确实无法归入时才使用"待整理"。`
+    : "";
+
   const habitInstruction = options?.habitProfile
     ? `用户已有分类习惯：${options.habitProfile.promptHint} 优先复用这些一级分类：${options.habitProfile.preferredTopLevelFolders.join("、")}。除非明显不合适，否则新分类应贴近这些既有命名和粒度。`
     : "";
@@ -238,7 +249,7 @@ export async function classifyWithAI(
     [
       {
         role: "system",
-        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。`,
+        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${existingCategoriesInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。`,
       },
       {
         role: "user",

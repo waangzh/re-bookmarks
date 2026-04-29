@@ -97,4 +97,22 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
   return profile;
 }
 
+export async function saveEditedFolderHabitProfile(profile: FolderHabitProfile): Promise<FolderHabitProfile> {
+  const next = {
+    ...profile,
+    preferredTopLevelFolders: profile.preferredTopLevelFolders.map((item) => item.trim()).filter(Boolean),
+    folderRules: profile.folderRules
+      .map((rule) => ({
+        folderPath: rule.folderPath.map((item) => item.trim()).filter(Boolean),
+        pattern: rule.pattern.trim(),
+      }))
+      .filter((rule) => rule.folderPath.length > 0 && rule.pattern),
+    avoidRules: profile.avoidRules.map((item) => item.trim()).filter(Boolean),
+    promptHint: profile.promptHint.trim(),
+  };
+  await saveFolderHabitProfile(next);
+  await clearPreviewPlan();
+  return next;
+}
+
 export { getFolderHabitProfile };

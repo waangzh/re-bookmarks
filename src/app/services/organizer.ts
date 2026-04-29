@@ -174,6 +174,17 @@ function compactClassificationResults(
   }
 }
 
+function extractCategoryScheme(results: Map<string, ClassificationResult>) {
+  const topLevelSet = new Set<string>();
+  for (const result of results.values()) {
+    const first = result.categoryPath?.[0];
+    if (first && first !== "待整理") {
+      topLevelSet.add(first);
+    }
+  }
+  return [...topLevelSet];
+}
+
 export async function generateMovePlans(): Promise<MovePlan[]> {
   const [settings, bookmarks, habitProfile] = await Promise.all([
     getSettings(),
@@ -185,10 +196,17 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
   const failureReasons = new Map<string, string>();
 
   if (urlBookmarks.length && settings.provider.apiKey) {
-    for (const batch of chunkBookmarks(urlBookmarks, 20)) {
+    // 阶段一：采样首次分类，建立统一分类体系
+    const sampleSize = Math.min(30, urlBookmarks.length);
+    const sample = urlBookmarks.slice(0, sampleSize);
+    const restBookmarks = urlBookmarks.slice(sampleSize);
+    let existingCategories: string[] = [];
+
+    // 先分类采样
+    for (const batch of chunkBookmarks(sample, 20)) {
       try {
-        const requestedIds = new Set(batch.map((bookmark) => bookmark.id));
-        const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, settings.sendFullUrl));
+        const requestedIds = new Set(batch.map((b) => b.id));
+        const aiBookmarks = batch.map((b) => toBookmarkForAI(b, settings.sendFullUrl));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
           allowNestedFolders: settings.allowNestedFolders,
           maxTopLevelFolders: settings.maxTopLevelFolders,
@@ -196,25 +214,44 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
           habitProfile,
           customPrompt: settings.customPrompt,
         });
-        const returnedIds = new Set<string>();
-
         for (const result of aiResults) {
-          if (requestedIds.has(result.id)) {
-            results.set(result.id, result);
-            returnedIds.add(result.id);
-          }
+          if (requestedIds.has(result.id)) results.set(result.id, result);
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "AI 分类失败";
+        for (const b of batch) failureReasons.set(b.id, reason);
+      }
+    }
+
+    // 提取已有的分类体系
+    existingCategories = extractCategoryScheme(results);
+
+    // 阶段二：用已有分类体系约束后续批次
+    for (const batch of chunkBookmarks(restBookmarks, 20)) {
+      try {
+        const requestedIds = new Set(batch.map((b) => b.id));
+        const aiBookmarks = batch.map((b) => toBookmarkForAI(b, settings.sendFullUrl));
+        const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
+          allowNestedFolders: settings.allowNestedFolders,
+          maxTopLevelFolders: settings.maxTopLevelFolders,
+          maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
+          habitProfile,
+          customPrompt: settings.customPrompt,
+          existingCategories: existingCategories.length > 0 ? existingCategories : undefined,
+        });
+        for (const result of aiResults) {
+          if (requestedIds.has(result.id)) results.set(result.id, result);
         }
 
-        for (const bookmark of batch) {
-          if (!returnedIds.has(bookmark.id)) {
-            failureReasons.set(bookmark.id, "AI 未返回此书签的分类结果");
+        for (const b of batch) {
+          if (!requestedIds.has(b.id)) continue;
+          if (!results.has(b.id)) {
+            failureReasons.set(b.id, "AI 未返回此书签的分类结果");
           }
         }
       } catch (error) {
         const reason = error instanceof Error ? error.message : "AI 分类失败";
-        for (const bookmark of batch) {
-          failureReasons.set(bookmark.id, reason);
-        }
+        for (const b of batch) failureReasons.set(b.id, reason);
       }
     }
   } else if (urlBookmarks.length) {

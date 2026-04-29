@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router";
-import { Bookmark, Settings, FileText, History, Bell, FolderEdit } from "lucide-react";
+import { Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 export function Popup() {
@@ -72,6 +72,14 @@ export function Popup() {
           <div className="bookmark-popup__action-main">
             <FolderEdit className="bookmark-popup__action-icon" />
             <span>管理书签</span>
+          </div>
+          <span className="bookmark-popup__arrow">→</span>
+        </Link>
+
+        <Link to="/habits" className="bookmark-popup__action bookmark-popup__action--secondary">
+          <div className="bookmark-popup__action-main">
+            <Sparkles className="bookmark-popup__action-icon" />
+            <span>分类习惯预设</span>
           </div>
           <span className="bookmark-popup__arrow">→</span>
         </Link>

@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, AlertCircle, Sparkles, RotateCcw } from "lucide-react";
-import type { AIProviderType, FolderHabitProfile, Settings } from "../types";
+import { ArrowLeft, Check, AlertCircle, RotateCcw } from "lucide-react";
+import type { AIProviderType, Settings } from "../types";
 import { testAIConnection } from "../services/aiProvider";
-import { analyzeAndSaveFolderHabits, getFolderHabitProfile } from "../services/habits";
 import { requestHistoryPermission } from "../services/history";
 import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
@@ -17,8 +16,6 @@ const providerDefaults: Record<AIProviderType, Pick<Settings["provider"], "model
 export function Options() {
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
-  const [habitProfile, setHabitProfile] = useState<FolderHabitProfile | null>(null);
-  const [habitStatus, setHabitStatus] = useState<"idle" | "analyzing" | "success" | "error">("idle");
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -29,10 +26,6 @@ export function Options() {
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
-
-  useEffect(() => {
-    void getFolderHabitProfile().then(setHabitProfile);
-  }, []);
 
   const updateProvider = (type: AIProviderType) => {
     const defaults = providerDefaults[type];
@@ -77,21 +70,6 @@ export function Options() {
     await saveSettings(draft);
     await clearPreviewPlan();
     setMessage("设置已保存");
-  };
-
-  const handleAnalyzeHabits = async () => {
-    setHabitStatus("analyzing");
-    setMessage("");
-    try {
-      await saveSettings(draft);
-      const profile = await analyzeAndSaveFolderHabits();
-      setHabitProfile(profile);
-      setHabitStatus("success");
-      setMessage("已分析并保存当前分类习惯，后续整理会优先参考");
-    } catch (error) {
-      setHabitStatus("error");
-      setMessage(error instanceof Error ? error.message : "分析分类习惯失败");
-    }
   };
 
   return (
@@ -180,46 +158,6 @@ export function Options() {
                   <span className="text-sm text-red-800">{message || "连接失败，请检查配置"}</span>
                 </div>
               )}
-            </div>
-            </div>
-          </details>
-        </section>
-
-        <section className="extension-section settings-section">
-          <details className="settings-disclosure">
-            <summary className="settings-disclosure__summary">
-              <span>
-                <h2 className="extension-section__title">分类习惯学习</h2>
-                <span className="settings-disclosure__hint">分析现有文件夹偏好并保存本地画像</span>
-              </span>
-              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
-            </summary>
-            <div className="settings-disclosure__body">
-            <div className="extension-settings-list">
-              <div className="extension-privacy">
-                <p>
-                  从当前书签文件夹中提取分类命名和粒度偏好，AI 会生成本地画像。之后整理会优先复用已有分类习惯，减少新建陌生文件夹。
-                </p>
-              </div>
-
-              {habitProfile && (
-                <div className="extension-privacy">
-                  <p>
-                    已学习 {habitProfile.folderCount} 个文件夹、{habitProfile.bookmarkCount} 个书签<br />
-                    {habitProfile.summary}<br />
-                    主要分类：{habitProfile.preferredTopLevelFolders.slice(0, 8).join("、") || "暂无"}
-                  </p>
-                </div>
-              )}
-
-              <button
-                onClick={handleAnalyzeHabits}
-                disabled={habitStatus === "analyzing"}
-                className="extension-page__wide-secondary extension-page__wide-secondary--blue"
-              >
-                <Sparkles className="w-4 h-4" />
-                {habitStatus === "analyzing" ? "正在分析分类习惯..." : habitProfile ? "重新分析分类习惯" : "分析当前分类习惯"}
-              </button>
             </div>
             </div>
           </details>

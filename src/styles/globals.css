@@ -1565,6 +1565,28 @@ input {
   background: #f1f5f9;
 }
 
+.habit-editor-list,
+.habit-rule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.habit-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.habit-rule-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e5eaf0;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
 .extension-switch-row {
   display: flex;
   align-items: center;
