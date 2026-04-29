@@ -1,38 +1,196 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Folder, ExternalLink, Check, AlertCircle, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
-import type { MovePlan } from "../types";
-import { executeMovePlans, generateMovePlans } from "../services/organizer";
+import {
+  ArrowLeft,
+  Folder,
+  ExternalLink,
+  Check,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Bookmark,
+} from "lucide-react";
+import type { BookmarkNode, MovePlan } from "../types";
+import { executeMovePlans, generateMovePlansForBookmarks } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
+import { getAllBookmarks } from "../services/bookmarks";
+
+type PreviewPhase = "selection" | "preview" | "submitting";
+
+type BookmarkFolderNode = {
+  key: string;
+  title: string;
+  path: string[];
+  count: number;
+  children: BookmarkFolderNode[];
+  bookmarks: BookmarkNode[];
+};
+
+function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
+  return {
+    key: path.join("/") || "__root__",
+    title,
+    path,
+    count: 0,
+    children: [],
+    bookmarks: [],
+  };
+}
+
+function buildBookmarkFolderTree(bookmarks: BookmarkNode[]) {
+  const root = createFolderNode("全部书签", []);
+  const folderMap = new Map<string, BookmarkFolderNode>([[root.key, root]]);
+
+  bookmarks.forEach((bookmark) => {
+    const folderPath = bookmark.path;
+    let current = root;
+    current.count += 1;
+
+    folderPath.forEach((folderName, index) => {
+      const path = folderPath.slice(0, index + 1);
+      const key = path.join("/");
+      let folder = folderMap.get(key);
+
+      if (!folder) {
+        folder = createFolderNode(folderName, path);
+        folderMap.set(key, folder);
+        current.children.push(folder);
+      }
+
+      folder.count += 1;
+      current = folder;
+    });
+
+    current.bookmarks.push(bookmark);
+  });
+
+  const sortTree = (node: BookmarkFolderNode) => {
+    node.children.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
+    node.bookmarks.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
+    node.children.forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root;
+}
 
 export function Preview() {
   const navigate = useNavigate();
   const { loadAll } = useAppStore();
+  const [phase, setPhase] = useState<PreviewPhase>("selection");
+  const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
+    () => new Set(["__root__"])
+  );
 
-  const createPlans = async (forceRefresh = false) => {
-    setLoading(true);
-    setError("");
-    setCacheMessage("");
-
-    try {
-      if (!forceRefresh) {
+  // 加载所有书签
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        // 先检查是否有缓存的预览
         const cached = await getPreviewPlan();
         if (cached?.movePlan.length) {
           setPlans(cached.movePlan);
           setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
+          setPhase("preview");
+          setLoading(false);
           return;
         }
-      }
 
-      const movePlans = await generateMovePlans();
+        // 没有缓存，加载书签列表供选择
+        const bookmarks = await getAllBookmarks();
+        const urlBookmarks = bookmarks.filter((b) => b.url);
+        setAllBookmarks(urlBookmarks);
+        // 默认全选
+        setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "加载书签失败");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleFolderSelect = (folder: BookmarkFolderNode) => {
+    const collectBookmarkIds = (node: BookmarkFolderNode): string[] => {
+      const ids = node.bookmarks.map((b) => b.id);
+      return node.children.reduce((acc, child) => acc.concat(collectBookmarkIds(child)), ids);
+    };
+    const ids = collectBookmarkIds(folder);
+    const allSelected = ids.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of ids) next.delete(id);
+      } else {
+        for (const id of ids) next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleFolderExpand = (key: string) => {
+    setExpandedSelectionFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const getFolderSelectedCount = (folder: BookmarkFolderNode): number => {
+    const collectBookmarkIds = (node: BookmarkFolderNode): string[] => {
+      const ids = node.bookmarks.map((b) => b.id);
+      return node.children.reduce((acc, child) => acc.concat(collectBookmarkIds(child)), ids);
+    };
+    return collectBookmarkIds(folder).filter((id) => selectedIds.has(id)).length;
+  };
+
+  // 开始分类
+  const handleStartClassify = async () => {
+    if (selectedIds.size === 0) {
+      setError("请至少选择一个书签");
+      return;
+    }
+    setPhase("preview");
+    setLoading(true);
+    setError("");
+
+    try {
+      const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
+      const movePlans = await generateMovePlansForBookmarks(bookmarksToClassify);
       setPlans(movePlans);
       await savePreviewPlan({
         id: `preview-${Date.now()}`,
@@ -42,31 +200,20 @@ export function Preview() {
       });
       setCacheMessage("预览结果已保存，返回后可继续查看");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "生成整理预览失败");
+      setError(err instanceof Error ? err.message : "生成分类失败");
+      setPhase("selection");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        await createPlans(false);
-      } finally {
-        if (!alive) return;
-      }
-    };
-    void load();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const handleRegenerate = async () => {
     setCollapsedFolders(new Set());
     setSelectedPlan(null);
-    await createPlans(true);
+    setCacheMessage("");
+    await clearPreviewPlan();
+    setPlans([]);
+    setPhase("selection");
   };
 
   const groupedByFolder = useMemo(
@@ -81,8 +228,8 @@ export function Preview() {
   );
 
   const handleConfirm = async () => {
-    if (!plans.length || submitting) return;
-    setSubmitting(true);
+    if (!plans.length) return;
+    setPhase("submitting");
     try {
       await executeMovePlans(plans);
       await clearPreviewPlan();
@@ -90,8 +237,7 @@ export function Preview() {
       navigate("/report");
     } catch (err) {
       setError(err instanceof Error ? err.message : "执行整理失败");
-    } finally {
-      setSubmitting(false);
+      setPhase("preview");
     }
   };
 
@@ -113,6 +259,91 @@ export function Preview() {
     return "text-amber-600 bg-amber-50";
   };
 
+  const renderSelectionTreeNode = (folder: BookmarkFolderNode, depth = 0) => {
+    const isExpanded = expandedSelectionFolders.has(folder.key);
+    const selectedCount = getFolderSelectedCount(folder);
+    const allSelected = folder.count > 0 && selectedCount === folder.count;
+    const hasChildren = folder.children.length > 0 || folder.bookmarks.length > 0;
+
+    return (
+      <div key={folder.key}>
+        <div
+          className={`selection-tree-row selection-tree-row--folder ${allSelected ? "is-selected" : ""}`}
+          style={{ "--tree-depth": depth } as CSSProperties}
+        >
+          <button
+            type="button"
+            className="selection-tree-row__expand"
+            onClick={() => toggleFolderExpand(folder.key)}
+            aria-expanded={isExpanded}
+          >
+            {hasChildren ? (
+              isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
+            ) : null}
+          </button>
+          <label className="selection-tree-row__checkbox">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedCount > 0 && selectedCount < folder.count;
+              }}
+              onChange={() => toggleFolderSelect(folder)}
+            />
+          </label>
+          <Folder className="selection-tree-row__folder-icon" />
+          <span className="selection-tree-row__title">{folder.title}</span>
+          <span className="selection-tree-row__count">{selectedCount}/{folder.count}</span>
+        </div>
+
+        {isExpanded && (
+          <>
+            {folder.children.map((child) => renderSelectionTreeNode(child, depth + 1))}
+            {folder.bookmarks.map((bookmark) => renderSelectionBookmarkRow(bookmark, depth + 1))}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderSelectionBookmarkRow = (bookmark: BookmarkNode, depth: number) => (
+    <label
+      key={bookmark.id}
+      className={`selection-tree-row selection-tree-row--bookmark ${selectedIds.has(bookmark.id) ? "is-selected" : ""}`}
+      style={{ "--tree-depth": depth } as CSSProperties}
+    >
+      <span className="selection-tree-row__expand" />
+      <span className="selection-tree-row__checkbox">
+        <input
+          type="checkbox"
+          checked={selectedIds.has(bookmark.id)}
+          onChange={() => toggleSelect(bookmark.id)}
+        />
+      </span>
+      <Bookmark className="selection-tree-row__bookmark-icon" />
+      <span className="selection-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+      {bookmark.url && (
+        <a
+          href={bookmark.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="extension-link-icon"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      )}
+    </label>
+  );
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === allBookmarks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allBookmarks.map((b) => b.id)));
+    }
+  };
+
   return (
     <div className="extension-page extension-page--preview">
       <div className="extension-page__inner">
@@ -122,22 +353,29 @@ export function Preview() {
               <ArrowLeft className="extension-page__back-icon" />
             </Link>
             <div>
-              <h1 className="extension-page__title">整理预览</h1>
-              <p className="extension-page__subtitle">{loading ? "正在读取书签并生成分类" : `${plans.length} 个书签待确认`}</p>
+              <h1 className="extension-page__title">
+                {phase === "selection" ? "选择书签" : "整理预览"}
+              </h1>
+              <p className="extension-page__subtitle">
+                {loading
+                  ? "正在处理..."
+                  : phase === "selection"
+                    ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
+                    : `${plans.length} 个书签待确认`}
+              </p>
             </div>
           </div>
-          <button onClick={handleConfirm} disabled={!plans.length || submitting} className="extension-page__primary-button">
-            <Check className="w-4 h-4" />
-            {submitting ? "整理中" : "确认整理"}
-          </button>
+          {phase === "preview" && !loading && (
+            <button
+              onClick={handleConfirm}
+              disabled={!plans.length}
+              className="extension-page__primary-button"
+            >
+              <Check className="w-4 h-4" />
+              确认整理
+            </button>
+          )}
         </div>
-
-        {!loading && plans.length > 0 && (
-          <button onClick={handleRegenerate} disabled={submitting} className="extension-page__wide-secondary">
-            <RefreshCw className="w-4 h-4" />
-            重新生成预览
-          </button>
-        )}
 
         {error && (
           <div className="extension-notice extension-notice--amber">
@@ -151,94 +389,158 @@ export function Preview() {
           </div>
         )}
 
-        <div className="extension-notice extension-notice--blue">
-          <div className="extension-notice__title">
-            <AlertCircle className="extension-notice__icon" />
-            <span>整理前预览</span>
-          </div>
-          <p>
-            将移动 {plans.length} 个书签到 {Object.keys(groupedByFolder).length} 个文件夹。确认前不会修改任何书签。
-          </p>
-        </div>
+        {/* 选择阶段 */}
+        {phase === "selection" && !loading && (
+          <>
+            <div className="extension-notice extension-notice--blue">
+              <div className="extension-notice__title">
+                <AlertCircle className="extension-notice__icon" />
+                <span>选择要整理的书签</span>
+              </div>
+              <p>勾选需要整理的书签，未勾选的书签将保持原位置不变。</p>
+            </div>
 
-        {loading ? (
-          <div className="extension-empty">
-            <p>正在生成整理建议</p>
-            <span>本地规则会优先执行，未命中时再调用 AI</span>
-          </div>
-        ) : plans.length === 0 ? (
-          <div className="extension-empty">
-            <p>暂无可整理书签</p>
-            <span>请先在浏览器中添加书签</span>
-          </div>
-        ) : (
-          <div className="extension-stack preview-folder-stack">
-            {Object.entries(groupedByFolder).map(([folderPath, items]) => {
-              const isCollapsed = collapsedFolders.has(folderPath);
+            <div className="extension-selection-actions">
+              <button onClick={toggleSelectAll} className="extension-text-button">
+                {selectedIds.size === allBookmarks.length ? "取消全选" : "全选"}
+              </button>
+              <span className="extension-selection-count">
+                已选 {selectedIds.size} 个
+              </span>
+            </div>
 
-              return (
-                <section key={folderPath} className="extension-section extension-section--flush">
-                  <button
-                    type="button"
-                    className="extension-section__bar extension-section__bar--button"
-                    aria-expanded={!isCollapsed}
-                    onClick={() => toggleFolder(folderPath)}
-                  >
-                    <div className="extension-section__bar-title">
-                      {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                      <Folder className="w-5 h-5" />
-                      <span>{folderPath}</span>
-                    </div>
-                    <span className="extension-pill">{items.length} 个</span>
-                  </button>
+            <section className="selection-tree-panel">
+              <div className="selection-tree">
+                {renderSelectionTreeNode(selectionTree)}
+              </div>
+            </section>
 
-                  {!isCollapsed && (
-                    <div className="extension-list">
-                      {items.map((plan) => (
-                        <button
-                          key={plan.bookmarkId}
-                          className={`extension-list__item extension-list__item--button ${
-                            selectedPlan === plan.bookmarkId ? "is-selected" : ""
-                          }`}
-                          onClick={() => setSelectedPlan(plan.bookmarkId)}
-                        >
-                          <div className="extension-list__main">
-                            <div className="extension-list__title-row">
-                              <h3>{plan.bookmarkTitle}</h3>
-                              {plan.bookmarkUrl && (
-                                <a href={plan.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" onClick={(event) => event.stopPropagation()}>
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              )}
-                            </div>
-                            {plan.bookmarkUrl && <p className="extension-list__url">{plan.bookmarkUrl}</p>}
-                            {plan.reason && <p className="extension-list__note">{plan.reason}</p>}
-                          </div>
-                          <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>{Math.round(plan.confidence * 100)}%</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              );
-            })}
-          </div>
+            <button
+              onClick={handleStartClassify}
+              disabled={selectedIds.size === 0}
+              className="extension-page__wide-primary"
+            >
+              <Check className="w-5 h-5" />
+              开始分类 ({selectedIds.size} 个书签)
+            </button>
+          </>
         )}
 
-        <section className="extension-section">
-          <h3 className="extension-section__title">整理说明</h3>
-          <ul className="extension-copy-list">
-            <li>· 整理前会自动备份当前书签结构</li>
-            <li>· 支持撤销最近一次整理操作</li>
-            <li>· 已存在的文件夹会复用，不会重复创建</li>
-            <li>· AI 失败时会回退到本地规则或待整理</li>
-          </ul>
-        </section>
+        {/* 预览阶段 */}
+        {phase === "preview" && (
+          <>
+            {!loading && plans.length > 0 && (
+              <button onClick={handleRegenerate} className="extension-page__wide-secondary">
+                <RefreshCw className="w-4 h-4" />
+                重新选择书签
+              </button>
+            )}
 
-        <button onClick={handleConfirm} disabled={!plans.length || submitting} className="extension-page__wide-primary">
-          <Check className="w-5 h-5" />
-          {submitting ? "正在整理" : `确认整理 ${plans.length} 个书签`}
-        </button>
+            <div className="extension-notice extension-notice--blue">
+              <div className="extension-notice__title">
+                <AlertCircle className="extension-notice__icon" />
+                <span>整理前预览</span>
+              </div>
+              <p>
+                将移动 {plans.length} 个书签到 {Object.keys(groupedByFolder).length} 个文件夹。确认前不会修改任何书签。
+              </p>
+            </div>
+
+            {loading ? (
+              <div className="extension-empty">
+                <p>正在生成分类建议</p>
+                <span>AI 正在分析书签内容...</span>
+              </div>
+            ) : plans.length === 0 ? (
+              <div className="extension-empty">
+                <p>暂无可整理书签</p>
+                <span>请先在浏览器中添加书签</span>
+              </div>
+            ) : (
+              <div className="extension-stack preview-folder-stack">
+                {Object.entries(groupedByFolder).map(([folderPath, items]) => {
+                  const isCollapsed = collapsedFolders.has(folderPath);
+
+                  return (
+                    <section key={folderPath} className="extension-section extension-section--flush">
+                      <button
+                        type="button"
+                        className="extension-section__bar extension-section__bar--button"
+                        aria-expanded={!isCollapsed}
+                        onClick={() => toggleFolder(folderPath)}
+                      >
+                        <div className="extension-section__bar-title">
+                          {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                          <Folder className="w-5 h-5" />
+                          <span>{folderPath}</span>
+                        </div>
+                        <span className="extension-pill">{items.length} 个</span>
+                      </button>
+
+                      {!isCollapsed && (
+                        <div className="extension-list">
+                          {items.map((plan) => (
+                            <button
+                              key={plan.bookmarkId}
+                              className={`extension-list__item extension-list__item--button ${
+                                selectedPlan === plan.bookmarkId ? "is-selected" : ""
+                              }`}
+                              onClick={() => setSelectedPlan(plan.bookmarkId)}
+                            >
+                              <div className="extension-list__main">
+                                <div className="extension-list__title-row">
+                                  <h3>{plan.bookmarkTitle}</h3>
+                                  {plan.bookmarkUrl && (
+                                    <a
+                                      href={plan.bookmarkUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="extension-link-icon"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                                {plan.bookmarkUrl && (
+                                  <p className="extension-list__url">{plan.bookmarkUrl}</p>
+                                )}
+                                {plan.reason && (
+                                  <p className="extension-list__note">{plan.reason}</p>
+                                )}
+                              </div>
+                              <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
+                                {Math.round(plan.confidence * 100)}%
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+
+            <section className="extension-section">
+              <h3 className="extension-section__title">整理说明</h3>
+              <ul className="extension-copy-list">
+                <li>· 整理前会自动备份当前书签结构</li>
+                <li>· 支持撤销最近一次整理操作</li>
+                <li>· 已存在的文件夹会复用，不会重复创建</li>
+              </ul>
+            </section>
+
+            <button
+              onClick={handleConfirm}
+              disabled={!plans.length || loading}
+              className="extension-page__wide-primary"
+            >
+              <Check className="w-5 h-5" />
+              确认整理 {plans.length} 个书签
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

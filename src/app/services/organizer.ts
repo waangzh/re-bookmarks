@@ -191,12 +191,18 @@ function extractCategoryScheme(results: Map<string, ClassificationResult>) {
 }
 
 export async function generateMovePlans(): Promise<MovePlan[]> {
-  const [settings, bookmarks, habitProfile] = await Promise.all([
+  const bookmarks = await getAllBookmarks();
+  const urlBookmarks = bookmarks.filter((bookmark) => bookmark.url);
+  return generateMovePlansForBookmarks(urlBookmarks);
+}
+
+export async function generateMovePlansForBookmarks(
+  urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>
+): Promise<MovePlan[]> {
+  const [settings, habitProfile] = await Promise.all([
     getSettings(),
-    getAllBookmarks(),
     getFolderHabitProfile(),
   ]);
-  const urlBookmarks = bookmarks.filter((bookmark) => bookmark.url);
   const results = new Map<string, ClassificationResult>();
   const failureReasons = new Map<string, string>();
 
