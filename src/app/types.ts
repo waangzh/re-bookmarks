@@ -86,6 +86,7 @@ export type OrganizeReport = {
   createdAt: number;
   movedCount: number;
   folderCount: number;
+  removedFolders?: number;
   failedItems: FailedMove[];
   movePlan: MovePlan[];
   privacySummary: string[];

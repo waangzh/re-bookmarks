@@ -3,6 +3,7 @@ const path = require("path");
 
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.resolve(rootDir, "dist");
+const publicIconsDir = path.resolve(rootDir, "public", "icons");
 
 // 复制 manifest.json
 const manifestSrc = path.resolve(rootDir, "manifest.json");
@@ -47,31 +48,21 @@ if (fs.existsSync(manifestSrc)) {
 }
 
 // 确保 icons 目录存在
-const iconsDir = path.resolve(distDir, "icons");
-if (!fs.existsSync(iconsDir)) {
-  fs.mkdirSync(iconsDir, { recursive: true });
+const distIconsDir = path.resolve(distDir, "icons");
+if (!fs.existsSync(distIconsDir)) {
+  fs.mkdirSync(distIconsDir, { recursive: true });
 }
 
-// 创建占位 PNG 图标（如不存在）
-const minPng = Buffer.from([
-  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-  0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-  0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
-  0x54, 0x08, 0xD7, 0x63, 0x38, 0x68, 0xF8, 0x0F,
-  0x00, 0x01, 0x04, 0x01, 0x80, 0x36, 0x1B, 0xB4,
-  0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
-  0xAE, 0x42, 0x60, 0x82
-]);
-
+// 从 public/icons 复制图标到 dist/icons
 [16, 32, 48, 128].forEach((size) => {
-  const iconPath = path.join(iconsDir, `icon${size}.png`);
-  if (!fs.existsSync(iconPath)) {
-    fs.writeFileSync(iconPath, minPng);
-    console.log(`✓ Created placeholder: icon${size}.png`);
+  const srcPath = path.join(publicIconsDir, `icon${size}.png`);
+  const destPath = path.join(distIconsDir, `icon${size}.png`);
+  if (fs.existsSync(srcPath)) {
+    fs.copyFileSync(srcPath, destPath);
+    console.log(`✓ Copied: icon${size}.png`);
+  } else {
+    console.warn(`⚠ Missing: icon${size}.png (run 'node scripts/generate-icons.mjs' to generate)`);
   }
 });
 
 console.log("✓ Build post-processing complete");
-console.log("Note: Replace placeholder icons with actual icons before publishing");

@@ -1230,6 +1230,10 @@ input {
   color: #16a34a;
 }
 
+.extension-metric__icon--red {
+  color: #dc2626;
+}
+
 .extension-metric__value {
   color: #0f172a;
   font-size: 22px;

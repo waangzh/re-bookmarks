@@ -196,3 +196,42 @@ export async function removeBookmark(id: string) {
     });
   });
 }
+
+export async function removeFolder(id: string): Promise<void> {
+  if (!hasChromeBookmarks()) return;
+
+  return new Promise<void>((resolve, reject) => {
+    chrome.bookmarks.removeTree(id, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export async function getFolderChildren(id: string): Promise<chrome.bookmarks.BookmarkTreeNode[]> {
+  if (!hasChromeBookmarks()) return [];
+
+  return new Promise((resolve) => {
+    chrome.bookmarks.getChildren(id, (children) => {
+      if (chrome.runtime.lastError) {
+        resolve([]);
+        return;
+      }
+      resolve(children);
+    });
+  });
+}
+
+export async function isFolderEmpty(id: string): Promise<boolean> {
+  const children = await getFolderChildren(id);
+  return children.length === 0;
+}
+
+const ROOT_FOLDER_IDS = new Set(["0", "1", "2", "3"]);
+
+export function isRootFolder(id: string): boolean {
+  return ROOT_FOLDER_IDS.has(id);
+}

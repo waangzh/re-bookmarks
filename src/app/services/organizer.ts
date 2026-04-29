@@ -10,8 +10,12 @@ import {
   ensureFolderPath,
   getAllBookmarks,
   getBookmarkTree,
+  getBookmark,
+  isFolderEmpty,
+  isRootFolder,
   moveBookmark,
   normalizeFolderPath,
+  removeFolder,
 } from "./bookmarks";
 import { classifyWithAI } from "./aiProvider";
 import { normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
@@ -142,8 +146,77 @@ function privacySummary(settings: Settings) {
   ];
 }
 
+async function cleanupEmptyFolders(folderIds: Set<string>): Promise<number> {
+  let removedCount = 0;
+
+  // 按层级深度排序：先处理深层文件夹，再处理浅层
+  // 通过获取每个文件夹的信息来确定深度
+  const foldersWithDepth: Array<{ id: string; depth: number }> = [];
+
+  for (const id of folderIds) {
+    let depth = 0;
+    let currentId: string | undefined = id;
+    while (currentId && !isRootFolder(currentId)) {
+      const folder = await getBookmark(currentId);
+      currentId = folder?.parentId;
+      depth++;
+    }
+    foldersWithDepth.push({ id, depth });
+  }
+
+  // 按深度降序排列，深层文件夹先处理
+  foldersWithDepth.sort((a, b) => b.depth - a.depth);
+
+  const processed = new Set<string>();
+
+  for (const { id } of foldersWithDepth) {
+    if (processed.has(id) || isRootFolder(id)) continue;
+
+    try {
+      if (await isFolderEmpty(id)) {
+        const folder = await getBookmark(id);
+        await removeFolder(id);
+        removedCount++;
+        processed.add(id);
+
+        // 父文件夹可能也变空了，加入待检查队列
+        if (folder?.parentId && !isRootFolder(folder.parentId)) {
+          folderIds.add(folder.parentId);
+        }
+      }
+    } catch {
+      // 删除失败（可能文件夹已不存在或有其他问题），忽略
+    }
+  }
+
+  return removedCount;
+}
+
+async function findAllFolderIds(): Promise<Set<string>> {
+  const tree = await getBookmarkTree();
+  const folderIds = new Set<string>();
+
+  function collectFolders(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
+    for (const node of nodes) {
+      if (!node.url && node.id && !isRootFolder(node.id)) {
+        folderIds.add(node.id);
+      }
+      if (node.children) {
+        collectFolders(node.children);
+      }
+    }
+  }
+
+  collectFolders(tree);
+  return folderIds;
+}
+
 export async function executeMovePlans(plans: MovePlan[]): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
+
+  // 记录执行前的文件夹
+  const foldersBefore = await findAllFolderIds();
+
   await saveLastBackup({
     id: `backup-${Date.now()}`,
     createdAt: Date.now(),
@@ -153,12 +226,16 @@ export async function executeMovePlans(plans: MovePlan[]): Promise<OrganizeRepor
 
   const failedItems: FailedMove[] = [];
   let movedCount = 0;
+  const sourceFolderIds = new Set<string>();
 
   for (const plan of plans) {
     try {
       const parentId = await ensureFolderPath(plan.toFolderPath, settings.maxNestingLevel);
       await moveBookmark(plan.bookmarkId, parentId);
       movedCount += 1;
+      if (plan.fromParentId) {
+        sourceFolderIds.add(plan.fromParentId);
+      }
     } catch (error) {
       failedItems.push({
         bookmarkId: plan.bookmarkId,
@@ -168,11 +245,30 @@ export async function executeMovePlans(plans: MovePlan[]): Promise<OrganizeRepor
     }
   }
 
+  // 清理源文件夹中变空的
+  let removedFolders = 0;
+  if (sourceFolderIds.size > 0) {
+    removedFolders = await cleanupEmptyFolders(sourceFolderIds);
+  }
+
+  // 清理新建的目标文件夹中为空的（可能是移动失败导致的）
+  const foldersAfter = await findAllFolderIds();
+  const newFolders = new Set<string>();
+  for (const id of foldersAfter) {
+    if (!foldersBefore.has(id)) {
+      newFolders.add(id);
+    }
+  }
+  if (newFolders.size > 0) {
+    removedFolders += await cleanupEmptyFolders(newFolders);
+  }
+
   const report: OrganizeReport = {
     id: `report-${Date.now()}`,
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(plans),
+    removedFolders,
     failedItems,
     movePlan: plans,
     privacySummary: privacySummary(settings),

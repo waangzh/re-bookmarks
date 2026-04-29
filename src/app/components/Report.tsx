@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, CheckCircle, Folder, FileText, RotateCcw } from "lucide-react";
+import { ArrowLeft, CheckCircle, Folder, FileText, RotateCcw, Trash2 } from "lucide-react";
 import { undoLastOrganize } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 
@@ -95,6 +95,13 @@ export function Report() {
               <div className="extension-metric__value">{lastReport.folderCount}</div>
               <div className="extension-metric__label">文件夹</div>
             </div>
+            {lastReport.removedFolders ? (
+              <div className="extension-metric">
+                <Trash2 className="extension-metric__icon extension-metric__icon--red" />
+                <div className="extension-metric__value">{lastReport.removedFolders}</div>
+                <div className="extension-metric__label">已清理</div>
+              </div>
+            ) : null}
             <div className="extension-metric">
               <CheckCircle className="extension-metric__icon" />
               <div className="extension-metric__value">{lastReport.failedItems.length}</div>
