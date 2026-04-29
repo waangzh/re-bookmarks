@@ -8,13 +8,19 @@ function bookmarkPath(path: string[], title?: string) {
   return title ? [...path, title] : path;
 }
 
+const ROOT_FOLDER_IDS = new Set(["0", "1", "2", "3"]);
+
+export function isRootFolder(id: string): boolean {
+  return ROOT_FOLDER_IDS.has(id);
+}
+
 export function flattenBookmarkTree(
   nodes: chrome.bookmarks.BookmarkTreeNode[],
   path: string[] = []
 ): BookmarkNode[] {
   return nodes.flatMap((node) => {
-    const isRoot = !node.parentId && !node.url;
-    const currentPath = isRoot ? path : bookmarkPath(path, node.title);
+    const isRoot = isRootFolder(node.id);
+    const currentPath = isRoot || node.url ? path : bookmarkPath(path, node.title);
 
     if (node.url) {
       return [
@@ -116,7 +122,7 @@ function defaultParentId(tree: chrome.bookmarks.BookmarkTreeNode[]) {
 export async function ensureFolderPath(path: string[], maxDepth = 2): Promise<string> {
   if (!hasChromeBookmarks()) return "";
 
-  let safePath = normalizeFolderPath(path.length ? path : ["待整理"], maxDepth);
+  let safePath = normalizeFolderPath(path, maxDepth);
   let tree = await getBookmarkTree();
   const rootChildren = tree[0]?.children ?? [];
   const rootFolder = rootChildren.find((child) => !child.url && child.title === safePath[0]);
@@ -228,10 +234,4 @@ export async function getFolderChildren(id: string): Promise<chrome.bookmarks.Bo
 export async function isFolderEmpty(id: string): Promise<boolean> {
   const children = await getFolderChildren(id);
   return children.length === 0;
-}
-
-const ROOT_FOLDER_IDS = new Set(["0", "1", "2", "3"]);
-
-export function isRootFolder(id: string): boolean {
-  return ROOT_FOLDER_IDS.has(id);
 }

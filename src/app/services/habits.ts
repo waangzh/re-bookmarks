@@ -9,8 +9,18 @@ import {
   saveFolderHabitProfile,
 } from "./storage";
 
+const ROOT_FOLDER_NAMES = new Set(["收藏夹栏", "书签栏", "其他收藏夹", "移动设备书签", "Bookmarks Bar", "Other Bookmarks", "Mobile Bookmarks"]);
+
 function folderKey(path: string[]) {
   return path.join(" / ");
+}
+
+function stripRootFolderNames(path: string[]) {
+  let next = path.map((item) => item.trim()).filter(Boolean);
+  while (next.length > 0 && ROOT_FOLDER_NAMES.has(next[0])) {
+    next = next.slice(1);
+  }
+  return next;
 }
 
 function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitProfile, "id" | "createdAt"> {
@@ -58,9 +68,11 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
 
   for (const bookmark of bookmarks) {
     if (!bookmark.url || bookmark.path.length === 0) continue;
-    const key = folderKey(bookmark.path);
+    const folderPath = stripRootFolderNames(bookmark.path);
+    if (folderPath.length === 0) continue;
+    const key = folderKey(folderPath);
     const existing = folders.get(key) ?? {
-      folderPath: bookmark.path,
+      folderPath,
       bookmarkCount: 0,
       examples: [],
     };
@@ -100,10 +112,12 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
 export async function saveEditedFolderHabitProfile(profile: FolderHabitProfile): Promise<FolderHabitProfile> {
   const next = {
     ...profile,
-    preferredTopLevelFolders: profile.preferredTopLevelFolders.map((item) => item.trim()).filter(Boolean),
+    preferredTopLevelFolders: profile.preferredTopLevelFolders
+      .map((item) => item.trim())
+      .filter((item) => item && !ROOT_FOLDER_NAMES.has(item)),
     folderRules: profile.folderRules
       .map((rule) => ({
-        folderPath: rule.folderPath.map((item) => item.trim()).filter(Boolean),
+        folderPath: stripRootFolderNames(rule.folderPath),
         pattern: rule.pattern.trim(),
       }))
       .filter((rule) => rule.folderPath.length > 0 && rule.pattern),

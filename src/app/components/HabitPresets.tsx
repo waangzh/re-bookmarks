@@ -35,7 +35,14 @@ export function HabitPresets() {
 
   useEffect(() => {
     getFolderHabitProfile()
-      .then((stored) => setProfile(stored ?? emptyProfile()))
+      .then(async (stored) => {
+        if (!stored) {
+          setProfile(emptyProfile());
+          return;
+        }
+        const cleaned = await saveEditedFolderHabitProfile(stored);
+        setProfile(cleaned);
+      })
       .finally(() => setStatus("idle"));
   }, []);
 

@@ -50,7 +50,7 @@ function buildBookmarkFolderTree(bookmarks: BookmarkNode[]) {
   const folderMap = new Map<string, BookmarkFolderNode>([[root.key, root]]);
 
   bookmarks.forEach((bookmark) => {
-    const folderPath = bookmark.path.length ? bookmark.path : ["书签栏"];
+    const folderPath = bookmark.path;
     let current = root;
     current.count += 1;
 
@@ -88,9 +88,9 @@ export function ManageBookmarks() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title: "", url: "", path: "" });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ title: "", url: "", path: "书签栏" });
+  const [addForm, setAddForm] = useState({ title: "", url: "", path: "" });
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(["__root__", "书签栏"])
+    () => new Set(["__root__"])
   );
   const [selectedFolder, setSelectedFolder] = useState<string>("__root__");
   const [message, setMessage] = useState("");
@@ -108,16 +108,6 @@ export function ManageBookmarks() {
           bookmark.url?.toLowerCase().includes(searchQuery.toLowerCase())
       ),
     [bookmarks, searchQuery]
-  );
-
-  const folderCounts = useMemo(
-    () =>
-      bookmarks.reduce((acc, bookmark) => {
-        const folder = bookmark.path[0] || "未分类";
-        acc[folder] = (acc[folder] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-    [bookmarks]
   );
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks), [filteredBookmarks]);
@@ -169,7 +159,7 @@ export function ManageBookmarks() {
     setEditForm({
       title: bookmark.title,
       url: bookmark.url || "",
-      path: bookmark.path.join(" / ") || "书签栏",
+      path: bookmark.path.join(" / "),
     });
   };
 
@@ -284,7 +274,7 @@ export function ManageBookmarks() {
     try {
       await createBookmark(addForm.title, addForm.url, parseFolderPath(addForm.path, settings.maxNestingLevel));
       await loadBookmarks();
-      setAddForm({ title: "", url: "", path: "书签栏" });
+      setAddForm({ title: "", url: "", path: "" });
       setShowAddForm(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "添加失败");
@@ -332,7 +322,7 @@ export function ManageBookmarks() {
         <section className="bookmark-tree-panel">
           <div className="bookmark-tree-panel__head">
             <h3>文件夹</h3>
-            <span>{folderCounts["书签栏"] ?? bookmarks.length}</span>
+            <span>{bookmarks.length}</span>
           </div>
           <div className="bookmark-tree">{renderFolderNode(folderTree)}</div>
         </section>
@@ -356,7 +346,7 @@ export function ManageBookmarks() {
               </div>
               <div className="extension-field">
                 <label>文件夹路径</label>
-                <input type="text" value={addForm.path} onChange={(event) => setAddForm({ ...addForm, path: event.target.value })} placeholder="书签栏 / 开发" className="extension-control" />
+                <input type="text" value={addForm.path} onChange={(event) => setAddForm({ ...addForm, path: event.target.value })} placeholder="开发 / 文档" className="extension-control" />
               </div>
               <button onClick={handleAdd} disabled={busy} className="extension-page__wide-primary">
                 添加

@@ -1,16 +1,16 @@
 import { BookmarkNode, MovePlan, PendingRecommendation } from "./types";
 
 export const mockBookmarks: BookmarkNode[] = [
-  { id: "1", title: "React 官方文档", url: "https://react.dev", type: "url", path: ["书签栏"] },
-  { id: "2", title: "TypeScript Handbook", url: "https://www.typescriptlang.org/docs/", type: "url", path: ["书签栏"] },
-  { id: "3", title: "GitHub - anthropics/claude-code", url: "https://github.com/anthropics/claude-code", type: "url", path: ["书签栏"] },
-  { id: "4", title: "淘宝网", url: "https://www.taobao.com", type: "url", path: ["书签栏"] },
-  { id: "5", title: "京东商城", url: "https://www.jd.com", type: "url", path: ["书签栏"] },
-  { id: "6", title: "Hacker News", url: "https://news.ycombinator.com", type: "url", path: ["书签栏"] },
-  { id: "7", title: "Medium - Design", url: "https://medium.com/tag/design", type: "url", path: ["书签栏"] },
-  { id: "8", title: "Netflix", url: "https://www.netflix.com", type: "url", path: ["书签栏"] },
-  { id: "9", title: "YouTube", url: "https://www.youtube.com", type: "url", path: ["书签栏"] },
-  { id: "10", title: "Stack Overflow", url: "https://stackoverflow.com", type: "url", path: ["书签栏"] },
+  { id: "1", title: "React 官方文档", url: "https://react.dev", type: "url", path: [] },
+  { id: "2", title: "TypeScript Handbook", url: "https://www.typescriptlang.org/docs/", type: "url", path: [] },
+  { id: "3", title: "GitHub - anthropics/claude-code", url: "https://github.com/anthropics/claude-code", type: "url", path: [] },
+  { id: "4", title: "淘宝网", url: "https://www.taobao.com", type: "url", path: [] },
+  { id: "5", title: "京东商城", url: "https://www.jd.com", type: "url", path: [] },
+  { id: "6", title: "Hacker News", url: "https://news.ycombinator.com", type: "url", path: [] },
+  { id: "7", title: "Medium - Design", url: "https://medium.com/tag/design", type: "url", path: [] },
+  { id: "8", title: "Netflix", url: "https://www.netflix.com", type: "url", path: [] },
+  { id: "9", title: "YouTube", url: "https://www.youtube.com", type: "url", path: [] },
+  { id: "10", title: "Stack Overflow", url: "https://stackoverflow.com", type: "url", path: [] },
 ];
 
 export const mockMovePlans: MovePlan[] = [

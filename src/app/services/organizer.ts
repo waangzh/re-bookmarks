@@ -32,9 +32,14 @@ import {
 function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId: string): string[] | null {
   function search(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]): string[] | null {
     for (const node of nodes) {
-      if (node.id === targetId) return path;
+      // 构建到当前节点的路径（如果不是根节点且是文件夹）
+      const currentPath = node.title && !node.url && !isRootFolder(node.id) ? [...path, node.title] : path;
+
+      if (node.id === targetId) {
+        return currentPath;
+      }
       if (node.children) {
-        const result = search(node.children, node.title && !node.url ? [...path, node.title] : path);
+        const result = search(node.children, currentPath);
         if (result) return result;
       }
     }
@@ -442,9 +447,13 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
         const folderPath = findFolderPathById(backup.tree, targetParentId);
         if (folderPath && folderPath.length > 0) {
           targetParentId = await ensureFolderPath(folderPath);
+        } else {
+          // 无法恢复原文件夹，放入书签栏根目录
+          targetParentId = "1";
         }
       }
-      await moveBookmark(plan.bookmarkId, targetParentId, plan.fromIndex);
+      // 不指定 index，让书签添加到文件夹末尾，避免 Index out of bounds
+      await moveBookmark(plan.bookmarkId, targetParentId);
       movedCount += 1;
     } catch (error) {
       failedItems.push({

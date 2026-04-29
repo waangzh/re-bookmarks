@@ -65,7 +65,7 @@ export async function getFrequentBookmarks(): Promise<FrequentBookmark[]> {
         url: bookmark.url,
         visitCount,
         lastVisit: item.lastVisitTime ?? 0,
-        currentFolder: bookmark.path.join(" / ") || "书签栏",
+        currentFolder: bookmark.path.join(" / ") || "根目录",
       });
     }
   }
