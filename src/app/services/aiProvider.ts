@@ -1,4 +1,17 @@
-import type { AIProviderConfig, BookmarkForAI, ClassificationResult } from "../types";
+import type {
+  AIProviderConfig,
+  BookmarkForAI,
+  ClassificationResult,
+  FolderHabitProfile,
+  FolderHabitSample,
+} from "../types";
+
+type ClassificationOptions = {
+  maxTopLevelFolders: number;
+  maxSubfoldersPerFolder: number;
+  allowNestedFolders: boolean;
+  habitProfile?: FolderHabitProfile | null;
+};
 
 function endpointFor(config: AIProviderConfig) {
   const endpoint = config.endpoint?.replace(/\/$/, "");
@@ -57,6 +70,40 @@ function normalizeConfidence(value: unknown) {
     return number > 1 && number <= 100 ? number / 100 : number;
   }
   return 0;
+}
+
+function asObjectArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
+}
+
+function parseHabitProfile(content: string, fallback: Omit<FolderHabitProfile, "id" | "createdAt">): Omit<FolderHabitProfile, "id" | "createdAt"> {
+  const parsed = JSON.parse(extractJson(content)) as Record<string, unknown>;
+  const preferredTopLevelFolders = asStringArray(parsed.preferredTopLevelFolders).slice(0, 16);
+  const folderRules = asObjectArray(parsed.folderRules)
+    .map((item) => {
+      const value = item as Record<string, unknown>;
+      return {
+        folderPath: asStringArray(value.folderPath).slice(0, 3),
+        pattern: typeof value.pattern === "string" ? value.pattern.trim() : "",
+      };
+    })
+    .filter((rule) => rule.folderPath.length > 0 && rule.pattern)
+    .slice(0, 30);
+  const avoidRules = asStringArray(parsed.avoidRules).slice(0, 10);
+
+  return {
+    folderCount: fallback.folderCount,
+    bookmarkCount: fallback.bookmarkCount,
+    summary: typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim() : fallback.summary,
+    preferredTopLevelFolders: preferredTopLevelFolders.length
+      ? preferredTopLevelFolders
+      : fallback.preferredTopLevelFolders,
+    folderRules: folderRules.length ? folderRules : fallback.folderRules,
+    avoidRules: avoidRules.length ? avoidRules : fallback.avoidRules,
+    promptHint: typeof parsed.promptHint === "string" && parsed.promptHint.trim()
+      ? parsed.promptHint.trim()
+      : fallback.promptHint,
+  };
 }
 
 export function parseResults(content: string): ClassificationResult[] {
@@ -171,8 +218,19 @@ export async function testAIConnection(config: AIProviderConfig) {
   return content.trim().length > 0;
 }
 
-export async function classifyWithAI(config: AIProviderConfig, bookmarks: BookmarkForAI[]) {
+export async function classifyWithAI(
+  config: AIProviderConfig,
+  bookmarks: BookmarkForAI[],
+  options?: ClassificationOptions
+) {
   if (!bookmarks.length || !config.apiKey) return [];
+
+  const maxTopLevelFolders = options?.maxTopLevelFolders ?? 8;
+  const maxSubfoldersPerFolder = options?.allowNestedFolders === false ? 0 : options?.maxSubfoldersPerFolder ?? 4;
+  const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数最多 ${maxTopLevelFolders} 个；每个一级分类下最多 ${maxSubfoldersPerFolder} 个二级分类。不要为单个网站、单篇文章或小众主题创建独立文件夹。无法确定时归入较宽泛的父级分类或“待整理”。`;
+  const habitInstruction = options?.habitProfile
+    ? `用户已有分类习惯：${options.habitProfile.promptHint} 优先复用这些一级分类：${options.habitProfile.preferredTopLevelFolders.join("、")}。除非明显不合适，否则新分类应贴近这些既有命名和粒度。`
+    : "";
 
   const content = await chatCompletion(
     config,
@@ -180,7 +238,7 @@ export async function classifyWithAI(config: AIProviderConfig, bookmarks: Bookma
       {
         role: "system",
         content:
-          "你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。",
+          `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。${compactInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。`,
       },
       {
         role: "user",
@@ -202,4 +260,31 @@ export async function classifyWithAI(config: AIProviderConfig, bookmarks: Bookma
     throw new Error(`AI 返回内容无法解析为有效分类：${content.slice(0, 180)}`);
   }
   return results;
+}
+
+export async function analyzeFolderHabitsWithAI(
+  config: AIProviderConfig,
+  samples: FolderHabitSample[],
+  fallback: Omit<FolderHabitProfile, "id" | "createdAt">
+) {
+  if (!config.apiKey) return fallback;
+
+  const content = await chatCompletion(
+    config,
+    [
+      {
+        role: "system",
+        content:
+          "你是书签分类习惯分析助手。必须输出合法 JSON 对象，不要 Markdown，不要解释。请根据用户现有文件夹路径和样例，总结用户的分类命名、粒度和偏好。输出格式为 {\"summary\":\"一句话总结\",\"preferredTopLevelFolders\":[\"一级分类\"],\"folderRules\":[{\"folderPath\":[\"一级\",\"二级\"],\"pattern\":\"适合放入这里的内容特征\"}],\"avoidRules\":[\"应避免的过度分类行为\"],\"promptHint\":\"给后续书签分类模型使用的一段简短指令\"}。",
+      },
+      {
+        role: "user",
+        content: `请分析这些现有书签文件夹样本，只返回 JSON：\n${JSON.stringify(samples)}`,
+      },
+    ],
+    2600,
+    true
+  );
+
+  return parseHabitProfile(content, fallback);
 }

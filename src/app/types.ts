@@ -17,6 +17,15 @@ export type BookmarkForAI = {
   sanitizedUrl: string;
 };
 
+export type FolderHabitSample = {
+  folderPath: string[];
+  bookmarkCount: number;
+  examples: Array<{
+    title: string;
+    domain: string;
+  }>;
+};
+
 export type ClassificationResult = {
   id: string;
   category: string;
@@ -71,6 +80,8 @@ export type Settings = {
   provider: AIProviderConfig;
   allowNestedFolders: boolean;
   maxNestingLevel: number;
+  maxTopLevelFolders: number;
+  maxSubfoldersPerFolder: number;
   enableHistory: boolean;
   sendFullUrl: boolean;
 };
@@ -100,6 +111,21 @@ export type PreviewPlanCache = {
   movePlan: MovePlan[];
 };
 
+export type FolderHabitProfile = {
+  id: string;
+  createdAt: number;
+  folderCount: number;
+  bookmarkCount: number;
+  summary: string;
+  preferredTopLevelFolders: string[];
+  folderRules: Array<{
+    folderPath: string[];
+    pattern: string;
+  }>;
+  avoidRules: string[];
+  promptHint: string;
+};
+
 export type FrequentBookmark = {
   id: string;
   title: string;
@@ -107,4 +133,6 @@ export type FrequentBookmark = {
   visitCount: number;
   lastVisit: number;
   currentFolder?: string;
+  suggestedFolder?: string;
+  confidence?: number;
 };

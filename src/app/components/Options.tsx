@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, AlertCircle } from "lucide-react";
-import type { AIProviderType, Settings } from "../types";
+import { ArrowLeft, Check, AlertCircle, Sparkles } from "lucide-react";
+import type { AIProviderType, FolderHabitProfile, Settings } from "../types";
 import { testAIConnection } from "../services/aiProvider";
+import { analyzeAndSaveFolderHabits, getFolderHabitProfile } from "../services/habits";
 import { requestHistoryPermission } from "../services/history";
-import { DEFAULT_SETTINGS } from "../services/storage";
+import { clearPreviewPlan, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
 const providerDefaults: Record<AIProviderType, Pick<Settings["provider"], "model" | "endpoint">> = {
@@ -16,6 +17,8 @@ const providerDefaults: Record<AIProviderType, Pick<Settings["provider"], "model
 export function Options() {
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
+  const [habitProfile, setHabitProfile] = useState<FolderHabitProfile | null>(null);
+  const [habitStatus, setHabitStatus] = useState<"idle" | "analyzing" | "success" | "error">("idle");
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -26,6 +29,10 @@ export function Options() {
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    void getFolderHabitProfile().then(setHabitProfile);
+  }, []);
 
   const updateProvider = (type: AIProviderType) => {
     const defaults = providerDefaults[type];
@@ -68,7 +75,23 @@ export function Options() {
 
   const handleSave = async () => {
     await saveSettings(draft);
+    await clearPreviewPlan();
     setMessage("设置已保存");
+  };
+
+  const handleAnalyzeHabits = async () => {
+    setHabitStatus("analyzing");
+    setMessage("");
+    try {
+      await saveSettings(draft);
+      const profile = await analyzeAndSaveFolderHabits();
+      setHabitProfile(profile);
+      setHabitStatus("success");
+      setMessage("已分析并保存当前分类习惯，后续整理会优先参考");
+    } catch (error) {
+      setHabitStatus("error");
+      setMessage(error instanceof Error ? error.message : "分析分类习惯失败");
+    }
   };
 
   return (
@@ -156,6 +179,38 @@ export function Options() {
 
         <section className="extension-section">
           <div>
+            <h2 className="extension-section__title">分类习惯学习</h2>
+            <div className="extension-settings-list">
+              <div className="extension-privacy">
+                <p>
+                  从当前书签文件夹中提取分类命名和粒度偏好，AI 会生成本地画像。之后整理会优先复用已有分类习惯，减少新建陌生文件夹。
+                </p>
+              </div>
+
+              {habitProfile && (
+                <div className="extension-privacy">
+                  <p>
+                    已学习 {habitProfile.folderCount} 个文件夹、{habitProfile.bookmarkCount} 个书签<br />
+                    {habitProfile.summary}<br />
+                    主要分类：{habitProfile.preferredTopLevelFolders.slice(0, 8).join("、") || "暂无"}
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleAnalyzeHabits}
+                disabled={habitStatus === "analyzing"}
+                className="extension-page__wide-secondary extension-page__wide-secondary--blue"
+              >
+                <Sparkles className="w-4 h-4" />
+                {habitStatus === "analyzing" ? "正在分析分类习惯..." : habitProfile ? "重新分析分类习惯" : "分析当前分类习惯"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="extension-section">
+          <div>
             <h2 className="extension-section__title">整理选项</h2>
             <div className="extension-settings-list">
               <div className="extension-switch-row">
@@ -176,6 +231,39 @@ export function Options() {
                     <option value="1">1 级</option>
                     <option value="2">2 级</option>
                     <option value="3">3 级</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="extension-field">
+                <label>一级文件夹数量上限</label>
+                <select
+                  value={draft.maxTopLevelFolders}
+                  onChange={(event) => setDraft({ ...draft, maxTopLevelFolders: Number(event.target.value) })}
+                  className="extension-control"
+                >
+                  <option value="4">4 个</option>
+                  <option value="6">6 个</option>
+                  <option value="8">8 个</option>
+                  <option value="10">10 个</option>
+                  <option value="12">12 个</option>
+                </select>
+                <p>数量越少，分类越克制；长尾内容会合并到“其他”或更粗粒度文件夹。</p>
+              </div>
+
+              {draft.allowNestedFolders && draft.maxNestingLevel > 1 && (
+                <div className="extension-field">
+                  <label>每个一级文件夹的子文件夹上限</label>
+                  <select
+                    value={draft.maxSubfoldersPerFolder}
+                    onChange={(event) => setDraft({ ...draft, maxSubfoldersPerFolder: Number(event.target.value) })}
+                    className="extension-control"
+                  >
+                    <option value="0">不创建子文件夹</option>
+                    <option value="2">2 个</option>
+                    <option value="3">3 个</option>
+                    <option value="4">4 个</option>
+                    <option value="6">6 个</option>
                   </select>
                 </div>
               )}

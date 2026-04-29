@@ -21,6 +21,7 @@ import { classifyWithAI } from "./aiProvider";
 import { normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
 import {
   getLastBackup,
+  getFolderHabitProfile,
   getPendingRecommendations,
   getSettings,
   saveLastBackup,
@@ -28,7 +29,7 @@ import {
   savePendingRecommendations,
 } from "./storage";
 
-function fallbackResult(id: string, reason = "未能可靠分类，已放入待整理") {
+function fallbackResult(id: string, reason = "未能可靠分类，已放入待整理"): ClassificationResult {
   return {
     id,
     category: "待整理",
@@ -72,10 +73,98 @@ function chunkBookmarks<T>(items: T[], size: number) {
   return chunks;
 }
 
+function countBy<T>(items: T[], getKey: (item: T) => string | undefined) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = getKey(item);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function topKeys(counts: Map<string, number>, limit: number) {
+  return new Set(
+    [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"))
+      .slice(0, Math.max(1, limit))
+      .map(([key]) => key)
+  );
+}
+
+function compactClassificationResults(
+  results: Map<string, ClassificationResult>,
+  settings: Settings,
+  preferredTopLevelFolders: string[] = []
+) {
+  const validResults = [...results.values()].filter((result) => {
+    const first = result.categoryPath?.[0];
+    return first && first !== "待整理";
+  });
+  const topLevelCounts = countBy(validResults, (result) => result.categoryPath?.[0]);
+  const hasTopLevelOverflow = topLevelCounts.size > settings.maxTopLevelFolders;
+  const preferred = preferredTopLevelFolders.filter((folder) => topLevelCounts.has(folder));
+  const allowedTopLevels = topKeys(
+    topLevelCounts,
+    hasTopLevelOverflow && settings.maxTopLevelFolders > 1
+      ? settings.maxTopLevelFolders - 1
+      : settings.maxTopLevelFolders
+  );
+  for (const folder of preferred.slice(0, Math.max(1, settings.maxTopLevelFolders - 1))) {
+    allowedTopLevels.add(folder);
+  }
+  while (allowedTopLevels.size > Math.max(1, settings.maxTopLevelFolders - 1) && hasTopLevelOverflow) {
+    const removable = [...allowedTopLevels].reverse().find((folder) => !preferred.includes(folder));
+    if (!removable) break;
+    allowedTopLevels.delete(removable);
+  }
+  const overflowTopLevel = settings.maxTopLevelFolders > 1 ? "其他" : [...allowedTopLevels][0] ?? "其他";
+
+  for (const result of validResults) {
+    const first = result.categoryPath?.[0];
+    if (!first || allowedTopLevels.has(first)) continue;
+    result.categoryPath = [overflowTopLevel];
+    result.category = overflowTopLevel;
+    result.reason = [result.reason, "长尾分类已合并，避免创建过多一级文件夹"].filter(Boolean).join("；");
+  }
+
+  if (!settings.allowNestedFolders || settings.maxNestingLevel < 2 || settings.maxSubfoldersPerFolder <= 0) {
+    for (const result of results.values()) {
+      if (!result.categoryPath?.length) continue;
+      result.categoryPath = [result.categoryPath[0]];
+      result.category = result.categoryPath[0];
+    }
+    return;
+  }
+
+  const grouped = new Map<string, ClassificationResult[]>();
+  for (const result of results.values()) {
+    const first = result.categoryPath?.[0];
+    const second = result.categoryPath?.[1];
+    if (!first || !second) continue;
+    if (!grouped.has(first)) grouped.set(first, []);
+    grouped.get(first)?.push(result);
+  }
+
+  for (const [first, group] of grouped) {
+    const subCounts = countBy(group, (result) => result.categoryPath?.[1]);
+    const allowedSubfolders = topKeys(subCounts, settings.maxSubfoldersPerFolder);
+
+    for (const result of group) {
+      const second = result.categoryPath?.[1];
+      if (!second || allowedSubfolders.has(second)) continue;
+      result.categoryPath = [first];
+      result.category = first;
+      result.reason = [result.reason, "细分子类已合并到父文件夹，减少整理负担"].filter(Boolean).join("；");
+    }
+  }
+}
+
 export async function generateMovePlans(): Promise<MovePlan[]> {
-  const [settings, bookmarks] = await Promise.all([
+  const [settings, bookmarks, habitProfile] = await Promise.all([
     getSettings(),
     getAllBookmarks(),
+    getFolderHabitProfile(),
   ]);
   const urlBookmarks = bookmarks.filter((bookmark) => bookmark.url);
   const results = new Map<string, ClassificationResult>();
@@ -86,7 +175,12 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
       try {
         const requestedIds = new Set(batch.map((bookmark) => bookmark.id));
         const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, settings.sendFullUrl));
-        const aiResults = await classifyWithAI(settings.provider, aiBookmarks);
+        const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
+          allowNestedFolders: settings.allowNestedFolders,
+          maxTopLevelFolders: settings.maxTopLevelFolders,
+          maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
+          habitProfile,
+        });
         const returnedIds = new Set<string>();
 
         for (const result of aiResults) {
@@ -113,6 +207,8 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
       failureReasons.set(bookmark.id, "未配置 API Key，无法调用 AI");
     }
   }
+
+  compactClassificationResults(results, settings, habitProfile?.preferredTopLevelFolders);
 
   const seenUrls = new Map<string, string>();
 
@@ -332,7 +428,12 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     try {
       const [aiResult] = await classifyWithAI(settings.provider, [
         toBookmarkForAI(bookmarkNode, settings.sendFullUrl),
-      ]);
+      ], {
+        allowNestedFolders: settings.allowNestedFolders,
+        maxTopLevelFolders: settings.maxTopLevelFolders,
+        maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
+        habitProfile: await getFolderHabitProfile(),
+      });
       if (aiResult) classification = aiResult;
     } catch {
       // AI 分类失败时保留待整理建议

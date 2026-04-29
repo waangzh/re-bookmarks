@@ -1,5 +1,6 @@
 import type {
   BookmarkBackup,
+  FolderHabitProfile,
   OrganizeReport,
   PendingRecommendation,
   PreviewPlanCache,
@@ -12,6 +13,7 @@ export const STORAGE_KEYS = {
   lastBackup: "remarks.lastBackup",
   lastReport: "remarks.lastReport",
   previewPlan: "remarks.previewPlan",
+  folderHabitProfile: "remarks.folderHabitProfile",
 } as const;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   allowNestedFolders: true,
   maxNestingLevel: 2,
+  maxTopLevelFolders: 8,
+  maxSubfoldersPerFolder: 4,
   enableHistory: false,
   sendFullUrl: false,
 };
@@ -117,6 +121,28 @@ export async function clearPreviewPlan(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     chrome.storage.local.remove(STORAGE_KEYS.previewPlan, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export function getFolderHabitProfile(): Promise<FolderHabitProfile | null> {
+  return getStorageValue<FolderHabitProfile | null>(STORAGE_KEYS.folderHabitProfile, null);
+}
+
+export function saveFolderHabitProfile(profile: FolderHabitProfile): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.folderHabitProfile, profile);
+}
+
+export async function clearFolderHabitProfile(): Promise<void> {
+  if (!hasChromeStorage()) return;
+
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.remove(STORAGE_KEYS.folderHabitProfile, () => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
