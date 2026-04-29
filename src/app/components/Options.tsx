@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, AlertCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, AlertCircle, Sparkles, RotateCcw } from "lucide-react";
 import type { AIProviderType, FolderHabitProfile, Settings } from "../types";
 import { testAIConnection } from "../services/aiProvider";
 import { analyzeAndSaveFolderHabits, getFolderHabitProfile } from "../services/habits";
 import { requestHistoryPermission } from "../services/history";
-import { clearPreviewPlan, DEFAULT_SETTINGS } from "../services/storage";
+import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
 const providerDefaults: Record<AIProviderType, Pick<Settings["provider"], "model" | "endpoint">> = {
@@ -302,6 +302,43 @@ export function Options() {
                 </label>
               </div>
             </div>
+            </div>
+          </details>
+        </section>
+
+        <section className="extension-section settings-section">
+          <details className="settings-disclosure">
+            <summary className="settings-disclosure__summary">
+              <span>
+                <h2 className="extension-section__title">AI 分类提示词</h2>
+                <span className="settings-disclosure__hint">自定义 AI 分类行为偏好</span>
+              </span>
+              <span className="settings-disclosure__chevron" aria-hidden="true">›</span>
+            </summary>
+            <div className="settings-disclosure__body">
+              <div className="extension-form">
+                <div className="extension-field">
+                  <div className="extension-field__label-row">
+                    <label>自定义提示词</label>
+                    <button
+                      type="button"
+                      className="extension-text-button"
+                      onClick={() => setDraft({ ...draft, customPrompt: DEFAULT_CLASSIFY_PROMPT })}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      恢复默认
+                    </button>
+                  </div>
+                  <textarea
+                    value={draft.customPrompt ?? DEFAULT_CLASSIFY_PROMPT}
+                    onChange={(event) => setDraft({ ...draft, customPrompt: event.target.value })}
+                    placeholder={DEFAULT_CLASSIFY_PROMPT}
+                    rows={8}
+                    className="extension-control extension-textarea"
+                  />
+                  <p>修改后会影响下次整理的 AI 分类行为。建议保留分类格式要求部分。</p>
+                </div>
+              </div>
             </div>
           </details>
         </section>

@@ -194,6 +194,7 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
           maxTopLevelFolders: settings.maxTopLevelFolders,
           maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
           habitProfile,
+          customPrompt: settings.customPrompt,
         });
         const returnedIds = new Set<string>();
 
@@ -456,6 +457,7 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
         maxTopLevelFolders: settings.maxTopLevelFolders,
         maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
         habitProfile: await getFolderHabitProfile(),
+        customPrompt: settings.customPrompt,
       });
       if (aiResult) classification = aiResult;
     } catch {

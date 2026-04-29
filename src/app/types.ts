@@ -84,6 +84,7 @@ export type Settings = {
   maxSubfoldersPerFolder: number;
   enableHistory: boolean;
   sendFullUrl: boolean;
+  customPrompt?: string;
 };
 
 export type FailedMove = {

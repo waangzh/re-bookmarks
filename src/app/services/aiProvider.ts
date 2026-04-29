@@ -11,6 +11,7 @@ type ClassificationOptions = {
   maxSubfoldersPerFolder: number;
   allowNestedFolders: boolean;
   habitProfile?: FolderHabitProfile | null;
+  customPrompt?: string;
 };
 
 function endpointFor(config: AIProviderConfig) {
@@ -237,8 +238,7 @@ export async function classifyWithAI(
     [
       {
         role: "system",
-        content:
-          `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。${compactInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。`,
+        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字。`,
       },
       {
         role: "user",

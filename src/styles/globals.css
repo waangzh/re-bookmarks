@@ -1530,6 +1530,41 @@ input {
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
 }
 
+.extension-textarea {
+  padding: 10px 12px;
+  min-height: 120px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.extension-field__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.extension-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.extension-text-button:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
 .extension-switch-row {
   display: flex;
   align-items: center;

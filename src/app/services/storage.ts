@@ -16,6 +16,19 @@ export const STORAGE_KEYS = {
   folderHabitProfile: "remarks.folderHabitProfile",
 } as const;
 
+export const DEFAULT_CLASSIFY_PROMPT = `你是浏览器书签分类助手。请根据书签标题和域名进行智能分类，输出合法的 JSON 格式。
+
+分类要求：
+1. 优先使用通用、简洁的文件夹名称
+2. 避免为单个网站或小众主题创建独立文件夹
+3. 无法确定分类时归入"待整理"
+4. confidence 值范围 0-1，表示分类置信度
+
+输出格式：
+{"results":[{"id":"输入id","categoryPath":["一级分类","二级分类"],"confidence":0.8,"reason":"简短中文原因"}]}
+
+每个输入 id 必须对应一项结果。`;
+
 export const DEFAULT_SETTINGS: Settings = {
   provider: {
     type: "deepseek",
@@ -30,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxSubfoldersPerFolder: 4,
   enableHistory: false,
   sendFullUrl: false,
+  customPrompt: DEFAULT_CLASSIFY_PROMPT,
 };
 
 function hasChromeStorage() {
