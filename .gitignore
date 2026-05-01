@@ -11,4 +11,5 @@ docs/
 Thumbs.db
 
 
-*.md
+AGENTS.md
+CLAUDE.md
