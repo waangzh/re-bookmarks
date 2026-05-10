@@ -3,7 +3,7 @@
   "name": "ReMarks",
   "version": "0.1.0",
   "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
-  "permissions": ["bookmarks", "storage", "activeTab"],
+  "permissions": ["bookmarks", "storage", "activeTab", "favicon"],
   "host_permissions": ["<all_urls>"],
   "optional_permissions": ["history"],
   "action": {

@@ -74,6 +74,44 @@ export async function getAllBookmarks(): Promise<BookmarkNode[]> {
   return getUrlBookmarks(tree);
 }
 
+function flattenBookmarkFolderNodes(
+  nodes: chrome.bookmarks.BookmarkTreeNode[],
+  path: string[] = []
+): BookmarkNode[] {
+  return nodes.flatMap((node) => {
+    if (node.url) return [];
+
+    const isBrowserRoot = node.id === "0";
+    const currentPath = isBrowserRoot ? path : bookmarkPath(path, node.title);
+    const folder: BookmarkNode | null = isBrowserRoot
+      ? null
+      : {
+          id: node.id,
+          parentId: node.parentId,
+          title: node.title,
+          index: node.index,
+          path: currentPath,
+          type: "folder" as const,
+        };
+    const children = flattenBookmarkFolderNodes(node.children ?? [], currentPath);
+    return folder ? [folder, ...children] : children;
+  });
+}
+
+export async function getAllBookmarkFolders(): Promise<BookmarkNode[]> {
+  const tree = await getBookmarkTree();
+  return flattenBookmarkFolderNodes(tree);
+}
+
+export function getBookmarkFaviconUrl(url: string, size = 32): string {
+  if (typeof chrome === "undefined" || !chrome.runtime?.getURL) return "";
+
+  const faviconUrl = new URL(chrome.runtime.getURL("/_favicon/"));
+  faviconUrl.searchParams.set("pageUrl", url);
+  faviconUrl.searchParams.set("size", String(size));
+  return faviconUrl.toString();
+}
+
 export async function getBookmark(id: string): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
   if (!hasChromeBookmarks()) return null;
 

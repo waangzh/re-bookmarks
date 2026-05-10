@@ -2023,6 +2023,10 @@ input {
   transition: background-color 150ms ease, color 150ms ease;
 }
 
+.bookmark-tree-row.is-dragging {
+  opacity: 0.45;
+}
+
 .bookmark-tree-row--folder {
   cursor: pointer;
 }
@@ -2033,8 +2037,29 @@ input {
   color: #4f46e5;
 }
 
+.bookmark-tree-row--folder.is-drop-target {
+  outline: 1px dashed #c7d2fe;
+  outline-offset: -2px;
+}
+
+.bookmark-tree-row--folder.is-drag-over {
+  background: #e0e7ff;
+  color: #4338ca;
+  outline-color: #6366f1;
+}
+
 .bookmark-tree-row--bookmark:hover {
   background: #f8fafc;
+}
+
+.bookmark-tree-row--bookmark {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bookmark-tree-row--bookmark.is-dragging {
+  cursor: grabbing;
 }
 
 .bookmark-tree-row__chevron {
@@ -2060,6 +2085,14 @@ input {
 
 .bookmark-tree-row__bookmark-icon {
   color: #94a3b8;
+}
+
+.bookmark-tree-row__favicon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  object-fit: contain;
 }
 
 .bookmark-tree-row__title {
@@ -2090,6 +2123,32 @@ input {
   gap: 9px;
   width: 100%;
   padding: 8px 0 9px;
+}
+
+.bookmark-drag-preview {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  transform: translate(10px, 10px);
+}
+
+.bookmark-drag-preview span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .extension-row-actions {
