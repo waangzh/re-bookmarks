@@ -331,6 +331,8 @@ input {
 }
 
 .bookmark-popup__card--blue {
+  display: flex;
+  align-items: center;
   min-height: 90px;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
@@ -340,6 +342,13 @@ input {
   min-height: 133px;
   background: #fffbeb;
   border: 1px solid #fcd34d;
+}
+
+.bookmark-popup__current-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .bookmark-popup__card-title {
@@ -352,6 +361,9 @@ input {
 
 .bookmark-popup__card-title--blue {
   color: #1d4ed8;
+  font-size: 25px;
+  line-height: 1.15;
+  font-weight: 700;
 }
 
 .bookmark-popup__card-title--amber {
@@ -365,10 +377,33 @@ input {
 }
 
 .bookmark-popup__count {
-  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bookmark-popup__count-value {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #f97316;
   font-size: 25px;
   line-height: 1.15;
-  color: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgb(249 115 22 / 24%);
+}
+
+.bookmark-popup__count-value--text {
+  font-size: 18px;
+}
+
+.bookmark-popup__count-unit {
+  font-size: 25px;
+  line-height: 1.15;
+  color: #1d4ed8;
+  font-weight: 700;
 }
 
 .bookmark-popup__recommend-head {

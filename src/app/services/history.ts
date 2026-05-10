@@ -2,6 +2,8 @@ import type { FrequentBookmark } from "../types";
 import { getAllBookmarks } from "./bookmarks";
 import { sanitizeUrl } from "./rules";
 
+const FREQUENT_BOOKMARK_LIMIT = 20;
+
 function hasChromeHistory() {
   return typeof chrome !== "undefined" && Boolean(chrome.history);
 }
@@ -73,5 +75,5 @@ export async function getFrequentBookmarks(): Promise<FrequentBookmark[]> {
   return [...byBookmarkId.values()]
     .filter((bookmark) => bookmark.visitCount > 0)
     .sort((a, b) => b.visitCount - a.visitCount)
-    .slice(0, 50);
+    .slice(0, FREQUENT_BOOKMARK_LIMIT);
 }

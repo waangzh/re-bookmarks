@@ -36,11 +36,22 @@ export function Popup() {
       </div>
 
       <div className="bookmark-popup__card bookmark-popup__card--blue">
-        <div className="bookmark-popup__card-title bookmark-popup__card-title--blue">
-          <Bookmark className="bookmark-popup__card-icon" />
-          <span>当前书签</span>
+        <div className="bookmark-popup__current-head">
+          <div className="bookmark-popup__card-title bookmark-popup__card-title--blue">
+            <Bookmark className="bookmark-popup__card-icon" />
+            <span>当前书签</span>
+          </div>
+          <div className="bookmark-popup__count">
+            {loading ? (
+              <span className="bookmark-popup__count-value bookmark-popup__count-value--text">读取中</span>
+            ) : (
+              <>
+                <span className="bookmark-popup__count-value">{bookmarkCount}</span>
+                <span className="bookmark-popup__count-unit">个</span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="bookmark-popup__count">{loading ? "读取中" : `${bookmarkCount} 个`}</div>
       </div>
 
       {pendingCount > 0 && (
