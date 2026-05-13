@@ -1,18 +1,54 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2 } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
 import { useAppStore } from "../store/useAppStore";
 
+type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
+
+function getFaviconUrl(url?: string) {
+  if (!url) return "";
+
+  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+    return chrome.runtime.getURL(`_favicon/?pageUrl=${encodeURIComponent(url)}&size=32`);
+  }
+
+  try {
+    return `${new URL(url).origin}/favicon.ico`;
+  } catch {
+    return "";
+  }
+}
+
 export function Recommendations() {
   const { pendingRecommendations, loadRecommendations, loadBookmarks } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkAction, setBulkAction] = useState<"accept" | "reject" | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("created-desc");
   const [error, setError] = useState("");
 
   useEffect(() => {
     void loadRecommendations();
   }, [loadRecommendations]);
+
+  const sortedRecommendations = useMemo(() => {
+    return [...pendingRecommendations].sort((a, b) => {
+      switch (sortKey) {
+        case "created-asc":
+          return a.createdAt - b.createdAt;
+        case "confidence-desc":
+          return b.confidence - a.confidence;
+        case "confidence-asc":
+          return a.confidence - b.confidence;
+        case "title-asc":
+          return a.bookmarkTitle.localeCompare(b.bookmarkTitle, "zh-CN");
+        case "created-desc":
+        default:
+          return b.createdAt - a.createdAt;
+      }
+    });
+  }, [pendingRecommendations, sortKey]);
 
   const handleAccept = async (recommendation: PendingRecommendation) => {
     setBusyId(recommendation.id);
@@ -37,6 +73,46 @@ export function Recommendations() {
       setError(err instanceof Error ? err.message : "忽略推荐失败");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleAcceptAll = async () => {
+    setBulkAction("accept");
+    setError("");
+    const failed: string[] = [];
+
+    try {
+      for (const recommendation of sortedRecommendations) {
+        try {
+          await acceptRecommendation(recommendation);
+        } catch {
+          failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
+        }
+      }
+
+      await Promise.all([loadRecommendations(), loadBookmarks()]);
+      if (failed.length > 0) {
+        setError(`部分推荐接受失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`);
+      }
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
+  const handleRejectAll = async () => {
+    setBulkAction("reject");
+    setError("");
+
+    try {
+      for (const recommendation of sortedRecommendations) {
+        await removeRecommendation(recommendation.id);
+      }
+      await loadRecommendations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "蹇界暐鎺ㄨ崘澶辫触");
+      await loadRecommendations();
+    } finally {
+      setBulkAction(null);
     }
   };
 
@@ -87,10 +163,55 @@ export function Recommendations() {
               <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受推荐后将移动到建议文件夹。</p>
             </div>
 
+            <div className="recommendation-toolbar">
+              <div className="recommendation-toolbar__actions">
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptAll()}
+                  disabled={Boolean(bulkAction) || sortedRecommendations.length === 0}
+                  className="extension-page__wide-primary"
+                >
+                  <Check className="w-4 h-4" />
+                  一键接受所有
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRejectAll()}
+                  disabled={Boolean(bulkAction) || sortedRecommendations.length === 0}
+                  className="extension-page__wide-secondary"
+                >
+                  <X className="w-4 h-4" />
+                  一键忽略所有
+                </button>
+              </div>
+              <label className="recommendation-sort">
+                <span>排序</span>
+                <select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
+                  <option value="created-desc">收藏时间：最新优先</option>
+                  <option value="created-asc">收藏时间：最早优先</option>
+                  <option value="confidence-desc">置信度：高到低</option>
+                  <option value="confidence-asc">置信度：低到高</option>
+                  <option value="title-asc">标题：A-Z</option>
+                </select>
+              </label>
+            </div>
+
             <div className="extension-stack">
-              {pendingRecommendations.map((rec) => (
+              {sortedRecommendations.map((rec) => (
                 <section key={rec.id} className="extension-section">
                   <div className="extension-list__item extension-list__item--static">
+                    <span className="extension-favicon" aria-hidden="true">
+                      <Globe2 className="extension-favicon__fallback" />
+                      {rec.bookmarkUrl && (
+                        <img
+                          src={getFaviconUrl(rec.bookmarkUrl)}
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                          }}
+                        />
+                      )}
+                    </span>
                     <div className="extension-list__main">
                       <div className="extension-list__title-row">
                         <h3>{rec.bookmarkTitle}</h3>
@@ -114,11 +235,19 @@ export function Recommendations() {
                   {rec.reason && <p className="extension-list__note">{rec.reason}</p>}
 
                   <div className="extension-button-row">
-                    <button onClick={() => void handleAccept(rec)} disabled={busyId === rec.id} className="extension-page__wide-primary">
+                    <button
+                      onClick={() => void handleAccept(rec)}
+                      disabled={busyId === rec.id || Boolean(bulkAction)}
+                      className="extension-page__wide-primary"
+                    >
                       <Check className="w-4 h-4" />
                       接受
                     </button>
-                    <button onClick={() => void handleReject(rec.id)} disabled={busyId === rec.id} className="extension-page__wide-secondary">
+                    <button
+                      onClick={() => void handleReject(rec.id)}
+                      disabled={busyId === rec.id || Boolean(bulkAction)}
+                      className="extension-page__wide-secondary"
+                    >
                       <X className="w-4 h-4" />
                       忽略
                     </button>

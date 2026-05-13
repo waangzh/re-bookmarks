@@ -802,6 +802,13 @@ input {
   color: #2563eb;
 }
 
+.extension-page__wide-primary:disabled,
+.extension-page__wide-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+
 .extension-stack {
   display: grid;
   gap: 13px;
@@ -906,6 +913,7 @@ input {
 
 .extension-section {
   width: 100%;
+  min-width: 0;
   border: 1px solid #e5eaf0;
   border-radius: 10px;
   background: #ffffff;
@@ -1118,6 +1126,7 @@ input {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  min-width: 0;
   padding: 14px 16px;
   border: 0;
   border-bottom: 1px solid #eef2f7;
@@ -1146,6 +1155,33 @@ input {
 
 .extension-list__item--static:hover {
   background: #fafcff;
+}
+
+.extension-favicon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.extension-favicon img {
+  position: absolute;
+  inset: 5px;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.extension-favicon__fallback {
+  width: 15px;
+  height: 15px;
 }
 
 .extension-list__main {
@@ -1199,6 +1235,9 @@ input {
   border-radius: 7px;
   background: #f8fafc;
   color: #475569;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .extension-search-field {
@@ -1569,6 +1608,7 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   margin-top: 12px;
   padding: 10px 11px;
   border-radius: 8px;
@@ -1578,11 +1618,69 @@ input {
   font-weight: 500;
 }
 
+.extension-folder-target span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-toolbar {
+  display: grid;
+  gap: 10px;
+  margin: 13px 0;
+}
+
+.recommendation-toolbar__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  min-width: 0;
+}
+
+.recommendation-sort {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.recommendation-sort span {
+  flex: 0 0 auto;
+}
+
+.recommendation-sort select {
+  min-width: 0;
+  width: 100%;
+  height: 38px;
+  border: 1px solid #d9e1ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.bookmark-popup-window .recommendation-toolbar__actions {
+  grid-template-columns: 1fr;
+}
+
 .extension-button-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 12px;
+}
+
+.extension-button-row > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bookmark-popup-window .extension-button-row {
+  grid-template-columns: 1fr;
 }
 
 .extension-meta-row {
