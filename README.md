@@ -185,7 +185,3 @@ npm run build
 ## 📄 许可证
 
 MIT License
-
-## 👤 作者
-
-- GitHub: [@laonei](https://github.com/laonei)
