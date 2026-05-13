@@ -5,6 +5,7 @@ import type {
   ClassificationResult,
   FolderHabitProfile,
   FolderHabitSample,
+  TokenUsage,
 } from "../types";
 
 type ClassificationOptions = {
@@ -14,6 +15,7 @@ type ClassificationOptions = {
   habitProfile?: FolderHabitProfile | null;
   customPrompt?: string;
   existingCategories?: string[];
+  onTokenUsage?: (usage: TokenUsage) => void;
 };
 
 export type CategoryScheme = {
@@ -172,8 +174,90 @@ function normalizeConfidence(value: unknown) {
   return 0;
 }
 
+function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const usage = value as Record<string, unknown>;
+  const promptTokens = Number(usage.prompt_tokens ?? usage.promptTokens ?? 0);
+  const completionTokens = Number(usage.completion_tokens ?? usage.completionTokens ?? 0);
+  const totalTokens = Number(usage.total_tokens ?? usage.totalTokens ?? promptTokens + completionTokens);
+
+  if (![promptTokens, completionTokens, totalTokens].some((item) => Number.isFinite(item) && item > 0)) {
+    return undefined;
+  }
+
+  return {
+    promptTokens: Number.isFinite(promptTokens) ? promptTokens : 0,
+    completionTokens: Number.isFinite(completionTokens) ? completionTokens : 0,
+    totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
+  };
+}
+
 function asObjectArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
+}
+
+function parseJsonStringLiteral(value: string) {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value.replace(/\\"/g, "\"").replace(/\\\\/g, "\\").trim();
+  }
+}
+
+function extractLooseStringArray(block: string, keys: string[]) {
+  for (const key of keys) {
+    const arrayMatch = block.match(new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)\\]`));
+    if (arrayMatch?.[1]) {
+      return [...arrayMatch[1].matchAll(/"((?:\\.|[^"\\])*)"/g)]
+        .map((match) => parseJsonStringLiteral(match[1]).trim())
+        .filter(Boolean);
+    }
+
+    const stringMatch = block.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+    if (stringMatch?.[1]) {
+      return asStringArray(parseJsonStringLiteral(stringMatch[1]));
+    }
+  }
+
+  return [];
+}
+
+function extractLooseReason(block: string) {
+  const reasonMatch = block.match(/"reason"\s*:\s*"([\s\S]*?)"\s*(?:,\s*"[^"]+"\s*:|\s*}\s*,?\s*$)/);
+  return reasonMatch?.[1] ? parseJsonStringLiteral(reasonMatch[1]).trim() : undefined;
+}
+
+function parseLooseResults(jsonText: string): ClassificationResult[] {
+  const results: ClassificationResult[] = [];
+  const recordPattern = /"id"\s*:\s*"((?:\\.|[^"\\])*)"([\s\S]*?)(?=,\s*\{\s*"id"\s*:|\]\s*\}?\s*$|\}\s*\]\s*\}?\s*$)/g;
+
+  for (const match of jsonText.matchAll(recordPattern)) {
+    const id = parseJsonStringLiteral(match[1]).trim();
+    const block = match[2];
+    const categoryPath = extractLooseStringArray(block, [
+      "categoryPath",
+      "folderPath",
+      "suggestedFolderPath",
+      "category_path",
+      "path",
+      "category",
+    ]);
+    const confidenceMatch = block.match(/"(?:confidence|score|probability)"\s*:\s*"?([0-9]+(?:\.[0-9]+)?%?)"?/);
+    const confidence = normalizeConfidence(confidenceMatch?.[1]);
+
+    if (!id || categoryPath.length === 0 || confidence <= 0 || confidence > 1) continue;
+
+    results.push({
+      id,
+      category: categoryPath.join(" / "),
+      categoryPath,
+      confidence,
+      reason: extractLooseReason(block) || "AI 分类建议",
+      source: "ai",
+    });
+  }
+
+  return results;
 }
 
 function parseHabitProfile(content: string, fallback: Omit<FolderHabitProfile, "id" | "createdAt">): Omit<FolderHabitProfile, "id" | "createdAt"> {
@@ -213,12 +297,21 @@ export function parseResults(content: string): ClassificationResult[] {
   try {
     parsed = JSON.parse(jsonText) as unknown;
   } catch (error) {
+    const recovered = parseLooseResults(jsonText);
+    if (recovered.length > 0) {
+      debugAI("loose parsed results", {
+        recoveredCount: recovered.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return recovered;
+    }
+
     debugAI("JSON parse failed", {
       error: error instanceof Error ? error.message : String(error),
       extractedJson: jsonText,
       rawContent: content,
     });
-    throw error;
+    throw new Error("AI 返回格式不完整，无法解析为有效分类 JSON");
   }
 
   const items = Array.isArray(parsed)
@@ -306,19 +399,23 @@ async function chatCompletion(
 
   const data = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: unknown;
   };
   const content = data.choices?.[0]?.message?.content ?? "";
   debugAI("raw response content", content);
-  return content;
+  return {
+    content,
+    tokenUsage: normalizeTokenUsage(data.usage),
+  };
 }
 
 export async function testAIConnection(config: AIProviderConfig) {
-  const content = await chatCompletion(
+  const completion = await chatCompletion(
     config,
     [{ role: "user", content: "Return only the word ok." }],
     8
   );
-  return content.trim().length > 0;
+  return completion.content.trim().length > 0;
 }
 
 export async function classifyWithAI(
@@ -340,7 +437,7 @@ export async function classifyWithAI(
     ? `用户已有分类习惯：${options.habitProfile.promptHint} 优先复用这些一级分类：${options.habitProfile.preferredTopLevelFolders.join("、")}。除非明显不合适，否则新分类应贴近这些既有命名和粒度。`
     : "";
 
-  const content = await chatCompletion(
+  const completion = await chatCompletion(
     config,
     [
       {
@@ -356,7 +453,9 @@ export async function classifyWithAI(
     true
   );
 
-  const results = parseResults(content);
+  if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
+
+  const results = parseResults(completion.content);
   debugAI("parsed results", {
     inputCount: bookmarks.length,
     outputCount: results.length,
@@ -364,7 +463,7 @@ export async function classifyWithAI(
   });
 
   if (!results.length) {
-    throw new Error(`AI 返回内容无法解析为有效分类：${content.slice(0, 180)}`);
+    throw new Error(`AI 返回内容无法解析为有效分类：${completion.content.slice(0, 180)}`);
   }
   return results;
 }
@@ -376,7 +475,7 @@ export async function analyzeFolderHabitsWithAI(
 ) {
   if (!config.apiKey) return fallback;
 
-  const content = await chatCompletion(
+  const completion = await chatCompletion(
     config,
     [
       {
@@ -393,5 +492,5 @@ export async function analyzeFolderHabitsWithAI(
     true
   );
 
-  return parseHabitProfile(content, fallback);
+  return parseHabitProfile(completion.content, fallback);
 }

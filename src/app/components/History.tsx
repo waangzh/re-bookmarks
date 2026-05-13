@@ -1,9 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, ExternalLink, TrendingUp, Clock, AlertCircle, Search } from "lucide-react";
+import { ArrowLeft, ExternalLink, TrendingUp, Clock, AlertCircle, Search, Globe2 } from "lucide-react";
 import type { FrequentBookmark } from "../types";
+import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { getFrequentBookmarks, hasHistoryPermission, requestHistoryPermission } from "../services/history";
 import { useAppStore } from "../store/useAppStore";
+
+function HistoryFavicon({ title, url }: { title: string; url: string }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = !failed ? getBookmarkFaviconUrl(url) : "";
+
+  return (
+    <span className="extension-favicon" aria-hidden="true" title={title}>
+      <Globe2 className="extension-favicon__fallback" />
+      {faviconUrl && (
+        <img
+          src={faviconUrl}
+          alt=""
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
 
 export function History() {
   const { settings, loadSettings, saveSettings } = useAppStore();
@@ -137,7 +157,10 @@ export function History() {
                 filteredBookmarks.map((bookmark) => (
                   <article key={bookmark.id} className="history-card">
                     <div className="history-card__topline">
-                      <h3>{bookmark.title}</h3>
+                      <div className="history-card__identity">
+                        <HistoryFavicon title={bookmark.title} url={bookmark.url} />
+                        <h3>{bookmark.title}</h3>
+                      </div>
                       <a
                         href={bookmark.url}
                         target="_blank"

@@ -5,6 +5,7 @@ import type {
   OrganizeReport,
   PendingRecommendation,
   Settings,
+  TokenUsage,
 } from "../types";
 import {
   ensureFolderPath,
@@ -57,6 +58,28 @@ function fallbackResult(id: string, reason = "未能可靠分类，已放入待�
     reason,
     source: "rule" as const,
   };
+}
+
+function classificationFailureReason(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (error instanceof SyntaxError || /JSON|Expected|Unexpected|unterminated|parse/i.test(message)) {
+    return "AI 返回格式不完整，已暂放待整理";
+  }
+  return message || "AI 鍒嗙被澶辫触";
+}
+
+function createTokenUsage(): TokenUsage {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function addTokenUsage(total: TokenUsage, usage: TokenUsage) {
+  total.promptTokens += usage.promptTokens;
+  total.completionTokens += usage.completionTokens;
+  total.totalTokens += usage.totalTokens;
 }
 
 function buildMovePlan(
@@ -199,12 +222,20 @@ export async function generateMovePlans(): Promise<MovePlan[]> {
 export async function generateMovePlansForBookmarks(
   urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>
 ): Promise<MovePlan[]> {
+  const result = await generateMovePlanPreviewForBookmarks(urlBookmarks);
+  return result.movePlans;
+}
+
+export async function generateMovePlanPreviewForBookmarks(
+  urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>
+): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
   const [settings, habitProfile] = await Promise.all([
     getSettings(),
     getFolderHabitProfile(),
   ]);
   const results = new Map<string, ClassificationResult>();
   const failureReasons = new Map<string, string>();
+  const tokenUsage = createTokenUsage();
 
   if (urlBookmarks.length && settings.provider.apiKey) {
     // 阶段一：采样首次分类，建立统一分类体系
@@ -224,12 +255,13 @@ export async function generateMovePlansForBookmarks(
           maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
           habitProfile,
           customPrompt: settings.customPrompt,
+          onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
         }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "AI 分类失败";
+        const reason = classificationFailureReason(error);
         for (const b of batch) failureReasons.set(b.id, reason);
       }
     }
@@ -249,6 +281,7 @@ export async function generateMovePlansForBookmarks(
           habitProfile,
           customPrompt: settings.customPrompt,
           existingCategories: existingCategories.length > 0 ? existingCategories : undefined,
+          onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
@@ -261,7 +294,7 @@ export async function generateMovePlansForBookmarks(
           }
         }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "AI 分类失败";
+        const reason = classificationFailureReason(error);
         for (const b of batch) failureReasons.set(b.id, reason);
       }
     }
@@ -275,7 +308,7 @@ export async function generateMovePlansForBookmarks(
 
   const seenUrls = new Map<string, string>();
 
-  return urlBookmarks.map((bookmark) => {
+  const movePlans = urlBookmarks.map((bookmark) => {
     const normalizedUrl = bookmark.url ? sanitizeUrl(bookmark.url) : "";
     const firstSameUrl = normalizedUrl ? seenUrls.get(normalizedUrl) : undefined;
     if (normalizedUrl && !firstSameUrl) seenUrls.set(normalizedUrl, bookmark.title);
@@ -288,6 +321,11 @@ export async function generateMovePlansForBookmarks(
       duplicateReason
     );
   });
+
+  return {
+    movePlans,
+    tokenUsage: tokenUsage.totalTokens > 0 ? tokenUsage : undefined,
+  };
 }
 
 function uniqueFolderCount(plans: MovePlan[]) {
@@ -370,7 +408,7 @@ async function findAllFolderIds(): Promise<Set<string>> {
   return folderIds;
 }
 
-export async function executeMovePlans(plans: MovePlan[]): Promise<OrganizeReport> {
+export async function executeMovePlans(plans: MovePlan[], tokenUsage?: TokenUsage): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
 
   // 记录执行前的文件夹
@@ -431,6 +469,7 @@ export async function executeMovePlans(plans: MovePlan[]): Promise<OrganizeRepor
     failedItems,
     movePlan: plans,
     privacySummary: privacySummary(settings),
+    tokenUsage,
   };
 
   await saveLastReport(report);

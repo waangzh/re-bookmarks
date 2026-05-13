@@ -11,8 +11,8 @@ import {
   RefreshCw,
   Bookmark,
 } from "lucide-react";
-import type { BookmarkNode, MovePlan } from "../types";
-import { executeMovePlans, generateMovePlansForBookmarks } from "../services/organizer";
+import type { BookmarkNode, MovePlan, TokenUsage } from "../types";
+import { executeMovePlans, generateMovePlanPreviewForBookmarks } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getAllBookmarks } from "../services/bookmarks";
@@ -76,6 +76,10 @@ function buildBookmarkFolderTree(bookmarks: BookmarkNode[]) {
   return root;
 }
 
+function formatTokenCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
 export function Preview() {
   const navigate = useNavigate();
   const { loadAll } = useAppStore();
@@ -83,6 +87,7 @@ export function Preview() {
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<MovePlan[]>([]);
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -102,6 +107,7 @@ export function Preview() {
         const cached = await getPreviewPlan();
         if (cached?.movePlan.length) {
           setPlans(cached.movePlan);
+          setTokenUsage(cached.tokenUsage);
           setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
           setPhase("preview");
           setLoading(false);
@@ -187,16 +193,20 @@ export function Preview() {
     setPhase("preview");
     setLoading(true);
     setError("");
+    setTokenUsage(undefined);
 
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
-      const movePlans = await generateMovePlansForBookmarks(bookmarksToClassify);
+      const previewResult = await generateMovePlanPreviewForBookmarks(bookmarksToClassify);
+      const movePlans = previewResult.movePlans;
       setPlans(movePlans);
+      setTokenUsage(previewResult.tokenUsage);
       await savePreviewPlan({
         id: `preview-${Date.now()}`,
         createdAt: Date.now(),
         bookmarkCount: movePlans.length,
         movePlan: movePlans,
+        tokenUsage: previewResult.tokenUsage,
       });
       setCacheMessage("预览结果已保存，返回后可继续查看");
     } catch (err) {
@@ -211,6 +221,7 @@ export function Preview() {
     setCollapsedFolders(new Set());
     setSelectedPlan(null);
     setCacheMessage("");
+    setTokenUsage(undefined);
     await clearPreviewPlan();
     setPlans([]);
     setPhase("selection");
@@ -231,7 +242,7 @@ export function Preview() {
     if (!plans.length) return;
     setPhase("submitting");
     try {
-      await executeMovePlans(plans);
+      await executeMovePlans(plans, tokenUsage);
       await clearPreviewPlan();
       await loadAll();
       navigate("/report");
@@ -445,6 +456,14 @@ export function Preview() {
                 将移动 {plans.length} 个书签到 {Object.keys(groupedByFolder).length} 个文件夹。确认前不会修改任何书签。
               </p>
             </div>
+
+            {!loading && tokenUsage && (
+              <div className="token-usage-highlight" aria-label="本次智能整理 token 消耗">
+                <span className="token-usage-highlight__label">Token 消耗</span>
+                <strong>{formatTokenCount(tokenUsage.totalTokens)}</strong>
+                <span>输入 {formatTokenCount(tokenUsage.promptTokens)} / 输出 {formatTokenCount(tokenUsage.completionTokens)}</span>
+              </div>
+            )}
 
             {loading ? (
               <div className="extension-empty">

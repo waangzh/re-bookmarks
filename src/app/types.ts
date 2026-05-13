@@ -47,6 +47,12 @@ export type MovePlan = {
   source?: ClassificationResult["source"];
 };
 
+export type TokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 export type BookmarkBackup = {
   id: string;
   createdAt: number;
@@ -102,6 +108,7 @@ export type OrganizeReport = {
   failedItems: FailedMove[];
   movePlan: MovePlan[];
   privacySummary: string[];
+  tokenUsage?: TokenUsage;
   undone?: boolean;
 };
 
@@ -110,6 +117,7 @@ export type PreviewPlanCache = {
   createdAt: number;
   bookmarkCount: number;
   movePlan: MovePlan[];
+  tokenUsage?: TokenUsage;
 };
 
 export type FolderHabitProfile = {

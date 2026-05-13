@@ -1101,6 +1101,35 @@ input {
   font-weight: 600;
 }
 
+.token-usage-highlight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.token-usage-highlight__label {
+  border-radius: 999px;
+  background: #3730a3;
+  color: #ffffff;
+  padding: 4px 8px;
+  font-weight: 600;
+}
+
+.token-usage-highlight strong {
+  color: #1e1b4b;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .extension-list {
   display: grid;
 }
@@ -1300,7 +1329,14 @@ input {
   min-width: 0;
 }
 
-.history-card__topline h3 {
+.history-card__identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.history-card__identity h3 {
   display: -webkit-box;
   min-width: 0;
   margin: 0;

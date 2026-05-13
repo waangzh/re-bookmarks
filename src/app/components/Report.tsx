@@ -4,6 +4,10 @@ import { ArrowLeft, CheckCircle, Folder, FileText, RotateCcw, Trash2 } from "luc
 import { undoLastOrganize } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 
+function formatTokenCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
 export function Report() {
   const { lastReport, loadReport, loadAll } = useAppStore();
   const [busy, setBusy] = useState(false);
@@ -81,6 +85,17 @@ export function Report() {
             <p>{message || "结果已保存到本地报告"}</p>
           </div>
         </section>
+
+        {lastReport.tokenUsage && (
+          <div className="token-usage-highlight" aria-label="本次智能整理 token 消耗">
+            <span className="token-usage-highlight__label">Token 消耗</span>
+            <strong>{formatTokenCount(lastReport.tokenUsage.totalTokens)}</strong>
+            <span>
+              输入 {formatTokenCount(lastReport.tokenUsage.promptTokens)} / 输出{" "}
+              {formatTokenCount(lastReport.tokenUsage.completionTokens)}
+            </span>
+          </div>
+        )}
 
         <section className="extension-section">
           <h3 className="extension-section__title">整理统计</h3>
