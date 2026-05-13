@@ -65,7 +65,7 @@ export type PendingRecommendation = {
   reason?: string;
 };
 
-export type AIProviderType = "openai" | "deepseek" | "custom";
+export type AIProviderType = "openai" | "deepseek" | "zhipu" | "kimi" | "gemini" | "minimax" | "qwen" | "doubao" | "custom";
 
 export type AIProviderConfig = {
   type: AIProviderType;

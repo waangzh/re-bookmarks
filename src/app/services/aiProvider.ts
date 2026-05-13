@@ -1,5 +1,6 @@
 import type {
   AIProviderConfig,
+  AIProviderType,
   BookmarkForAI,
   ClassificationResult,
   FolderHabitProfile,
@@ -20,14 +21,106 @@ export type CategoryScheme = {
   subCategories: Record<string, string[]>;
 };
 
+type TokenParam = "max_tokens" | "max_completion_tokens";
+
+export type AIProviderProfile = {
+  type: AIProviderType;
+  label: string;
+  model: string;
+  endpoint: string;
+  tokenParam: TokenParam;
+  supportsJsonMode: boolean;
+};
+
+export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
+  openai: {
+    type: "openai",
+    label: "OpenAI",
+    model: "gpt-5.4-mini",
+    endpoint: "https://api.openai.com/v1",
+    tokenParam: "max_completion_tokens",
+    supportsJsonMode: true,
+  },
+  deepseek: {
+    type: "deepseek",
+    label: "DeepSeek",
+    model: "deepseek-v4-flash",
+    endpoint: "https://api.deepseek.com",
+    tokenParam: "max_tokens",
+    supportsJsonMode: true,
+  },
+  zhipu: {
+    type: "zhipu",
+    label: "智谱 GLM",
+    model: "glm-5.1",
+    endpoint: "https://open.bigmodel.cn/api/paas/v4",
+    tokenParam: "max_tokens",
+    supportsJsonMode: true,
+  },
+  kimi: {
+    type: "kimi",
+    label: "Kimi",
+    model: "kimi-k2.6",
+    endpoint: "https://api.moonshot.ai/v1",
+    tokenParam: "max_tokens",
+    supportsJsonMode: false,
+  },
+  gemini: {
+    type: "gemini",
+    label: "Gemini",
+    model: "gemini-3-flash-preview",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai",
+    tokenParam: "max_tokens",
+    supportsJsonMode: false,
+  },
+  minimax: {
+    type: "minimax",
+    label: "MiniMax",
+    model: "MiniMax-M2.7",
+    endpoint: "https://api.minimax.io/v1",
+    tokenParam: "max_completion_tokens",
+    supportsJsonMode: false,
+  },
+  qwen: {
+    type: "qwen",
+    label: "通义千问",
+    model: "qwen-plus",
+    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    tokenParam: "max_tokens",
+    supportsJsonMode: true,
+  },
+  doubao: {
+    type: "doubao",
+    label: "火山方舟 / 豆包",
+    model: "doubao-seed-1-6-251015",
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3",
+    tokenParam: "max_tokens",
+    supportsJsonMode: false,
+  },
+  custom: {
+    type: "custom",
+    label: "自定义",
+    model: "gpt-5.4-mini",
+    endpoint: "https://api.openai.com/v1",
+    tokenParam: "max_completion_tokens",
+    supportsJsonMode: true,
+  },
+};
+
+export const AI_PROVIDER_OPTIONS = Object.values(AI_PROVIDER_PROFILES);
+
+function profileFor(type: AIProviderType) {
+  return AI_PROVIDER_PROFILES[type] ?? AI_PROVIDER_PROFILES.custom;
+}
+
 function endpointFor(config: AIProviderConfig) {
   const endpoint = config.endpoint?.replace(/\/$/, "");
+  const profile = profileFor(config.type);
   if (config.type === "deepseek" && endpoint?.endsWith("/v1")) {
     return endpoint.slice(0, -3);
   }
   if (endpoint) return endpoint;
-  if (config.type === "deepseek") return "https://api.deepseek.com";
-  return "https://api.openai.com/v1";
+  return profile.endpoint;
 }
 
 function extractJson(content: string) {
@@ -173,24 +266,27 @@ async function chatCompletion(
 ) {
   if (!config.apiKey) throw new Error("缺少 API Key");
 
+  const profile = profileFor(config.type);
   const endpoint = endpointFor(config);
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
     temperature: 0.1,
-    max_tokens: maxTokens,
     stream: false,
   };
+  body[profile.tokenParam] = maxTokens;
 
-  if (jsonMode) {
+  if (jsonMode && profile.supportsJsonMode) {
     body.response_format = { type: "json_object" };
   }
 
   debugAI("request", {
     endpoint,
     model: config.model,
-    jsonMode,
+    jsonMode: jsonMode && profile.supportsJsonMode,
     maxTokens,
+    provider: config.type,
+    tokenParam: profile.tokenParam,
     messageCount: messages.length,
   });
 

@@ -2,16 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Check, AlertCircle, RotateCcw } from "lucide-react";
 import type { AIProviderType, Settings } from "../types";
-import { testAIConnection } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
-
-const providerDefaults: Record<AIProviderType, Pick<Settings["provider"], "model" | "endpoint">> = {
-  openai: { model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1" },
-  deepseek: { model: "deepseek-v4-flash", endpoint: "https://api.deepseek.com" },
-  custom: { model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1" },
-};
 
 export function Options() {
   const { settings, loadSettings, saveSettings } = useAppStore();
@@ -28,7 +22,7 @@ export function Options() {
   }, [settings]);
 
   const updateProvider = (type: AIProviderType) => {
-    const defaults = providerDefaults[type];
+    const defaults = AI_PROVIDER_PROFILES[type];
     setDraft((current) => ({
       ...current,
       provider: {
@@ -101,9 +95,11 @@ export function Options() {
               <div className="extension-field">
                 <label>Provider</label>
                 <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)} className="extension-control">
-                  <option value="openai">OpenAI</option>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="custom">自定义</option>
+                  {AI_PROVIDER_OPTIONS.map((provider) => (
+                    <option key={provider.type} value={provider.type}>
+                      {provider.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
