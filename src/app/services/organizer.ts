@@ -1,4 +1,5 @@
 import type {
+  BookmarkBackup,
   ClassificationResult,
   FailedMove,
   MovePlan,
@@ -47,6 +48,26 @@ function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId:
     return null;
   }
   return search(tree, []);
+}
+
+function collectFolderPaths(
+  tree: chrome.bookmarks.BookmarkTreeNode[]
+): Array<{ id: string; path: string[] }> {
+  const folders: Array<{ id: string; path: string[] }> = [];
+
+  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
+    for (const node of nodes) {
+      if (node.url) continue;
+      const currentPath = node.title && !isRootFolder(node.id) ? [...path, node.title] : path;
+      if (node.id && !isRootFolder(node.id)) {
+        folders.push({ id: node.id, path: currentPath });
+      }
+      if (node.children) visit(node.children, currentPath);
+    }
+  }
+
+  visit(tree, []);
+  return folders;
 }
 
 function fallbackResult(id: string, reason = "未能可靠分类，已放入待整理"): ClassificationResult {
@@ -389,6 +410,11 @@ async function cleanupEmptyFolders(folderIds: Set<string>): Promise<number> {
   return removedCount;
 }
 
+async function cleanupAllEmptyFolders(): Promise<number> {
+  const folders = await findAllFolderSnapshots();
+  return cleanupEmptyFolders(new Set(folders.map((folder) => folder.id)));
+}
+
 async function findAllFolderIds(): Promise<Set<string>> {
   const tree = await getBookmarkTree();
   const folderIds = new Set<string>();
@@ -408,18 +434,27 @@ async function findAllFolderIds(): Promise<Set<string>> {
   return folderIds;
 }
 
-export async function executeMovePlans(plans: MovePlan[], tokenUsage?: TokenUsage): Promise<OrganizeReport> {
+async function findAllFolderSnapshots(): Promise<Array<{ id: string; path: string[] }>> {
+  return collectFolderPaths(await getBookmarkTree());
+}
+
+export async function executeMovePlans(
+  plans: MovePlan[],
+  tokenUsage?: TokenUsage,
+  options: { cleanupAllEmptyFolders?: boolean } = {}
+): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
 
   // 记录执行前的文件夹
   const foldersBefore = await findAllFolderIds();
-
-  await saveLastBackup({
+  const backup: BookmarkBackup = {
     id: `backup-${Date.now()}`,
     createdAt: Date.now(),
     tree,
     movePlan: plans,
-  });
+  };
+
+  await saveLastBackup(backup);
 
   const failedItems: FailedMove[] = [];
   let movedCount = 0;
@@ -449,15 +484,20 @@ export async function executeMovePlans(plans: MovePlan[], tokenUsage?: TokenUsag
   }
 
   // 清理新建的目标文件夹中为空的（可能是移动失败导致的）
-  const foldersAfter = await findAllFolderIds();
-  const newFolders = new Set<string>();
-  for (const id of foldersAfter) {
-    if (!foldersBefore.has(id)) {
-      newFolders.add(id);
-    }
+  const foldersAfterMove = await findAllFolderSnapshots();
+  const createdTargetFolderIds = new Set(
+    foldersAfterMove.filter((folder) => !foldersBefore.has(folder.id)).map((folder) => folder.id)
+  );
+  if (createdTargetFolderIds.size > 0) {
+    removedFolders += await cleanupEmptyFolders(createdTargetFolderIds);
   }
-  if (newFolders.size > 0) {
-    removedFolders += await cleanupEmptyFolders(newFolders);
+  const createdTargetFolders = (await findAllFolderSnapshots()).filter(
+    (folder) => !foldersBefore.has(folder.id)
+  );
+  await saveLastBackup({ ...backup, createdTargetFolders });
+
+  if (options.cleanupAllEmptyFolders) {
+    removedFolders += await cleanupAllEmptyFolders();
   }
 
   const report: OrganizeReport = {
@@ -509,11 +549,14 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
     }
   }
 
+  const removedFolders = await cleanupAllEmptyFolders();
+
   const report: OrganizeReport = {
     id: `undo-${Date.now()}`,
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(backup.movePlan),
+    removedFolders,
     failedItems,
     movePlan: backup.movePlan,
     privacySummary: ["已按最近一次备份尝试恢复原位置"],
@@ -522,6 +565,13 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
 
   await saveLastReport(report);
   return report;
+}
+
+export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
+  const backup = await getLastBackup();
+  if (!backup) return null;
+
+  return executeMovePlans(backup.movePlan, undefined, { cleanupAllEmptyFolders: true });
 }
 
 export async function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {

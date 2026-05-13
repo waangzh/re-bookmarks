@@ -58,6 +58,10 @@ export type BookmarkBackup = {
   createdAt: number;
   tree: chrome.bookmarks.BookmarkTreeNode[];
   movePlan: MovePlan[];
+  createdTargetFolders?: Array<{
+    id: string;
+    path: string[];
+  }>;
 };
 
 export type PendingRecommendation = {
@@ -110,6 +114,7 @@ export type OrganizeReport = {
   privacySummary: string[];
   tokenUsage?: TokenUsage;
   undone?: boolean;
+  skippedFolderCleanup?: FailedMove[];
 };
 
 export type PreviewPlanCache = {
