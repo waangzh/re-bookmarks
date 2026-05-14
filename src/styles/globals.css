@@ -1425,14 +1425,14 @@ input {
 
 .history-card-list {
   display: grid;
+  width: 100%;
   max-height: calc(70px * 5 + 8px * 4);
   align-content: start;
   gap: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 2px;
-  scrollbar-gutter: stable;
   margin-top: 13px;
+  margin-bottom: 20px;
 }
 
 .history-card {
