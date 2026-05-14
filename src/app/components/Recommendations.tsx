@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2 } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
 import { useAppStore } from "../store/useAppStore";
@@ -19,6 +19,32 @@ function getFaviconUrl(url?: string) {
   } catch {
     return "";
   }
+}
+
+function ExpandableReason({ reason }: { reason: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldCollapse = reason.length > 72;
+
+  if (!shouldCollapse) {
+    return <p className="extension-list__note">{reason}</p>;
+  }
+
+  return (
+    <div className="extension-expand-text">
+      <p className={`extension-list__note ${expanded ? "" : "extension-list__note--clamped"}`}>
+        {reason}
+      </p>
+      <button
+        type="button"
+        className="extension-text-button extension-text-button--small extension-expand-text__toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {expanded ? "收起" : "展开"}
+      </button>
+    </div>
+  );
 }
 
 export function Recommendations() {
@@ -216,7 +242,7 @@ export function Recommendations() {
                       <div className="extension-list__title-row">
                         <h3>{rec.bookmarkTitle}</h3>
                         {rec.bookmarkUrl && (
-                          <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon">
+                          <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
@@ -232,7 +258,7 @@ export function Recommendations() {
                     <span>{rec.suggestedFolderPath.join(" / ")}</span>
                   </div>
 
-                  {rec.reason && <p className="extension-list__note">{rec.reason}</p>}
+                  {rec.reason && <ExpandableReason reason={rec.reason} />}
 
                   <div className="extension-button-row">
                     <button

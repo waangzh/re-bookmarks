@@ -16,6 +16,7 @@ import { executeMovePlans, generateMovePlanPreviewForBookmarks } from "../servic
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getAllBookmarks } from "../services/bookmarks";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -339,6 +340,7 @@ export function Preview() {
           target="_blank"
           rel="noopener noreferrer"
           className="extension-link-icon"
+          aria-label="打开书签"
           onClick={(e) => e.stopPropagation()}
         >
           <ExternalLink className="w-3 h-3" />
@@ -515,6 +517,7 @@ export function Preview() {
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="extension-link-icon"
+                                      aria-label="打开书签"
                                       onClick={(event) => event.stopPropagation()}
                                     >
                                       <ExternalLink className="w-3 h-3" />
@@ -541,14 +544,13 @@ export function Preview() {
               </div>
             )}
 
-            <section className="extension-section">
-              <h3 className="extension-section__title">整理说明</h3>
+            <CollapsibleSection title="整理说明" hint="备份、撤销和文件夹复用规则">
               <ul className="extension-copy-list">
                 <li>· 整理前会自动备份当前书签结构</li>
                 <li>· 支持撤销最近一次整理操作</li>
                 <li>· 已存在的文件夹会复用，不会重复创建</li>
               </ul>
-            </section>
+            </CollapsibleSection>
 
             <button
               onClick={handleConfirm}

@@ -15,6 +15,7 @@ import {
 import type { MovePlan } from "../types";
 import { reapplyLastOrganize, undoLastOrganize } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 type BusyAction = "undo" | "reapply" | null;
 
@@ -308,8 +309,7 @@ export function Report() {
         </section>
 
         {lastReport.failedItems.length > 0 && (
-          <section className="extension-section">
-            <h3 className="extension-section__title">失败明细</h3>
+          <CollapsibleSection title="失败明细" count={lastReport.failedItems.length} hint="查看未完成移动的书签和原因">
             <div className="extension-compact-list">
               {lastReport.failedItems.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
@@ -318,12 +318,11 @@ export function Report() {
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
         )}
 
         {skippedFolderCleanup.length > 0 && (
-          <section className="extension-section">
-            <h3 className="extension-section__title">未清理的目标文件夹</h3>
+          <CollapsibleSection title="未清理的目标文件夹" count={skippedFolderCleanup.length} hint="查看本次保留的文件夹和原因">
             <div className="extension-compact-list">
               {skippedFolderCleanup.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
@@ -332,17 +331,8 @@ export function Report() {
                 </div>
               ))}
             </div>
-          </section>
+          </CollapsibleSection>
         )}
-
-        <section className="extension-section">
-          <h3 className="extension-section__title">隐私说明</h3>
-          <ul className="extension-copy-list">
-            {lastReport.privacySummary.map((item) => (
-              <li key={item}>· {item}</li>
-            ))}
-          </ul>
-        </section>
 
         <div className="report-actions">
           {!lastReport.undone ? (

@@ -467,7 +467,7 @@ export function ManageBookmarks() {
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
           <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
           {bookmark.url && (
-            <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon">
+            <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
               <ExternalLink className="w-3 h-3" />
             </a>
           )}

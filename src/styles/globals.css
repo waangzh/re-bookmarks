@@ -707,8 +707,8 @@ input {
 .extension-icon-action {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   flex: 0 0 auto;
   border: 0;
   border-radius: 9px;
@@ -722,6 +722,13 @@ input {
 .extension-icon-action:hover {
   background: #eef2f7;
   transform: translateY(-1px);
+}
+
+.extension-page__back:focus-visible,
+.extension-icon-action:focus-visible,
+.extension-link-icon:focus-visible {
+  outline: 2px solid rgba(47, 125, 246, 0.35);
+  outline-offset: 2px;
 }
 
 .extension-page__back-icon {
@@ -863,6 +870,32 @@ input {
   margin-top: 20px;
 }
 
+.extension-page--habits .extension-page__inner {
+  display: grid;
+  gap: 22px;
+}
+
+.extension-page--habits .extension-page__header {
+  margin-bottom: 0;
+}
+
+.bookmark-popup-window .extension-page--habits .extension-page__inner {
+  gap: 18px;
+}
+
+.habit-presets-actions {
+  grid-template-columns: 1fr;
+  margin-top: 0;
+}
+
+.habit-presets-actions--bottom {
+  display: none;
+}
+
+.habit-presets-help {
+  margin-bottom: 12px;
+}
+
 .settings-section {
   padding: 0;
   overflow: hidden;
@@ -944,6 +977,86 @@ input {
 .extension-section--flush {
   padding: 0;
   overflow: hidden;
+}
+
+.collapsible-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.collapsible-section__details {
+  width: 100%;
+}
+
+.collapsible-section__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 13px 16px;
+  color: inherit;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color 160ms ease;
+}
+
+.collapsible-section__summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-section__summary:hover {
+  background: #f8fafc;
+}
+
+.collapsible-section__summary:focus-visible {
+  outline: 2px solid rgba(47, 125, 246, 0.35);
+  outline-offset: -2px;
+}
+
+.collapsible-section__title-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collapsible-section__title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.collapsible-section__title-line svg {
+  flex: 0 0 auto;
+  color: #64748b;
+}
+
+.collapsible-section__title-line span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapsible-section__hint {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.collapsible-section__body {
+  border-top: 1px solid #eef2f7;
+  padding: 14px 16px 16px;
+}
+
+.collapsible-section__body-actions {
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 .extension-section--accent {
@@ -1290,6 +1403,23 @@ input {
   word-break: break-word;
 }
 
+.extension-list__note--clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.extension-expand-text {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.extension-expand-text__toggle {
+  justify-self: flex-start;
+}
+
 .extension-search-field {
   position: relative;
 }
@@ -1454,13 +1584,15 @@ input {
 .extension-link-icon {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
+  border-radius: 7px;
   color: #94a3b8;
 }
 
 .extension-link-icon:hover {
+  background: #eff6ff;
   color: #2563eb;
 }
 
@@ -1590,6 +1722,24 @@ input {
   background: #f8fafc;
   color: #475569;
   font-size: 13px;
+}
+
+.extension-compact-row > span {
+  min-width: 0;
+}
+
+.extension-compact-row > span:first-child {
+  overflow: hidden;
+  color: #334155;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-compact-row > span:last-child {
+  color: #64748b;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .extension-compact-row__main,
@@ -1993,6 +2143,11 @@ input {
   background: #f1f5f9;
 }
 
+.extension-text-button:focus-visible {
+  outline: 2px solid rgba(47, 125, 246, 0.35);
+  outline-offset: 2px;
+}
+
 .extension-selection-actions {
   display: flex;
   align-items: center;
@@ -2247,13 +2402,15 @@ input {
   line-height: 1.35;
 }
 
-.extension-privacy {
+.extension-privacy,
+.extension-summary-panel {
   border-radius: 8px;
   background: #f8fafc;
   padding: 10px 11px;
 }
 
-.extension-privacy p {
+.extension-privacy p,
+.extension-summary-panel p {
   margin: 0;
   color: #64748b;
   font-size: 12px;

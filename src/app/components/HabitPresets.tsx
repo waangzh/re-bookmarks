@@ -7,6 +7,7 @@ import {
   getFolderHabitProfile,
   saveEditedFolderHabitProfile,
 } from "../services/habits";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 const emptyProfile = (): FolderHabitProfile => ({
   id: `habit-${Date.now()}`,
@@ -85,7 +86,7 @@ export function HabitPresets() {
   const current = profile ?? emptyProfile();
 
   return (
-    <div className="extension-page">
+    <div className="extension-page extension-page--habits">
       <div className="extension-page__inner">
         <div className="extension-page__header">
           <div className="extension-page__heading">
@@ -99,6 +100,17 @@ export function HabitPresets() {
           </div>
         </div>
 
+        <div className="extension-button-row habit-presets-actions">
+          <button onClick={handleAnalyze} disabled={isBusy} className="extension-page__wide-secondary extension-page__wide-secondary--blue">
+            <Sparkles className="w-4 h-4" />
+            {status === "analyzing" ? "分析中" : "重新分析"}
+          </button>
+          <button onClick={handleSave} disabled={isBusy} className="extension-page__wide-primary">
+            <Save className="w-4 h-4" />
+            {status === "saving" ? "保存中" : "保存预设"}
+          </button>
+        </div>
+
         {message && (
           <div className={`extension-status ${status === "error" ? "extension-status--error" : "extension-status--success"}`}>
             <span>{message}</span>
@@ -108,7 +120,7 @@ export function HabitPresets() {
         <section className="extension-section">
           <h2 className="extension-section__title">学习概览</h2>
           <div className="extension-form">
-            <div className="extension-privacy">
+            <div className="extension-summary-panel">
               <p>
                 已学习 {current.folderCount} 个文件夹、{current.bookmarkCount} 个书签。最后更新时间：
                 {current.createdAt ? new Date(current.createdAt).toLocaleString() : "未生成"}
@@ -126,9 +138,8 @@ export function HabitPresets() {
           </div>
         </section>
 
-        <section className="extension-section">
-          <div className="extension-section__bar extension-section__bar--plain">
-            <h2 className="extension-section__title">常用一级分类</h2>
+        <CollapsibleSection title="常用一级分类" count={current.preferredTopLevelFolders.length} hint="展开后编辑常用的一级文件夹">
+          <div className="extension-section__bar extension-section__bar--plain collapsible-section__body-actions">
             <button
               type="button"
               className="extension-text-button"
@@ -137,6 +148,11 @@ export function HabitPresets() {
               <Plus className="w-3 h-3" />
               添加
             </button>
+          </div>
+          <div className="extension-summary-panel habit-presets-help">
+            <p>
+              说明：“一级分类”是指去掉“书签栏”等浏览器根目录后的第一层文件夹。
+            </p>
           </div>
           <div className="habit-editor-list">
             {current.preferredTopLevelFolders.map((folder, index) => (
@@ -170,11 +186,10 @@ export function HabitPresets() {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className="extension-section">
-          <div className="extension-section__bar extension-section__bar--plain">
-            <h2 className="extension-section__title">文件夹规则</h2>
+        <CollapsibleSection title="文件夹规则" count={current.folderRules.length} hint="展开后编辑文件夹路径与适用特征">
+          <div className="extension-section__bar extension-section__bar--plain collapsible-section__body-actions">
             <button
               type="button"
               className="extension-text-button"
@@ -241,11 +256,10 @@ export function HabitPresets() {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className="extension-section">
-          <div className="extension-section__bar extension-section__bar--plain">
-            <h2 className="extension-section__title">避免规则</h2>
+        <CollapsibleSection title="避免规则" count={current.avoidRules.length} hint="展开后编辑不希望 AI 过度分类的规则">
+          <div className="extension-section__bar extension-section__bar--plain collapsible-section__body-actions">
             <button
               type="button"
               className="extension-text-button"
@@ -285,19 +299,18 @@ export function HabitPresets() {
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className="extension-section">
-          <h2 className="extension-section__title">给 AI 的预设提示</h2>
+        <CollapsibleSection title="给 AI 的预设提示" hint="展开后编辑传给分类模型的习惯提示">
           <textarea
             value={current.promptHint}
             onChange={(event) => updateProfile((item) => ({ ...item, promptHint: event.target.value }))}
             rows={6}
             className="extension-control extension-textarea"
           />
-        </section>
+        </CollapsibleSection>
 
-        <div className="extension-button-row">
+        <div className="extension-button-row habit-presets-actions--bottom">
           <button onClick={handleAnalyze} disabled={isBusy} className="extension-page__wide-secondary extension-page__wide-secondary--blue">
             <Sparkles className="w-4 h-4" />
             {status === "analyzing" ? "分析中" : "重新分析"}
