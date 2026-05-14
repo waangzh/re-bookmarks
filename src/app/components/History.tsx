@@ -121,7 +121,11 @@ export function History() {
             <p>启用后可以查看您经常访问的已收藏网址，帮助更好地整理和管理。</p>
             <div className="extension-notice extension-notice--amber extension-notice--left">
               <p className="extension-notice__label">需要浏览历史权限</p>
-              <p>启用后会按已收藏网址的访问次数生成排序参考。</p>
+              <ul className="extension-copy-list">
+                <li>· 仅统计已收藏网址的访问次数</li>
+                <li>· 浏览历史不会发送给 AI</li>
+                <li>· 所有数据仅在本地处理</li>
+              </ul>
             </div>
             {message && <p>{message}</p>}
             <button onClick={handleEnable} className="extension-page__wide-primary">

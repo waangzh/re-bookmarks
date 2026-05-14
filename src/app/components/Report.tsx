@@ -334,6 +334,14 @@ export function Report() {
           </CollapsibleSection>
         )}
 
+        <CollapsibleSection title="隐私说明" hint="查看本次整理的数据使用和备份范围">
+          <ul className="extension-copy-list">
+            {lastReport.privacySummary.map((item) => (
+              <li key={item}>· {item}</li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+
         <div className="report-actions">
           {!lastReport.undone ? (
             <button onClick={handleUndo} disabled={Boolean(busyAction)} className="extension-page__wide-secondary">
