@@ -134,7 +134,7 @@ export function History() {
           </section>
         ) : (
           <>
-            <div className="extension-notice extension-notice--blue">
+            <div className="extension-notice extension-notice--blue history-summary-notice">
               <p>{loading ? "正在统计本地访问记录..." : `根据访问记录，找到 ${bookmarks.length} 个经常访问的书签。`}</p>
             </div>
 
@@ -173,24 +173,26 @@ export function History() {
                       </a>
                     </div>
 
-                    <div className="history-card__meta">
-                      <span>
-                        <Clock className="w-3 h-3" />
-                        {formatTime(bookmark.lastVisit)}
-                      </span>
-                      <span>
-                        <TrendingUp className="w-3 h-3" />
-                        {bookmark.visitCount} 次
-                      </span>
-                      <span>{formatDomain(bookmark.url)}</span>
-                    </div>
+                    <div className="history-card__summary">
+                      <div className="history-card__meta">
+                        <span>
+                          <Clock className="w-3 h-3" />
+                          {formatTime(bookmark.lastVisit)}
+                        </span>
+                        <span>
+                          <TrendingUp className="w-3 h-3" />
+                          {bookmark.visitCount} 次
+                        </span>
+                        <span>{formatDomain(bookmark.url)}</span>
+                      </div>
 
-                    <div className="history-card__tags">
-                      {bookmark.currentFolder && <span className="history-tag history-tag--blue">{bookmark.currentFolder}</span>}
-                      {bookmark.suggestedFolder && <span className="history-tag history-tag--amber">{bookmark.suggestedFolder}</span>}
-                      {bookmark.confidence ? (
-                        <span className="history-tag">置信度 {Math.round(bookmark.confidence * 100)}%</span>
-                      ) : null}
+                      <div className="history-card__tags">
+                        {bookmark.currentFolder && <span className="history-tag history-tag--blue">{bookmark.currentFolder}</span>}
+                        {bookmark.suggestedFolder && <span className="history-tag history-tag--amber">{bookmark.suggestedFolder}</span>}
+                        {bookmark.confidence ? (
+                          <span className="history-tag">置信度 {Math.round(bookmark.confidence * 100)}%</span>
+                        ) : null}
+                      </div>
                     </div>
 
                   </article>
