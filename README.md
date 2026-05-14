@@ -174,13 +174,10 @@ manifest.json      开发态扩展清单
 
 ## 🤝 贡献指南
 
-欢迎提出 Issue 和 Pull Request。提交前请尽量保持改动聚焦，并运行：
+欢迎提出 Issue 和 Pull Request。
 
-```bash
-npm run build
-```
-
-涉及书签移动、权限、AI prompt、URL 脱敏或存储逻辑的改动，请补充清晰的手动验证说明。
+## ❤ 感谢
+感谢真诚 、友善 、团结 、专业的[LINUX DO](https://linux.do/latest)
 
 ## 📄 许可证
 
