@@ -855,7 +855,6 @@ input {
 }
 
 .habit-presets-actions {
-  grid-template-columns: 1fr;
   margin-top: 0;
 }
 
@@ -1932,9 +1931,16 @@ input {
 
 .extension-page--report .report-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  min-width: 0;
   margin-top: 20px;
   padding-top: 4px;
+}
+
+.extension-page--report .report-actions > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .extension-empty {
@@ -2035,10 +2041,6 @@ input {
   font-size: 13px;
 }
 
-.bookmark-popup-window .recommendation-toolbar__actions {
-  grid-template-columns: 1fr;
-}
-
 .extension-button-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2051,10 +2053,6 @@ input {
 .extension-button-row > * {
   min-width: 0;
   max-width: 100%;
-}
-
-.bookmark-popup-window .extension-button-row {
-  grid-template-columns: 1fr;
 }
 
 .extension-meta-row {
