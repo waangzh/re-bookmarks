@@ -23,7 +23,6 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm approve-builds --all
       - run: pnpm install --frozen-lockfile
       - run: npm run build
 
