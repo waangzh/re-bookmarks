@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  Globe2,
   RefreshCw,
   Bookmark,
 } from "lucide-react";
@@ -15,7 +16,7 @@ import type { BookmarkNode, MovePlan, TokenUsage } from "../types";
 import { executeMovePlans, generateMovePlanPreviewForBookmarks } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
-import { getAllBookmarks } from "../services/bookmarks";
+import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
@@ -271,6 +272,25 @@ export function Preview() {
     return "text-amber-600 bg-amber-50";
   };
 
+  const BookmarkFavicon = ({ title, url }: { title: string; url?: string }) => {
+    const [failed, setFailed] = useState(false);
+    const faviconUrl = url && !failed ? getBookmarkFaviconUrl(url) : "";
+
+    return (
+      <span className="extension-favicon selection-tree-row__favicon" aria-hidden="true" title={title}>
+        <Globe2 className="extension-favicon__fallback" />
+        {faviconUrl && (
+          <img
+            src={faviconUrl}
+            alt=""
+            draggable={false}
+            onError={() => setFailed(true)}
+          />
+        )}
+      </span>
+    );
+  };
+
   const renderSelectionTreeNode = (folder: BookmarkFolderNode, depth = 0) => {
     const isExpanded = expandedSelectionFolders.has(folder.key);
     const selectedCount = getFolderSelectedCount(folder);
@@ -332,7 +352,7 @@ export function Preview() {
           onChange={() => toggleSelect(bookmark.id)}
         />
       </span>
-      <Bookmark className="selection-tree-row__bookmark-icon" />
+      <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
       <span className="selection-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
       {bookmark.url && (
         <a

@@ -31,7 +31,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["dist/popup/index.html", "dist/popup.js", "dist/assets/*", "dist/chunks/*", "dist/icons/*"],
+      "resources": ["dist/popup/index.html", "dist/popup.js", "dist/assets/*", "dist/chunks/*", "dist/icons/*", "dist/logo/*", "logo/*"],
       "matches": ["<all_urls>"]
     }
   ],

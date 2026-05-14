@@ -4,6 +4,7 @@ const path = require("path");
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.resolve(rootDir, "dist");
 const publicIconsDir = path.resolve(rootDir, "public", "icons");
+const logoDir = path.resolve(rootDir, "logo");
 
 // 复制 manifest.json
 const manifestSrc = path.resolve(rootDir, "manifest.json");
@@ -27,7 +28,7 @@ if (fs.existsSync(manifestSrc)) {
   if (manifest.web_accessible_resources) {
     manifest.web_accessible_resources = manifest.web_accessible_resources.map((resource) => ({
       ...resource,
-      resources: resource.resources.map((file) => file.replace(/^dist\//, "")),
+      resources: [...new Set(resource.resources.map((file) => file.replace(/^dist\//, "")))],
     }));
   }
   manifest.action.default_icon = {
@@ -64,5 +65,16 @@ if (!fs.existsSync(distIconsDir)) {
     console.warn(`⚠ Missing: icon${size}.png (run 'node scripts/generate-icons.mjs' to generate)`);
   }
 });
+
+const distLogoDir = path.resolve(distDir, "logo");
+if (fs.existsSync(logoDir)) {
+  fs.mkdirSync(distLogoDir, { recursive: true });
+  fs.readdirSync(logoDir)
+    .filter((file) => file.toLowerCase().endsWith(".png"))
+    .forEach((file) => {
+      fs.copyFileSync(path.join(logoDir, file), path.join(distLogoDir, file));
+      console.log(`Copied logo: ${file}`);
+    });
+}
 
 console.log("✓ Build post-processing complete");

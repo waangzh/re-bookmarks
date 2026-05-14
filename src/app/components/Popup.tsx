@@ -23,18 +23,6 @@ export function Popup() {
 
   return (
     <div className="bookmark-popup">
-      <div className="bookmark-popup__header">
-        <div className="bookmark-popup__brand">
-          <div className="bookmark-popup__brand-icon">
-            <Bookmark className="bookmark-popup__brand-svg" />
-          </div>
-          <h1 className="bookmark-popup__title">ReMarks</h1>
-        </div>
-        <Link to="/options" className="bookmark-popup__icon-button" aria-label="设置">
-          <Settings className="bookmark-popup__settings-icon" />
-        </Link>
-      </div>
-
       <div className="bookmark-popup__card bookmark-popup__card--blue">
         <div className="bookmark-popup__current-head">
           <div className="bookmark-popup__card-title bookmark-popup__card-title--blue">
@@ -126,6 +114,9 @@ export function Popup() {
 
       <div className="bookmark-popup__footer">
         <p>使用 AI 智能分类您的书签</p>
+        <Link to="/options" className="bookmark-popup__icon-button" aria-label="设置">
+          <Settings className="bookmark-popup__settings-icon" />
+        </Link>
       </div>
     </div>
   );

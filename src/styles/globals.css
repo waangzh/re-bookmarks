@@ -263,48 +263,11 @@ input {
   color: #0f172a;
 }
 
-.bookmark-popup__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-right: 0;
-  margin-bottom: 24px;
-}
-
-.bookmark-popup__brand {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-}
-
-.bookmark-popup__brand-icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 9px;
-  background: #2f7df6;
-}
-
-.bookmark-popup__brand-svg {
-  width: 24px;
-  height: 24px;
-  color: #ffffff;
-}
-
-.bookmark-popup__title {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #000000;
-}
-
 .bookmark-popup__icon-button {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   color: #4b5563;
   transition: background-color 160ms ease;
@@ -315,8 +278,8 @@ input {
 }
 
 .bookmark-popup__settings-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .bookmark-popup__card {
@@ -333,9 +296,14 @@ input {
 .bookmark-popup__card--blue {
   display: flex;
   align-items: center;
-  min-height: 90px;
+  min-height: 58px;
+  padding: 10px 12px;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
+}
+
+.bookmark-popup__card--blue + .bookmark-popup__card--amber {
+  margin-top: 12px;
 }
 
 .bookmark-popup__card--amber {
@@ -361,8 +329,8 @@ input {
 
 .bookmark-popup__card-title--blue {
   color: #1d4ed8;
-  font-size: 25px;
-  line-height: 1.15;
+  font-size: 17px;
+  line-height: 1.2;
   font-weight: 700;
 }
 
@@ -385,23 +353,23 @@ input {
 }
 
 .bookmark-popup__count-value {
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 3px 8px;
+  border-radius: 7px;
   background: #f97316;
-  font-size: 25px;
-  line-height: 1.15;
+  font-size: 18px;
+  line-height: 1.2;
   color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 6px 14px rgb(249 115 22 / 24%);
+  box-shadow: 0 4px 10px rgb(249 115 22 / 20%);
 }
 
 .bookmark-popup__count-value--text {
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .bookmark-popup__count-unit {
-  font-size: 25px;
-  line-height: 1.15;
+  font-size: 18px;
+  line-height: 1.2;
   color: #1d4ed8;
   font-weight: 700;
 }
@@ -512,11 +480,14 @@ input {
 }
 
 .bookmark-popup__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 324px;
-  margin-top: 24px;
-  padding-top: 17px;
+  margin-top: 18px;
+  padding-top: 12px;
   border-top: 1px solid #e5e7eb;
-  text-align: center;
 }
 
 .bookmark-popup__footer p {
@@ -822,11 +793,11 @@ input {
 }
 
 .extension-page--preview .extension-page__inner > * + * {
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .extension-page--report .extension-page__inner > * + * {
-  margin-top: 24px;
+  margin-top: 14px;
 }
 
 .extension-page--report .extension-page__header {
@@ -834,16 +805,16 @@ input {
 }
 
 .extension-page--report .extension-section {
-  margin-top: 28px;
+  margin-top: 16px;
 }
 
 .extension-page--report .token-usage-highlight + .extension-section,
 .extension-page--report .extension-success + .extension-section {
-  margin-top: 24px;
+  margin-top: 14px;
 }
 
 .extension-page--report .extension-section + .extension-section {
-  margin-top: 28px;
+  margin-top: 16px;
 }
 
 .extension-page--preview .extension-page__header {
@@ -851,11 +822,11 @@ input {
 }
 
 .extension-page--preview .extension-notice + .extension-notice {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .preview-folder-stack {
-  gap: 18px;
+  gap: 12px;
 }
 
 .extension-page--settings .extension-page__inner > * + * {
@@ -971,7 +942,7 @@ input {
   border: 1px solid #e5eaf0;
   border-radius: 10px;
   background: #ffffff;
-  padding: 15px 16px;
+  padding: 12px 14px;
 }
 
 .extension-section--flush {
@@ -992,9 +963,9 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 52px;
-  padding: 13px 16px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
   color: inherit;
   cursor: pointer;
   list-style: none;
@@ -1051,7 +1022,7 @@ input {
 
 .collapsible-section__body {
   border-top: 1px solid #eef2f7;
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
 }
 
 .collapsible-section__body-actions {
@@ -1079,7 +1050,7 @@ input {
 }
 
 .extension-section__title {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: #334155;
   font-size: 14px;
   font-weight: 600;
@@ -1090,8 +1061,8 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 13px 16px;
+  gap: 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid #e5eaf0;
   background: #f8fafc;
 }
@@ -1183,7 +1154,7 @@ input {
 
 .extension-notice {
   border-radius: 10px;
-  padding: 13px 15px;
+  padding: 10px 12px;
   border: 1px solid transparent;
 }
 
@@ -1213,7 +1184,7 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
   font-size: 14px;
   font-weight: 600;
 }
@@ -1239,13 +1210,13 @@ input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
+  gap: 6px 8px;
   min-width: 0;
   border: 1px solid #c7d2fe;
   border-radius: 10px;
   background: #eef2ff;
   color: #3730a3;
-  padding: 10px 12px;
+  padding: 8px 10px;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1287,10 +1258,10 @@ input {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   min-width: 0;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 0;
   border-bottom: 1px solid #eef2f7;
   background: #ffffff;
@@ -1669,11 +1640,11 @@ input {
 .extension-success {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   border: 1px solid #bbf7d0;
   border-radius: 10px;
   background: #f0fdf4;
-  padding: 16px;
+  padding: 12px 14px;
 }
 
 .extension-success__icon {
@@ -1700,7 +1671,7 @@ input {
 .extension-metrics,
 .extension-folder-grid {
   display: grid;
-  gap: 9px;
+  gap: 8px;
 }
 
 .extension-metrics {
@@ -1720,8 +1691,8 @@ input {
 .extension-metric {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: 12px 8px;
+  gap: 3px;
+  padding: 10px 6px;
   text-align: center;
 }
 
@@ -1832,12 +1803,12 @@ input {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 34px;
+  min-height: 30px;
   width: 100%;
   min-width: 0;
   border: 0;
   border-radius: 8px;
-  padding: 6px 8px 6px calc(8px + var(--tree-depth, 0) * 16px);
+  padding: 5px 8px 5px calc(8px + var(--tree-depth, 0) * 16px);
   color: #475569;
   text-align: left;
 }
@@ -1884,6 +1855,25 @@ input {
   color: #94a3b8;
 }
 
+.report-target-tree-row__favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+
+.report-target-tree-row__favicon img {
+  inset: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.report-target-tree-row__favicon .extension-favicon__fallback {
+  width: 14px;
+  height: 14px;
+}
+
 .report-target-tree-row__title,
 .report-target-tree-row__main,
 .report-target-tree-row__title-line {
@@ -1902,7 +1892,7 @@ input {
 
 .report-target-tree-row__main {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   flex: 1;
 }
 
@@ -1937,13 +1927,13 @@ input {
 
 .report-target-tree-row__reason {
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .extension-page--report .report-actions {
   display: grid;
-  gap: 12px;
-  margin-top: 32px;
+  gap: 10px;
+  margin-top: 20px;
   padding-top: 4px;
 }
 
@@ -2204,7 +2194,7 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .extension-selection-count {
@@ -2275,7 +2265,7 @@ input {
 }
 
 .selection-tree {
-  padding: 6px;
+  padding: 4px;
   max-height: 400px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -2312,7 +2302,7 @@ input {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 30px;
   border-radius: 8px;
   padding: 0 6px 0 calc(6px + var(--tree-depth, 0) * 18px);
   color: #475569;
@@ -2379,6 +2369,24 @@ input {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
+}
+
+.selection-tree-row__favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.selection-tree-row__favicon img {
+  inset: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.selection-tree-row__favicon .extension-favicon__fallback {
+  width: 14px;
+  height: 14px;
   color: #94a3b8;
 }
 

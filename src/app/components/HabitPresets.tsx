@@ -309,17 +309,6 @@ export function HabitPresets() {
             className="extension-control extension-textarea"
           />
         </CollapsibleSection>
-
-        <div className="extension-button-row habit-presets-actions--bottom">
-          <button onClick={handleAnalyze} disabled={isBusy} className="extension-page__wide-secondary extension-page__wide-secondary--blue">
-            <Sparkles className="w-4 h-4" />
-            {status === "analyzing" ? "分析中" : "重新分析"}
-          </button>
-          <button onClick={handleSave} disabled={isBusy} className="extension-page__wide-primary">
-            <Save className="w-4 h-4" />
-            {status === "saving" ? "保存中" : "保存预设"}
-          </button>
-        </div>
       </div>
     </div>
   );

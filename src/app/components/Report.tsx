@@ -9,11 +9,13 @@ import {
   ExternalLink,
   FileText,
   Folder,
+  Globe2,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import type { MovePlan } from "../types";
 import { reapplyLastOrganize, undoLastOrganize } from "../services/organizer";
+import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { useAppStore } from "../store/useAppStore";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -89,6 +91,25 @@ function getConfidenceClass(confidence: number) {
   return "text-amber-600 bg-amber-50";
 }
 
+function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = url && !failed ? getBookmarkFaviconUrl(url) : "";
+
+  return (
+    <span className="extension-favicon report-target-tree-row__favicon" aria-hidden="true" title={title}>
+      <Globe2 className="extension-favicon__fallback" />
+      {faviconUrl && (
+        <img
+          src={faviconUrl}
+          alt=""
+          draggable={false}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
+
 export function Report() {
   const { lastReport, loadReport, loadAll } = useAppStore();
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
@@ -153,7 +174,7 @@ export function Report() {
       style={{ "--tree-depth": depth } as CSSProperties}
     >
       <span className="report-target-tree-row__spacer" />
-      <Bookmark className="report-target-tree-row__bookmark-icon" />
+      <BookmarkFavicon title={plan.bookmarkTitle} url={plan.bookmarkUrl} />
       <div className="report-target-tree-row__main">
         <div className="report-target-tree-row__title-line">
           <span title={plan.bookmarkTitle}>{plan.bookmarkTitle}</span>
@@ -169,7 +190,6 @@ export function Report() {
             </a>
           )}
         </div>
-        {plan.bookmarkUrl && <p className="report-target-tree-row__url">{plan.bookmarkUrl}</p>}
         {plan.reason && <p className="report-target-tree-row__reason">{plan.reason}</p>}
       </div>
       <span className={`extension-confidence ${getConfidenceClass(plan.confidence)}`}>

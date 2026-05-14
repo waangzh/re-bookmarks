@@ -2,6 +2,7 @@
   const hostId = "remarks-floating-host";
   const openMessage = "remarks:open-floating-ui";
   const popupCandidates = ["popup/index.html", "dist/popup/index.html"];
+  const logoUrl = chrome.runtime.getURL("logo/87f10b87-ffb3-4e44-94d6-f577f797673b.png");
 
   async function resolvePopupUrl() {
     for (const candidate of popupCandidates) {
@@ -80,14 +81,10 @@
       }
 
       .remarks-floating__mark {
-        display: grid;
-        place-items: center;
         width: 22px;
         height: 22px;
         border-radius: 7px;
-        background: #2563eb;
-        color: #ffffff;
-        font-size: 12px;
+        object-fit: contain;
       }
 
       .remarks-floating__close {
@@ -138,7 +135,7 @@
 
     const title = document.createElement("div");
     title.className = "remarks-floating__title";
-    title.innerHTML = `<span class="remarks-floating__mark">R</span><span>ReMarks</span>`;
+    title.innerHTML = `<img class="remarks-floating__mark" src="${logoUrl}" alt="" draggable="false"><span>ReMarks</span>`;
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
