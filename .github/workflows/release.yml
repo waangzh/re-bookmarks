@@ -24,6 +24,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm approve-builds esbuild sharp
       - run: npm run build
 
       - name: Create zip
