@@ -10,7 +10,6 @@ import {
   ChevronRight,
   Globe2,
   RefreshCw,
-  Bookmark,
 } from "lucide-react";
 import type { BookmarkNode, MovePlan, TokenUsage } from "../types";
 import { executeMovePlans, generateMovePlanPreviewForBookmarks } from "../services/organizer";
@@ -28,6 +27,15 @@ type BookmarkFolderNode = {
   count: number;
   children: BookmarkFolderNode[];
   bookmarks: BookmarkNode[];
+};
+
+type PreviewFolderNode = {
+  key: string;
+  title: string;
+  path: string[];
+  count: number;
+  children: PreviewFolderNode[];
+  plans: MovePlan[];
 };
 
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
@@ -76,6 +84,66 @@ function buildBookmarkFolderTree(bookmarks: BookmarkNode[]) {
 
   sortTree(root);
   return root;
+}
+
+function createPreviewFolderNode(title: string, path: string[]): PreviewFolderNode {
+  return {
+    key: path.join("/") || "__preview_root__",
+    title,
+    path,
+    count: 0,
+    children: [],
+    plans: [],
+  };
+}
+
+function buildMovePlanFolderTree(plans: MovePlan[]) {
+  const root = createPreviewFolderNode("Root", []);
+  const folderMap = new Map<string, PreviewFolderNode>([[root.key, root]]);
+
+  plans.forEach((plan) => {
+    const folderPath = plan.toFolderPath.length ? plan.toFolderPath : ["待整理"];
+    let current = root;
+    current.count += 1;
+
+    folderPath.forEach((folderName, index) => {
+      const path = folderPath.slice(0, index + 1);
+      const key = path.join("/");
+      let folder = folderMap.get(key);
+
+      if (!folder) {
+        folder = createPreviewFolderNode(folderName, path);
+        folderMap.set(key, folder);
+        current.children.push(folder);
+      }
+
+      folder.count += 1;
+      current = folder;
+    });
+
+    current.plans.push(plan);
+  });
+
+  const sortTree = (node: PreviewFolderNode) => {
+    node.children.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
+    node.plans.sort((a, b) => a.bookmarkTitle.localeCompare(b.bookmarkTitle, "zh-CN"));
+    node.children.forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root;
+}
+
+function countPreviewFolders(root: PreviewFolderNode) {
+  let count = 0;
+  const walk = (node: PreviewFolderNode) => {
+    if (node.plans.length > 0) count += 1;
+    node.children.forEach((child) => {
+      walk(child);
+    });
+  };
+  walk(root);
+  return count;
 }
 
 function formatTokenCount(value: number) {
@@ -240,16 +308,8 @@ export function Preview() {
     }
   };
 
-  const groupedByFolder = useMemo(
-    () =>
-      plans.reduce((acc, plan) => {
-        const key = plan.toFolderPath.join(" / ");
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(plan);
-        return acc;
-      }, {} as Record<string, MovePlan[]>),
-    [plans]
-  );
+  const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
+  const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
 
   const handleConfirm = async () => {
     if (!plans.length) return;
@@ -283,12 +343,20 @@ export function Preview() {
     return "text-amber-600 bg-amber-50";
   };
 
-  const BookmarkFavicon = ({ title, url }: { title: string; url?: string }) => {
+  const BookmarkFavicon = ({
+    title,
+    url,
+    className = "selection-tree-row__favicon",
+  }: {
+    title: string;
+    url?: string;
+    className?: string;
+  }) => {
     const [failed, setFailed] = useState(false);
     const faviconUrl = url && !failed ? getBookmarkFaviconUrl(url) : "";
 
     return (
-      <span className="extension-favicon selection-tree-row__favicon" aria-hidden="true" title={title}>
+      <span className={`extension-favicon ${className}`} aria-hidden="true" title={title}>
         <Globe2 className="extension-favicon__fallback" />
         {faviconUrl && (
           <img
@@ -378,6 +446,81 @@ export function Preview() {
         </a>
       )}
     </label>
+  );
+
+  const renderPreviewTreeNode = (folder: PreviewFolderNode, depth = 0) => {
+    const isCollapsed = collapsedFolders.has(folder.key);
+    const hasChildren = folder.children.length > 0 || folder.plans.length > 0;
+    const folderPath = folder.path.join(" / ");
+
+    return (
+      <div key={folder.key} className="preview-tree-node">
+        <button
+          type="button"
+          className="preview-tree-row preview-tree-row--folder"
+          style={{ "--tree-depth": depth } as CSSProperties}
+          aria-expanded={!isCollapsed}
+          onClick={() => toggleFolder(folder.key)}
+        >
+          <span className="preview-tree-row__expand">
+            {hasChildren ? (
+              isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+            ) : null}
+          </span>
+          <Folder className="preview-tree-row__folder-icon" />
+          <span className="preview-tree-row__title" title={folderPath}>{folder.title}</span>
+          <span className="preview-tree-row__count">{folder.count} 个</span>
+        </button>
+
+        {!isCollapsed && (
+          <>
+            {folder.children.map((child) => renderPreviewTreeNode(child, depth + 1))}
+            {folder.plans.map((plan) => renderPreviewPlanRow(plan, depth + 1))}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderPreviewPlanRow = (plan: MovePlan, depth: number) => (
+    <button
+      key={plan.bookmarkId}
+      className={`preview-tree-row preview-tree-row--bookmark ${
+        selectedPlan === plan.bookmarkId ? "is-selected" : ""
+      }`}
+      style={{ "--tree-depth": depth } as CSSProperties}
+      onClick={() => setSelectedPlan(plan.bookmarkId)}
+    >
+      <span className="preview-tree-row__expand" />
+      <BookmarkFavicon
+        title={plan.bookmarkTitle}
+        url={plan.bookmarkUrl}
+        className="preview-tree-row__favicon"
+      />
+      <span className="preview-tree-row__content">
+        <span className="preview-tree-row__title-line">
+          <span className="preview-tree-row__title" title={plan.bookmarkTitle}>{plan.bookmarkTitle}</span>
+          {plan.bookmarkUrl && (
+            <a
+              href={plan.bookmarkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="extension-link-icon"
+              aria-label="打开书签"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </span>
+        {plan.reason && (
+          <span className="preview-tree-row__note">{plan.reason}</span>
+        )}
+      </span>
+      <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
+        {Math.round(plan.confidence * 100)}%
+      </span>
+    </button>
   );
 
   const toggleSelectAll = () => {
@@ -486,7 +629,7 @@ export function Preview() {
                 <span>整理前预览</span>
               </div>
               <p>
-                将移动 {plans.length} 个书签到 {Object.keys(groupedByFolder).length} 个文件夹。确认前不会修改任何书签。
+                将移动 {plans.length} 个书签到 {previewFolderCount} 个文件夹。确认前不会修改任何书签。
               </p>
             </div>
 
@@ -509,69 +652,10 @@ export function Preview() {
                 <span>请先在浏览器中添加书签</span>
               </div>
             ) : (
-              <div className="extension-stack preview-folder-stack">
-                {Object.entries(groupedByFolder).map(([folderPath, items]) => {
-                  const isCollapsed = collapsedFolders.has(folderPath);
-
-                  return (
-                    <section key={folderPath} className="extension-section extension-section--flush">
-                      <button
-                        type="button"
-                        className="extension-section__bar extension-section__bar--button"
-                        aria-expanded={!isCollapsed}
-                        onClick={() => toggleFolder(folderPath)}
-                      >
-                        <div className="extension-section__bar-title">
-                          {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                          <Folder className="w-5 h-5" />
-                          <span>{folderPath}</span>
-                        </div>
-                        <span className="extension-pill">{items.length} 个</span>
-                      </button>
-
-                      {!isCollapsed && (
-                        <div className="extension-list">
-                          {items.map((plan) => (
-                            <button
-                              key={plan.bookmarkId}
-                              className={`extension-list__item extension-list__item--button ${
-                                selectedPlan === plan.bookmarkId ? "is-selected" : ""
-                              }`}
-                              onClick={() => setSelectedPlan(plan.bookmarkId)}
-                            >
-                              <div className="extension-list__main">
-                                <div className="extension-list__title-row">
-                                  <h3>{plan.bookmarkTitle}</h3>
-                                  {plan.bookmarkUrl && (
-                                    <a
-                                      href={plan.bookmarkUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="extension-link-icon"
-                                      aria-label="打开书签"
-                                      onClick={(event) => event.stopPropagation()}
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                    </a>
-                                  )}
-                                </div>
-                                {plan.bookmarkUrl && (
-                                  <p className="extension-list__url">{plan.bookmarkUrl}</p>
-                                )}
-                                {plan.reason && (
-                                  <p className="extension-list__note">{plan.reason}</p>
-                                )}
-                              </div>
-                              <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
-                                {Math.round(plan.confidence * 100)}%
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </section>
-                  );
-                })}
+              <div className="preview-tree-panel">
+                <div className="preview-tree">
+                  {previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
+                </div>
               </div>
             )}
 

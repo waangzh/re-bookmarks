@@ -988,6 +988,172 @@ input {
   gap: 12px;
 }
 
+.preview-tree-panel {
+  overflow: hidden;
+  border: 1px solid #e5eaf0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.preview-tree {
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.preview-tree:hover {
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.preview-tree::-webkit-scrollbar {
+  width: 6px;
+}
+
+.preview-tree::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.preview-tree::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: transparent;
+  transition: background-color 160ms ease;
+}
+
+.preview-tree:hover::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+.preview-tree:hover::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.preview-tree-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 6px 7px 6px calc(7px + var(--tree-depth, 0) * 18px);
+  color: #475569;
+  text-align: left;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.preview-tree-row--folder {
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.preview-tree-row--folder:hover {
+  background: #eef6ff;
+}
+
+.preview-tree-row--bookmark {
+  align-items: flex-start;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.preview-tree-row--bookmark:hover,
+.preview-tree-row--bookmark.is-selected {
+  background: #f8fbff;
+  box-shadow: inset 3px 0 0 #93c5fd;
+}
+
+.preview-tree-row__expand {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #94a3b8;
+}
+
+.preview-tree-row__folder-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  color: #3b82f6;
+  fill: rgba(59, 130, 246, 0.14);
+}
+
+.preview-tree-row__favicon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  border-radius: 4px;
+}
+
+.preview-tree-row__favicon img {
+  inset: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.preview-tree-row__favicon .extension-favicon__fallback {
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+}
+
+.preview-tree-row__content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.preview-tree-row__title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-tree-row__title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-tree-row--folder .preview-tree-row__title {
+  color: #1e40af;
+}
+
+.preview-tree-row__count {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.preview-tree-row__note {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-tree-row__note {
+  color: #64748b;
+}
+
 .extension-page--settings .extension-page__inner > * + * {
   margin-top: 18px;
 }
