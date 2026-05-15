@@ -3,8 +3,8 @@ import type { BookmarkNode, OrganizeReport, PendingRecommendation, Settings } fr
 import { getAllBookmarks } from "../services/bookmarks";
 import {
   DEFAULT_SETTINGS,
-  getLastReport,
   getPendingRecommendations,
+  getReportHistory,
   getSettings,
   saveSettings,
 } from "../services/storage";
@@ -13,6 +13,7 @@ type AppState = {
   settings: Settings;
   bookmarks: BookmarkNode[];
   pendingRecommendations: PendingRecommendation[];
+  reportHistory: OrganizeReport[];
   lastReport: OrganizeReport | null;
   loading: boolean;
   error: string | null;
@@ -21,6 +22,7 @@ type AppState = {
   loadRecommendations: () => Promise<void>;
   loadSettings: () => Promise<void>;
   loadReport: () => Promise<void>;
+  loadReports: () => Promise<void>;
   saveSettings: (settings: Settings) => Promise<void>;
 };
 
@@ -28,19 +30,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   bookmarks: [],
   pendingRecommendations: [],
+  reportHistory: [],
   lastReport: null,
   loading: false,
   error: null,
   async loadAll() {
     set({ loading: true, error: null });
     try {
-      const [settings, bookmarks, pendingRecommendations, lastReport] = await Promise.all([
+      const [settings, bookmarks, pendingRecommendations, reportHistory] = await Promise.all([
         getSettings(),
         getAllBookmarks(),
         getPendingRecommendations(),
-        getLastReport(),
+        getReportHistory(),
       ]);
-      set({ settings, bookmarks, pendingRecommendations, lastReport, loading: false });
+      set({
+        settings,
+        bookmarks,
+        pendingRecommendations,
+        reportHistory,
+        lastReport: reportHistory[0] ?? null,
+        loading: false,
+      });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "加载失败", loading: false });
     }
@@ -58,8 +68,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ settings });
   },
   async loadReport() {
-    const lastReport = await getLastReport();
-    set({ lastReport });
+    await get().loadReports();
+  },
+  async loadReports() {
+    const reportHistory = await getReportHistory();
+    set({ reportHistory, lastReport: reportHistory[0] ?? null });
   },
   async saveSettings(settings) {
     await saveSettings(settings);

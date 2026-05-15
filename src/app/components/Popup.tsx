@@ -81,7 +81,7 @@ export function Popup() {
           <Link to="/report" className="bookmark-popup__action bookmark-popup__action--secondary">
             <div className="bookmark-popup__action-main">
               <CheckCircle className="bookmark-popup__action-icon" />
-              <span>上次整理结果</span>
+              <span>整理报告</span>
             </div>
             <span className="bookmark-popup__arrow">→</span>
           </Link>

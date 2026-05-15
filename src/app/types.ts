@@ -105,6 +105,7 @@ export type FailedMove = {
 
 export type OrganizeReport = {
   id: string;
+  kind?: "organize" | "undo" | "reapply";
   createdAt: number;
   movedCount: number;
   folderCount: number;

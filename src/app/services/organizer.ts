@@ -27,7 +27,7 @@ import {
   getPendingRecommendations,
   getSettings,
   saveLastBackup,
-  saveLastReport,
+  saveReportToHistory,
   savePendingRecommendations,
 } from "./storage";
 
@@ -441,7 +441,7 @@ async function findAllFolderSnapshots(): Promise<Array<{ id: string; path: strin
 export async function executeMovePlans(
   plans: MovePlan[],
   tokenUsage?: TokenUsage,
-  options: { cleanupAllEmptyFolders?: boolean } = {}
+  options: { cleanupAllEmptyFolders?: boolean; reportKind?: OrganizeReport["kind"] } = {}
 ): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
 
@@ -502,6 +502,7 @@ export async function executeMovePlans(
 
   const report: OrganizeReport = {
     id: `report-${Date.now()}`,
+    kind: options.reportKind ?? "organize",
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(plans),
@@ -512,7 +513,7 @@ export async function executeMovePlans(
     tokenUsage,
   };
 
-  await saveLastReport(report);
+  await saveReportToHistory(report);
   return report;
 }
 
@@ -553,6 +554,7 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
 
   const report: OrganizeReport = {
     id: `undo-${Date.now()}`,
+    kind: "undo",
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(backup.movePlan),
@@ -563,7 +565,7 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
     undone: true,
   };
 
-  await saveLastReport(report);
+  await saveReportToHistory(report);
   return report;
 }
 
@@ -571,7 +573,10 @@ export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
   const backup = await getLastBackup();
   if (!backup) return null;
 
-  return executeMovePlans(backup.movePlan, undefined, { cleanupAllEmptyFolders: true });
+  return executeMovePlans(backup.movePlan, undefined, {
+    cleanupAllEmptyFolders: true,
+    reportKind: "reapply",
+  });
 }
 
 export async function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {

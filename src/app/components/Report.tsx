@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft,
-  Bookmark,
   CheckCircle,
   ChevronDown,
   ChevronRight,
+  Clock,
   ExternalLink,
   FileText,
   Folder,
@@ -13,13 +13,15 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import type { MovePlan } from "../types";
+import type { MovePlan, OrganizeReport } from "../types";
 import { reapplyLastOrganize, undoLastOrganize } from "../services/organizer";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
+import { REPORT_HISTORY_LIMIT } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 type BusyAction = "undo" | "reapply" | null;
+type ReportKind = NonNullable<OrganizeReport["kind"]>;
 
 type ReportTargetFolderNode = {
   key: string;
@@ -32,6 +34,50 @@ type ReportTargetFolderNode = {
 
 function formatTokenCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatReportTime(value: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function getReportKind(report: OrganizeReport): ReportKind {
+  return report.kind ?? (report.undone ? "undo" : "organize");
+}
+
+function getReportKindMeta(report: OrganizeReport) {
+  const kind = getReportKind(report);
+  if (kind === "undo") {
+    return {
+      kind,
+      label: "撤销",
+      title: "撤销完成",
+      subtitle: "已按最近一次备份尝试恢复书签位置",
+      movedLabel: "已恢复",
+    };
+  }
+
+  if (kind === "reapply") {
+    return {
+      kind,
+      label: "重新应用",
+      title: "重新应用完成",
+      subtitle: "已按最近一次分类结果重新移动书签",
+      movedLabel: "已移动",
+    };
+  }
+
+  return {
+    kind,
+    label: "整理",
+    title: "整理完成",
+    subtitle: "结果已保存到本地报告历史",
+    movedLabel: "已移动",
+  };
 }
 
 function folderKey(path: string[]) {
@@ -111,25 +157,46 @@ function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
 }
 
 export function Report() {
-  const { lastReport, loadReport, loadAll } = useAppStore();
+  const { reportHistory, loadReports, loadAll } = useAppStore();
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [message, setMessage] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    void loadReport();
-  }, [loadReport]);
+    void loadReports();
+  }, [loadReports]);
+
+  useEffect(() => {
+    const latestId = reportHistory[0]?.id ?? null;
+    if (!latestId) {
+      setSelectedReportId(null);
+      return;
+    }
+
+    if (!selectedReportId || !reportHistory.some((report) => report.id === selectedReportId)) {
+      setSelectedReportId(latestId);
+    }
+  }, [reportHistory, selectedReportId]);
+
+  const selectedReport = useMemo(
+    () => reportHistory.find((report) => report.id === selectedReportId) ?? reportHistory[0] ?? null,
+    [reportHistory, selectedReportId]
+  );
 
   useEffect(() => {
     setExpandedFolders(new Set());
-  }, [lastReport?.id]);
+  }, [selectedReport?.id]);
 
   const targetTree = useMemo(
-    () => buildTargetFolderTree(lastReport?.movePlan ?? []),
-    [lastReport?.movePlan]
+    () => buildTargetFolderTree(selectedReport?.movePlan ?? []),
+    [selectedReport?.movePlan]
   );
 
-  const skippedFolderCleanup = lastReport?.skippedFolderCleanup ?? [];
+  const isLatestReport = Boolean(selectedReport && reportHistory[0]?.id === selectedReport.id);
+  const skippedFolderCleanup = selectedReport?.skippedFolderCleanup ?? [];
+  const selectedMeta = selectedReport ? getReportKindMeta(selectedReport) : null;
 
   const toggleFolder = (key: string) => {
     setExpandedFolders((prev) => {
@@ -144,10 +211,12 @@ export function Report() {
   };
 
   const handleUndo = async () => {
-    if (!confirm("确认要撤销本次整理吗？书签将恢复到整理前的位置。")) return;
+    if (!selectedReport || !isLatestReport) return;
+    if (!confirm("确认要撤销最近一次整理吗？书签将恢复到整理前的位置。")) return;
     setBusyAction("undo");
     try {
       await undoLastOrganize();
+      setSelectedReportId(null);
       await loadAll();
       setMessage("已撤销最近一次整理，并清理空的目标文件夹");
     } finally {
@@ -156,15 +225,53 @@ export function Report() {
   };
 
   const handleReapply = async () => {
-    if (!confirm("确认要重新应用上次智能整理吗？将按上次分类结果移动书签，不会重新调用 AI。")) return;
+    if (!selectedReport || !isLatestReport) return;
+    if (!confirm("确认要重新应用最近一次智能整理吗？将按最近一次分类结果移动书签，不会重新调用 AI。")) return;
     setBusyAction("reapply");
     try {
       await reapplyLastOrganize();
+      setSelectedReportId(null);
       await loadAll();
-      setMessage("已重新应用上次智能整理");
+      setMessage("已重新应用最近一次智能整理");
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const renderHistoryCard = (report: OrganizeReport, index: number) => {
+    const meta = getReportKindMeta(report);
+    const selected = selectedReport?.id === report.id;
+
+    return (
+      <button
+        key={report.id}
+        type="button"
+        className={`report-history-card report-history-card--${meta.kind}${selected ? " report-history-card--active" : ""}`}
+        onClick={() => {
+          setSelectedReportId(report.id);
+          setMessage("");
+        }}
+      >
+        <span className="report-history-card__rail" aria-hidden="true" />
+        <span className="report-history-card__dot" aria-hidden="true" />
+        <span className="report-history-card__body">
+          <span className="report-history-card__topline">
+            <span className="report-history-card__kind">{meta.label}</span>
+            {index === 0 && <span className="extension-pill">最新</span>}
+          </span>
+          <span className="report-history-card__time">
+            <Clock className="w-3 h-3" />
+            {formatReportTime(report.createdAt)}
+          </span>
+          <span className="report-history-card__metrics">
+            <span>{report.movedCount} 个</span>
+            <span>{report.folderCount} 个文件夹</span>
+            <span>{report.failedItems.length} 失败</span>
+            {report.tokenUsage && <span>{formatTokenCount(report.tokenUsage.totalTokens)} tokens</span>}
+          </span>
+        </span>
+      </button>
+    );
   };
 
   const renderBookmarkRow = (plan: MovePlan, depth: number) => (
@@ -233,7 +340,7 @@ export function Report() {
     );
   };
 
-  if (!lastReport) {
+  if (!selectedReport || !selectedMeta) {
     return (
       <div className="extension-page">
         <div className="extension-page__inner">
@@ -250,7 +357,7 @@ export function Report() {
           </div>
           <div className="extension-empty">
             <p>暂无整理报告</p>
-            <span>完成一次整理后会在这里显示结果</span>
+            <span>完成一次整理后会在这里显示最近 {REPORT_HISTORY_LIMIT} 次结果</span>
           </div>
         </div>
       </div>
@@ -267,28 +374,48 @@ export function Report() {
             </Link>
             <div>
               <h1 className="extension-page__title">整理报告</h1>
-              <p className="extension-page__subtitle">
-                {lastReport.undone ? "最近一次撤销结果" : "最近一次整理结果"}
-              </p>
+              <p className="extension-page__subtitle">最近 {Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作</p>
             </div>
           </div>
         </div>
 
+        <section className="extension-section report-history">
+          <button
+            type="button"
+            className="report-history__head"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((open) => !open)}
+          >
+            <span className="report-history__title">
+              {historyOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <span className="extension-section__title">报告历史</span>
+            </span>
+            <span className="extension-pill">
+              {reportHistory.length} / {REPORT_HISTORY_LIMIT}
+            </span>
+          </button>
+          {historyOpen && (
+            <div className="report-history__list">
+              {reportHistory.map((report, index) => renderHistoryCard(report, index))}
+            </div>
+          )}
+        </section>
+
         <section className="extension-success">
           <CheckCircle className="extension-success__icon" />
           <div>
-            <h2>{lastReport.undone ? "撤销完成" : "整理完成"}</h2>
-            <p>{message || "结果已保存到本地报告"}</p>
+            <h2>{selectedMeta.title}</h2>
+            <p>{message && isLatestReport ? message : isLatestReport ? selectedMeta.subtitle : "历史报告仅用于查看，撤销和重新应用只支持最新一次操作"}</p>
           </div>
         </section>
 
-        {lastReport.tokenUsage && (
+        {selectedReport.tokenUsage && (
           <div className="token-usage-highlight" aria-label="本次智能整理 token 消耗">
             <span className="token-usage-highlight__label">Token 消耗</span>
-            <strong>{formatTokenCount(lastReport.tokenUsage.totalTokens)}</strong>
+            <strong>{formatTokenCount(selectedReport.tokenUsage.totalTokens)}</strong>
             <span>
-              输入 {formatTokenCount(lastReport.tokenUsage.promptTokens)} / 输出{" "}
-              {formatTokenCount(lastReport.tokenUsage.completionTokens)}
+              输入 {formatTokenCount(selectedReport.tokenUsage.promptTokens)} / 输出{" "}
+              {formatTokenCount(selectedReport.tokenUsage.completionTokens)}
             </span>
           </div>
         )}
@@ -298,24 +425,24 @@ export function Report() {
           <div className="extension-metrics">
             <div className="extension-metric">
               <FileText className="extension-metric__icon extension-metric__icon--blue" />
-              <div className="extension-metric__value">{lastReport.movedCount}</div>
-              <div className="extension-metric__label">{lastReport.undone ? "已恢复" : "已移动"}</div>
+              <div className="extension-metric__value">{selectedReport.movedCount}</div>
+              <div className="extension-metric__label">{selectedMeta.movedLabel}</div>
             </div>
             <div className="extension-metric">
               <Folder className="extension-metric__icon extension-metric__icon--green" />
-              <div className="extension-metric__value">{lastReport.folderCount}</div>
+              <div className="extension-metric__value">{selectedReport.folderCount}</div>
               <div className="extension-metric__label">文件夹</div>
             </div>
-            {lastReport.removedFolders ? (
+            {selectedReport.removedFolders ? (
               <div className="extension-metric">
                 <Trash2 className="extension-metric__icon extension-metric__icon--red" />
-                <div className="extension-metric__value">{lastReport.removedFolders}</div>
+                <div className="extension-metric__value">{selectedReport.removedFolders}</div>
                 <div className="extension-metric__label">已清理</div>
               </div>
             ) : null}
             <div className="extension-metric">
               <CheckCircle className="extension-metric__icon" />
-              <div className="extension-metric__value">{lastReport.failedItems.length}</div>
+              <div className="extension-metric__value">{selectedReport.failedItems.length}</div>
               <div className="extension-metric__label">失败</div>
             </div>
           </div>
@@ -324,14 +451,18 @@ export function Report() {
         <section className="extension-section">
           <h3 className="extension-section__title">目标文件夹</h3>
           <div className="report-target-tree">
-            {targetTree.children.map((folder) => renderFolderNode(folder))}
+            {targetTree.children.length > 0 ? (
+              targetTree.children.map((folder) => renderFolderNode(folder))
+            ) : (
+              <div className="extension-empty extension-empty--compact">暂无移动计划</div>
+            )}
           </div>
         </section>
 
-        {lastReport.failedItems.length > 0 && (
-          <CollapsibleSection title="失败明细" count={lastReport.failedItems.length} hint="查看未完成移动的书签和原因">
+        {selectedReport.failedItems.length > 0 && (
+          <CollapsibleSection title="失败明细" count={selectedReport.failedItems.length} hint="查看未完成移动的书签和原因">
             <div className="extension-compact-list">
-              {lastReport.failedItems.map((item) => (
+              {selectedReport.failedItems.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
                   <span>{item.bookmarkTitle}</span>
                   <span>{item.reason}</span>
@@ -356,23 +487,31 @@ export function Report() {
 
         <CollapsibleSection title="隐私说明" hint="查看本次整理的数据使用和备份范围">
           <ul className="extension-copy-list">
-            {lastReport.privacySummary.map((item) => (
+            {selectedReport.privacySummary.map((item) => (
               <li key={item}>· {item}</li>
             ))}
           </ul>
         </CollapsibleSection>
 
-        <div className="report-actions">
-          {!lastReport.undone ? (
-            <button onClick={handleUndo} disabled={Boolean(busyAction)} className="extension-page__wide-secondary">
-              <RotateCcw className="w-5 h-5" />
-              {busyAction === "undo" ? "撤销中" : "撤销本次整理"}
-            </button>
-          ) : (
-            <button onClick={handleReapply} disabled={Boolean(busyAction)} className="extension-page__wide-primary">
-              <RotateCcw className="w-5 h-5" />
-              {busyAction === "reapply" ? "重新应用中" : "重新应用本次整理"}
-            </button>
+        {!isLatestReport && (
+          <div className="extension-notice extension-notice--blue">
+            <p>这是历史报告，只用于查看。撤销和重新应用仅支持最新一次操作。</p>
+          </div>
+        )}
+
+        <div className={`report-actions${isLatestReport ? "" : " report-actions--single"}`}>
+          {isLatestReport && (
+            selectedMeta.kind === "undo" ? (
+              <button onClick={handleReapply} disabled={Boolean(busyAction)} className="extension-page__wide-primary">
+                <RotateCcw className="w-5 h-5" />
+                {busyAction === "reapply" ? "重新应用中" : "重新应用本次整理"}
+              </button>
+            ) : (
+              <button onClick={handleUndo} disabled={Boolean(busyAction)} className="extension-page__wide-secondary">
+                <RotateCcw className="w-5 h-5" />
+                {busyAction === "undo" ? "撤销中" : "撤销本次整理"}
+              </button>
+            )
           )}
 
           <Link to="/" className="extension-page__wide-primary">
