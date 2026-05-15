@@ -99,6 +99,13 @@ export function Preview() {
     () => new Set(["__root__"])
   );
 
+  const loadSelectableBookmarks = async () => {
+    const bookmarks = await getAllBookmarks();
+    const urlBookmarks = bookmarks.filter((b) => b.url);
+    setAllBookmarks(urlBookmarks);
+    setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
+  };
+
   // 加载所有书签
   useEffect(() => {
     let alive = true;
@@ -117,11 +124,7 @@ export function Preview() {
         }
 
         // 没有缓存，加载书签列表供选择
-        const bookmarks = await getAllBookmarks();
-        const urlBookmarks = bookmarks.filter((b) => b.url);
-        setAllBookmarks(urlBookmarks);
-        // 默认全选
-        setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
+        await loadSelectableBookmarks();
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载书签失败");
       } finally {
@@ -224,9 +227,17 @@ export function Preview() {
     setSelectedPlan(null);
     setCacheMessage("");
     setTokenUsage(undefined);
-    await clearPreviewPlan();
-    setPlans([]);
-    setPhase("selection");
+    setLoading(true);
+    setError("");
+    try {
+      await loadSelectableBookmarks();
+      setPlans([]);
+      setPhase("selection");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载书签失败");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const groupedByFolder = useMemo(
