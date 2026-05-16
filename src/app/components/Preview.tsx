@@ -11,10 +11,11 @@ import {
   Globe2,
   RefreshCw,
 } from "lucide-react";
-import type { BookmarkNode, MovePlan, TokenUsage } from "../types";
-import { executeMovePlans, generateMovePlanPreviewForBookmarks } from "../services/organizer";
+import type { BookmarkNode, MovePlan, PreviewTaskCache, TokenUsage } from "../types";
+import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
+import { clearPreviewPlan, getPreviewPlan } from "../services/storage";
+import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -162,6 +163,7 @@ export function Preview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
     () => new Set(["__root__"])
@@ -174,14 +176,49 @@ export function Preview() {
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
   };
 
+  const restoreCompletedTask = (task: PreviewTaskCache) => {
+    if (!task.movePlan?.length) return false;
+
+    setPlans(task.movePlan);
+    setTokenUsage(task.tokenUsage);
+    setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
+    setPhase("preview");
+    setLoading(false);
+    setActiveTaskId(null);
+    return true;
+  };
+
+  const restoreRunningTask = (task: PreviewTaskCache) => {
+    setPlans([]);
+    setTokenUsage(undefined);
+    setActiveTaskId(task.id);
+    setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
+    setPhase("preview");
+    setLoading(true);
+  };
+
   // 加载所有书签
   useEffect(() => {
     let alive = true;
     const load = async () => {
       setLoading(true);
       try {
+        const task = await getPreviewTask();
+        if (!alive) return;
+        if (task?.status === "running") {
+          restoreRunningTask(task);
+          return;
+        }
+        if (task?.status === "completed" && restoreCompletedTask(task)) {
+          return;
+        }
+        if (task?.status === "failed" && task.error) {
+          setError(task.error);
+        }
+
         // 先检查是否有缓存的预览
         const cached = await getPreviewPlan();
+        if (!alive) return;
         if (cached?.movePlan.length) {
           setPlans(cached.movePlan);
           setTokenUsage(cached.tokenUsage);
@@ -204,6 +241,45 @@ export function Preview() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeTaskId || !loading || phase !== "preview") return;
+
+    let alive = true;
+    const pollTask = async () => {
+      const task = await getPreviewTask();
+      if (!alive || task?.id !== activeTaskId) return;
+
+      if (task.status === "completed") {
+        restoreCompletedTask(task);
+        return;
+      }
+
+      if (task.status === "failed") {
+        setActiveTaskId(null);
+        setError(task.error ?? "生成分类失败");
+        setCacheMessage("");
+        setPlans([]);
+        setPhase("selection");
+        setLoading(true);
+        try {
+          await loadSelectableBookmarks();
+        } finally {
+          if (alive) setLoading(false);
+        }
+      }
+    };
+
+    void pollTask();
+    const timer = window.setInterval(() => {
+      void pollTask();
+    }, 1500);
+
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [activeTaskId, loading, phase]);
 
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
 
@@ -270,22 +346,19 @@ export function Preview() {
 
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
-      const previewResult = await generateMovePlanPreviewForBookmarks(bookmarksToClassify);
-      const movePlans = previewResult.movePlans;
-      setPlans(movePlans);
-      setTokenUsage(previewResult.tokenUsage);
-      await savePreviewPlan({
-        id: `preview-${Date.now()}`,
-        createdAt: Date.now(),
-        bookmarkCount: movePlans.length,
-        movePlan: movePlans,
-        tokenUsage: previewResult.tokenUsage,
-      });
-      setCacheMessage("预览结果已保存，返回后可继续查看");
+      const task = await startPreviewTask(bookmarksToClassify);
+      if (task?.status === "completed" && restoreCompletedTask(task)) return;
+      if (task?.status === "failed") {
+        throw new Error(task.error ?? "生成分类失败");
+      }
+      if (task) {
+        restoreRunningTask(task);
+        return;
+      }
+      throw new Error("生成分类失败");
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成分类失败");
       setPhase("selection");
-    } finally {
       setLoading(false);
     }
   };
@@ -295,9 +368,11 @@ export function Preview() {
     setSelectedPlan(null);
     setCacheMessage("");
     setTokenUsage(undefined);
+    setActiveTaskId(null);
     setLoading(true);
     setError("");
     try {
+      await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadSelectableBookmarks();
       setPlans([]);
       setPhase("selection");
@@ -316,7 +391,7 @@ export function Preview() {
     setPhase("submitting");
     try {
       await executeMovePlans(plans, tokenUsage);
-      await clearPreviewPlan();
+      await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadAll();
       navigate("/report");
     } catch (err) {

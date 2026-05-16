@@ -1,4 +1,5 @@
 import { createPendingRecommendation } from "@/app/services/organizer";
+import { handlePreviewTaskMessage, isPreviewTaskMessage } from "@/app/services/previewTask";
 import { updateRecommendationBadge } from "@/app/services/recommendations";
 
 const popupCandidates = ["popup/index.html", "dist/popup/index.html"];
@@ -71,6 +72,22 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.tabs.sendMessage(tab.id, { type: floatingMessage }, () => {
     void chrome.runtime.lastError;
   });
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!isPreviewTaskMessage(message)) return false;
+
+  void handlePreviewTaskMessage(message)
+    .then((task) => {
+      sendResponse({ task });
+    })
+    .catch((error: unknown) => {
+      sendResponse({
+        error: error instanceof Error ? error.message : "预览任务处理失败",
+      });
+    });
+
+  return true;
 });
 
 export {};

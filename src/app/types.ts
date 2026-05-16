@@ -126,6 +126,18 @@ export type PreviewPlanCache = {
   tokenUsage?: TokenUsage;
 };
 
+export type PreviewTaskCache = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  createdAt: number;
+  updatedAt: number;
+  bookmarkCount: number;
+  selectedBookmarkIds: string[];
+  movePlan?: MovePlan[];
+  tokenUsage?: TokenUsage;
+  error?: string;
+};
+
 export type FolderHabitProfile = {
   id: string;
   createdAt: number;

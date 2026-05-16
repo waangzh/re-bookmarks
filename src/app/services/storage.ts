@@ -4,6 +4,7 @@ import type {
   OrganizeReport,
   PendingRecommendation,
   PreviewPlanCache,
+  PreviewTaskCache,
   Settings,
 } from "../types";
 
@@ -14,6 +15,7 @@ export const STORAGE_KEYS = {
   lastReport: "remarks.lastReport",
   reportHistory: "remarks.reportHistory",
   previewPlan: "remarks.previewPlan",
+  previewTask: "remarks.previewTask",
   folderHabitProfile: "remarks.folderHabitProfile",
 } as const;
 
@@ -178,6 +180,28 @@ export async function clearPreviewPlan(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     chrome.storage.local.remove(STORAGE_KEYS.previewPlan, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export function getPreviewTask(): Promise<PreviewTaskCache | null> {
+  return getStorageValue<PreviewTaskCache | null>(STORAGE_KEYS.previewTask, null);
+}
+
+export function savePreviewTask(previewTask: PreviewTaskCache): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.previewTask, previewTask);
+}
+
+export async function clearPreviewTask(): Promise<void> {
+  if (!hasChromeStorage()) return;
+
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.remove(STORAGE_KEYS.previewTask, () => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;

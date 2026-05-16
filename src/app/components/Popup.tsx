@@ -3,18 +3,23 @@ import { Link } from "react-router";
 import { Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles, CheckCircle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { getPreviewPlan } from "../services/storage";
+import { getPreviewTask } from "../services/previewTask";
 
 export function Popup() {
   const { bookmarks, pendingRecommendations, lastReport, loadAll, loading } = useAppStore();
-  const [hasPreviewCache, setHasPreviewCache] = useState(false);
+  const [previewState, setPreviewState] = useState<"none" | "running" | "ready">("none");
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
 
   useEffect(() => {
-    void getPreviewPlan().then((cache) => {
-      setHasPreviewCache(!!cache?.movePlan?.length);
+    void Promise.all([getPreviewPlan(), getPreviewTask()]).then(([cache, task]) => {
+      if (task?.status === "running") {
+        setPreviewState("running");
+        return;
+      }
+      setPreviewState(cache?.movePlan?.length || task?.movePlan?.length ? "ready" : "none");
     });
   }, []);
 
@@ -59,11 +64,11 @@ export function Popup() {
       )}
 
       <div className="bookmark-popup__actions">
-        {hasPreviewCache ? (
+        {previewState !== "none" ? (
           <Link to="/preview" className="bookmark-popup__action bookmark-popup__action--primary">
             <div className="bookmark-popup__action-main">
               <FileText className="bookmark-popup__action-icon" />
-              <span>继续上次预览</span>
+              <span>{previewState === "running" ? "继续智能整理" : "继续上次预览"}</span>
             </div>
             <span className="bookmark-popup__arrow">→</span>
           </Link>
