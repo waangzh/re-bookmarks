@@ -160,7 +160,7 @@ export function History() {
                     <div className="history-card__topline">
                       <div className="history-card__identity">
                         <HistoryFavicon title={bookmark.title} url={bookmark.url} />
-                        <h3>{bookmark.title}</h3>
+                        <h3 title={bookmark.title}>{bookmark.title}</h3>
                       </div>
                       <a
                         href={bookmark.url}
