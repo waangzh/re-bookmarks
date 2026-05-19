@@ -164,7 +164,7 @@ export function Preview() {
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [expandedPreviewFolders, setExpandedPreviewFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
     () => new Set(["__root__"])
   );
@@ -364,7 +364,7 @@ export function Preview() {
   };
 
   const handleRegenerate = async () => {
-    setCollapsedFolders(new Set());
+    setExpandedPreviewFolders(new Set());
     setSelectedPlan(null);
     setCacheMessage("");
     setTokenUsage(undefined);
@@ -401,7 +401,7 @@ export function Preview() {
   };
 
   const toggleFolder = (folderPath: string) => {
-    setCollapsedFolders((prev) => {
+    setExpandedPreviewFolders((prev) => {
       const next = new Set(prev);
       if (next.has(folderPath)) {
         next.delete(folderPath);
@@ -524,7 +524,7 @@ export function Preview() {
   );
 
   const renderPreviewTreeNode = (folder: PreviewFolderNode, depth = 0) => {
-    const isCollapsed = collapsedFolders.has(folder.key);
+    const isExpanded = expandedPreviewFolders.has(folder.key);
     const hasChildren = folder.children.length > 0 || folder.plans.length > 0;
     const folderPath = folder.path.join(" / ");
 
@@ -534,12 +534,12 @@ export function Preview() {
           type="button"
           className="preview-tree-row preview-tree-row--folder"
           style={{ "--tree-depth": depth } as CSSProperties}
-          aria-expanded={!isCollapsed}
+          aria-expanded={isExpanded}
           onClick={() => toggleFolder(folder.key)}
         >
           <span className="preview-tree-row__expand">
             {hasChildren ? (
-              isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+              isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
             ) : null}
           </span>
           <Folder className="preview-tree-row__folder-icon" />
@@ -547,7 +547,7 @@ export function Preview() {
           <span className="preview-tree-row__count">{folder.count} 个</span>
         </button>
 
-        {!isCollapsed && (
+        {isExpanded && (
           <>
             {folder.children.map((child) => renderPreviewTreeNode(child, depth + 1))}
             {folder.plans.map((plan) => renderPreviewPlanRow(plan, depth + 1))}
