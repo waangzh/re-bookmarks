@@ -6,6 +6,7 @@ type CollapsibleSectionProps = {
   count?: number | string;
   hint?: string;
   defaultOpen?: boolean;
+  onToggle?: (open: boolean, details: HTMLDetailsElement) => void;
   children: ReactNode;
   className?: string;
 };
@@ -15,6 +16,7 @@ export function CollapsibleSection({
   count,
   hint,
   defaultOpen = false,
+  onToggle,
   children,
   className = "",
 }: CollapsibleSectionProps) {
@@ -24,7 +26,11 @@ export function CollapsibleSection({
     <section className={`extension-section extension-section--flush collapsible-section ${className}`.trim()}>
       <details
         open={open}
-        onToggle={(event) => setOpen(event.currentTarget.open)}
+        onToggle={(event) => {
+          const nextOpen = event.currentTarget.open;
+          setOpen(nextOpen);
+          onToggle?.(nextOpen, event.currentTarget);
+        }}
         className="collapsible-section__details"
       >
         <summary className="collapsible-section__summary" aria-expanded={open}>

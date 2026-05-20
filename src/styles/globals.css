@@ -2486,6 +2486,12 @@ input {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+.extension-textarea--autosize {
+  min-height: 42px;
+  overflow: hidden;
+  resize: none;
+}
+
 .extension-field__label-row {
   display: flex;
   align-items: center;
@@ -2769,9 +2775,27 @@ input {
   align-items: start;
 }
 
+.habit-rule-card__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.habit-rule-card__save,
 .habit-rule-card__delete {
   margin-top: 20px;
   background: #ffffff;
+}
+
+.habit-rule-card__actions .habit-rule-card__save,
+.habit-rule-card__actions .habit-rule-card__delete {
+  margin-top: 0;
+}
+
+.habit-rule-card__save:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
 }
 
 .extension-icon-action--red.habit-rule-card__delete:hover {

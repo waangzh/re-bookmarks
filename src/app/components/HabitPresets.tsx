@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, ChevronRight, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import type { FolderHabitProfile } from "../types";
 import {
   analyzeAndSaveFolderHabits,
@@ -27,6 +27,50 @@ function pathToText(path: string[]) {
 
 function textToPath(text: string) {
   return text.split("/").flatMap((part) => part.split(" / ")).map((part) => part.trim()).filter(Boolean);
+}
+
+function resizeTextarea(element: HTMLTextAreaElement) {
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+function resizeTextareaInElement(element: Element) {
+  const textarea = element.querySelector("textarea");
+  if (textarea) {
+    requestAnimationFrame(() => resizeTextarea(textarea));
+  }
+}
+
+function AutoResizeTextarea({
+  className = "",
+  onChange,
+  value,
+  rows = 1,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      resizeTextarea(textareaRef.current);
+    }
+  }, [value]);
+
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    resizeTextarea(event.currentTarget);
+    onChange?.(event);
+  };
+
+  return (
+    <textarea
+      {...props}
+      ref={textareaRef}
+      value={value}
+      onChange={handleChange}
+      rows={rows}
+      className={`extension-control extension-textarea extension-textarea--autosize ${className}`.trim()}
+    />
+  );
 }
 
 export function HabitPresets() {
@@ -224,22 +268,41 @@ export function HabitPresets() {
                       placeholder="开发 / 文档"
                     />
                   </div>
-                  <button
-                    type="button"
-                    className="extension-icon-action extension-icon-action--red habit-rule-card__delete"
-                    aria-label="删除规则"
-                    title="删除规则"
-                    onClick={() =>
-                      updateProfile((item) => ({
-                        ...item,
-                        folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== index),
-                      }))
-                    }
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="habit-rule-card__actions">
+                    <button
+                      type="button"
+                      className="extension-icon-action extension-icon-action--blue habit-rule-card__save"
+                      aria-label="保存规则"
+                      title="保存规则"
+                      disabled={isBusy}
+                      onClick={handleSave}
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="extension-icon-action extension-icon-action--red habit-rule-card__delete"
+                      aria-label="删除规则"
+                      title="删除规则"
+                      onClick={() =>
+                        updateProfile((item) => ({
+                          ...item,
+                          folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== index),
+                        }))
+                      }
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <details className="habit-rule-feature-details">
+                <details
+                  className="habit-rule-feature-details"
+                  onToggle={(event) => {
+                    if (event.currentTarget.open) {
+                      resizeTextareaInElement(event.currentTarget);
+                    }
+                  }}
+                >
                   <summary className="habit-rule-feature-summary">
                     <span className="habit-rule-feature-title">
                       <ChevronRight className="habit-rule-feature-icon" />
@@ -248,7 +311,7 @@ export function HabitPresets() {
                     <span className="habit-rule-feature-hint">点击展开浏览编辑</span>
                   </summary>
                   <div className="extension-field habit-rule-feature-body">
-                    <textarea
+                    <AutoResizeTextarea
                       value={rule.pattern}
                       onChange={(event) =>
                         updateProfile((item) => ({
@@ -258,8 +321,6 @@ export function HabitPresets() {
                           ),
                         }))
                       }
-                      rows={3}
-                      className="extension-control extension-textarea"
                       placeholder="适合放入这里的书签特征"
                     />
                   </div>
@@ -312,12 +373,18 @@ export function HabitPresets() {
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="给 AI 的预设提示" hint="展开后编辑传给分类模型的习惯提示">
-          <textarea
+        <CollapsibleSection
+          title="给 AI 的预设提示"
+          hint="展开后编辑传给分类模型的习惯提示"
+          onToggle={(open, details) => {
+            if (open) {
+              resizeTextareaInElement(details);
+            }
+          }}
+        >
+          <AutoResizeTextarea
             value={current.promptHint}
             onChange={(event) => updateProfile((item) => ({ ...item, promptHint: event.target.value }))}
-            rows={6}
-            className="extension-control extension-textarea"
           />
         </CollapsibleSection>
       </div>
