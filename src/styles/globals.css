@@ -2762,6 +2762,81 @@ input {
   background: #f8fafc;
 }
 
+.habit-rule-card__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.habit-rule-card__delete {
+  margin-top: 20px;
+  background: #ffffff;
+}
+
+.extension-icon-action--red.habit-rule-card__delete:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.habit-rule-feature-details {
+  border: 1px solid #e5eaf0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.habit-rule-feature-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.habit-rule-feature-summary::-webkit-details-marker {
+  display: none;
+}
+
+.habit-rule-feature-summary:focus-visible {
+  outline: 2px solid rgba(47, 125, 246, 0.35);
+  outline-offset: -2px;
+}
+
+.habit-rule-feature-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.habit-rule-feature-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: #64748b;
+  transition: transform 160ms ease;
+}
+
+.habit-rule-feature-details[open] .habit-rule-feature-icon {
+  transform: rotate(90deg);
+}
+
+.habit-rule-feature-hint {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.habit-rule-feature-body {
+  border-top: 1px solid #eef2f7;
+  padding: 10px 12px 12px;
+}
+
 .extension-switch-row {
   display: flex;
   align-items: center;

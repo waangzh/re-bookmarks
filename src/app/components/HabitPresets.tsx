@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import type { FolderHabitProfile } from "../types";
 import {
   analyzeAndSaveFolderHabits,
@@ -207,52 +207,63 @@ export function HabitPresets() {
           <div className="habit-rule-list">
             {current.folderRules.map((rule, index) => (
               <div key={`${pathToText(rule.folderPath)}-${index}`} className="habit-rule-card">
-                <div className="extension-field">
-                  <label>文件夹路径</label>
-                  <input
-                    value={pathToText(rule.folderPath)}
-                    onChange={(event) =>
+                <div className="habit-rule-card__header">
+                  <div className="extension-field">
+                    <label>文件夹路径</label>
+                    <input
+                      value={pathToText(rule.folderPath)}
+                      onChange={(event) =>
+                        updateProfile((item) => ({
+                          ...item,
+                          folderRules: item.folderRules.map((value, itemIndex) =>
+                            itemIndex === index ? { ...value, folderPath: textToPath(event.target.value) } : value
+                          ),
+                        }))
+                      }
+                      className="extension-control"
+                      placeholder="开发 / 文档"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="extension-icon-action extension-icon-action--red habit-rule-card__delete"
+                    aria-label="删除规则"
+                    title="删除规则"
+                    onClick={() =>
                       updateProfile((item) => ({
                         ...item,
-                        folderRules: item.folderRules.map((value, itemIndex) =>
-                          itemIndex === index ? { ...value, folderPath: textToPath(event.target.value) } : value
-                        ),
+                        folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== index),
                       }))
                     }
-                    className="extension-control"
-                    placeholder="开发 / 文档"
-                  />
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="extension-field">
-                  <label>适用内容特征</label>
-                  <textarea
-                    value={rule.pattern}
-                    onChange={(event) =>
-                      updateProfile((item) => ({
-                        ...item,
-                        folderRules: item.folderRules.map((value, itemIndex) =>
-                          itemIndex === index ? { ...value, pattern: event.target.value } : value
-                        ),
-                      }))
-                    }
-                    rows={3}
-                    className="extension-control extension-textarea"
-                    placeholder="适合放入这里的书签特征"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="extension-page__wide-secondary"
-                  onClick={() =>
-                    updateProfile((item) => ({
-                      ...item,
-                      folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== index),
-                    }))
-                  }
-                >
-                  <Trash2 className="w-4 h-4" />
-                  删除规则
-                </button>
+                <details className="habit-rule-feature-details">
+                  <summary className="habit-rule-feature-summary">
+                    <span className="habit-rule-feature-title">
+                      <ChevronRight className="habit-rule-feature-icon" />
+                      适用内容特征
+                    </span>
+                    <span className="habit-rule-feature-hint">点击展开浏览编辑</span>
+                  </summary>
+                  <div className="extension-field habit-rule-feature-body">
+                    <textarea
+                      value={rule.pattern}
+                      onChange={(event) =>
+                        updateProfile((item) => ({
+                          ...item,
+                          folderRules: item.folderRules.map((value, itemIndex) =>
+                            itemIndex === index ? { ...value, pattern: event.target.value } : value
+                          ),
+                        }))
+                      }
+                      rows={3}
+                      className="extension-control extension-textarea"
+                      placeholder="适合放入这里的书签特征"
+                    />
+                  </div>
+                </details>
               </div>
             ))}
           </div>
