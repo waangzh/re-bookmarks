@@ -1,7 +1,7 @@
 import type { FolderHabitProfile, FolderHabitSample } from "../types";
 import { analyzeFolderHabitsWithAI } from "./aiProvider";
 import { getAllBookmarks } from "./bookmarks";
-import { getDomain } from "./rules";
+import { getDomain, sanitizeUrl } from "./rules";
 import {
   clearPreviewPlan,
   getFolderHabitProfile,
@@ -40,20 +40,20 @@ function inferSourceType(sample: FolderHabitSample) {
 }
 
 function buildFallbackPattern(sample: FolderHabitSample) {
-  const topic = sample.folderPath.length
-    ? sample.folderPath.join(" / ")
-    : "该文件夹主题";
-  const domains = uniqueNonEmpty(sample.examples.map((example) => example.domain)).slice(0, 4);
-  const titles = uniqueNonEmpty(sample.examples.map((example) => example.title)).slice(0, 3);
+  const topic = sample.folderPath.at(-1) || sample.folderPath.join(" / ") || "该文件夹主题";
+  const parentTopic = sample.folderPath.length > 1 ? sample.folderPath.slice(0, -1).join(" / ") : "";
+  const references = sample.examples
+    .filter((example) => example.title.trim())
+    .slice(0, 3)
+    .map((example) => {
+      const link = example.url || example.domain;
+      return link ? `${example.title}（${link}）` : example.title;
+    });
   const sourceType = inferSourceType(sample);
-  const domainText = domains.length
-    ? domains.length === 1
-      ? `主要来源：${domains[0]}。`
-      : `常见来源：${domains.join("、")}。`
-    : "";
-  const titleText = titles.length ? `参考标题：${titles.join("、")}。` : "";
+  const scopeText = parentTopic ? `，通常属于“${parentTopic}”主题下的资料` : "";
+  const referenceText = references.length ? `参考：${references.join("、")}。` : "";
 
-  return `适用于围绕“${topic}”的${sourceType}，已有 ${sample.bookmarkCount} 个相关书签。${domainText}${titleText}后续归入这里的内容应与该主题、来源类型或标题特征明显一致。`;
+  return `主要放置与“${topic}”相关的${sourceType}${scopeText}。已有 ${sample.bookmarkCount} 个相关书签。${referenceText}`;
 }
 
 function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitProfile, "id" | "createdAt"> {
@@ -113,6 +113,7 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
       existing.examples.push({
         title: bookmark.title,
         domain: getDomain(bookmark.url),
+        url: sanitizeUrl(bookmark.url),
       });
     }
     folders.set(key, existing);

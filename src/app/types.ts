@@ -23,6 +23,7 @@ export type FolderHabitSample = {
   examples: Array<{
     title: string;
     domain: string;
+    url?: string;
   }>;
 };
 
