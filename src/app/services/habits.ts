@@ -23,6 +23,39 @@ function stripRootFolderNames(path: string[]) {
   return next;
 }
 
+function uniqueNonEmpty(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function inferSourceType(sample: FolderHabitSample) {
+  const text = `${sample.folderPath.join(" ")} ${sample.examples
+    .map((example) => `${example.title} ${example.domain}`)
+    .join(" ")}`.toLowerCase();
+
+  if (/github|gitlab|repo|repository|代码|源码|开源/.test(text)) return "代码仓库、开源项目或工程资料";
+  if (/docs|doc|developer|api|reference|guide|指南|文档|手册|教程/.test(text)) return "文档、教程、指南或 API 参考";
+  if (/youtube|bilibili|video|课程|视频|公开课/.test(text)) return "视频、课程或演示内容";
+  if (/zhihu|juejin|csdn|cnblogs|medium|blog|博客|文章|经验|讨论/.test(text)) return "文章、经验分享或讨论内容";
+  return "网页资料";
+}
+
+function buildFallbackPattern(sample: FolderHabitSample) {
+  const topic = sample.folderPath.length
+    ? sample.folderPath.join(" / ")
+    : "该文件夹主题";
+  const domains = uniqueNonEmpty(sample.examples.map((example) => example.domain)).slice(0, 4);
+  const titles = uniqueNonEmpty(sample.examples.map((example) => example.title)).slice(0, 3);
+  const sourceType = inferSourceType(sample);
+  const domainText = domains.length
+    ? domains.length === 1
+      ? `主要来源：${domains[0]}。`
+      : `常见来源：${domains.join("、")}。`
+    : "";
+  const titleText = titles.length ? `参考标题：${titles.join("、")}。` : "";
+
+  return `适用于围绕“${topic}”的${sourceType}，已有 ${sample.bookmarkCount} 个相关书签。${domainText}${titleText}后续归入这里的内容应与该主题、来源类型或标题特征明显一致。`;
+}
+
 function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitProfile, "id" | "createdAt"> {
   const topLevelCounts = new Map<string, number>();
   let bookmarkCount = 0;
@@ -42,9 +75,7 @@ function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitPro
 
   const folderRules = samples.slice(0, 30).map((sample) => ({
     folderPath: sample.folderPath,
-    pattern: `已有 ${sample.bookmarkCount} 个书签，示例：${sample.examples
-      .map((example) => `${example.title}${example.domain ? `(${example.domain})` : ""}`)
-      .join("、")}`,
+    pattern: buildFallbackPattern(sample),
   }));
 
   return {
@@ -57,7 +88,7 @@ function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitPro
     folderRules,
     avoidRules: ["避免为单个网站或少量相似页面创建独立文件夹", "优先复用已有文件夹命名"],
     promptHint: preferredTopLevelFolders.length
-      ? `优先复用用户已有一级分类：${preferredTopLevelFolders.join("、")}；分类粒度应贴近现有文件夹，不要过度细分。`
+      ? `优先复用用户已有一级分类：${preferredTopLevelFolders.join("、")}；分类粒度应贴近现有文件夹，并参考文件夹规则中的适用内容特征，不要过度细分。`
       : "分类应保持少量、通用、可维护。",
   };
 }

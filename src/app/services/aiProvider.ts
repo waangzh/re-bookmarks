@@ -481,7 +481,7 @@ export async function analyzeFolderHabitsWithAI(
       {
         role: "system",
         content:
-          "你是书签分类习惯分析助手。必须输出合法 JSON 对象，不要 Markdown，不要解释。请根据用户现有文件夹路径和样例，总结用户的分类命名、粒度和偏好。输出格式为 {\"summary\":\"一句话总结\",\"preferredTopLevelFolders\":[\"一级分类\"],\"folderRules\":[{\"folderPath\":[\"一级\",\"二级\"],\"pattern\":\"适合放入这里的内容特征\"}],\"avoidRules\":[\"应避免的过度分类行为\"],\"promptHint\":\"给后续书签分类模型使用的一段简短指令\"}。",
+          "你是书签分类习惯分析助手。必须输出合法 JSON 对象，不要 Markdown，不要解释。请根据用户现有文件夹路径和样例，总结用户的分类命名、粒度和偏好。folderRules[].pattern 必须提炼该文件夹适用内容的共同主题、来源类型、标题或域名特征，描述什么内容适合放入这里；不要只罗列网站示例。可以少量补充常见来源，例如“常见来源：MDN、React、Vite”，但必须服务于共同点总结。promptHint 应提醒后续分类模型参考这些文件夹规则体现的主题、命名和粒度。输出格式为 {\"summary\":\"一句话总结\",\"preferredTopLevelFolders\":[\"一级分类\"],\"folderRules\":[{\"folderPath\":[\"一级\",\"二级\"],\"pattern\":\"适合放入这里的共同内容特征\"}],\"avoidRules\":[\"应避免的过度分类行为\"],\"promptHint\":\"给后续书签分类模型使用的一段简短指令\"}。",
       },
       {
         role: "user",
