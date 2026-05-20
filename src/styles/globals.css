@@ -1166,6 +1166,10 @@ input {
   margin-top: 20px;
 }
 
+.extension-page--habits {
+  overflow-anchor: none;
+}
+
 .extension-page--habits .extension-page__inner {
   display: grid;
   gap: 22px;
