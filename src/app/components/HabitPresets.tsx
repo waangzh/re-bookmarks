@@ -172,11 +172,9 @@ export function HabitPresets() {
             </div>
             <div className="extension-field">
               <label>总结</label>
-              <textarea
+              <AutoResizeTextarea
                 value={current.summary}
                 onChange={(event) => updateProfile((item) => ({ ...item, summary: event.target.value }))}
-                rows={3}
-                className="extension-control extension-textarea"
               />
             </div>
           </div>
