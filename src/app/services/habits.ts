@@ -23,10 +23,6 @@ function stripRootFolderNames(path: string[]) {
   return next;
 }
 
-function uniqueNonEmpty(values: string[]) {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
 function inferSourceType(sample: FolderHabitSample) {
   const text = `${sample.folderPath.join(" ")} ${sample.examples
     .map((example) => `${example.title} ${example.domain}`)
