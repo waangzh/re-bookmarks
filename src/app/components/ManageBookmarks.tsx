@@ -13,8 +13,10 @@ import {
   ChevronRight,
   X,
   Check,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
-import type { BookmarkNode } from "../types";
+import type { BookmarkLinkHealthReport, BookmarkNode } from "../types";
 import {
   createBookmark,
   ensureFolderPath,
@@ -25,7 +27,15 @@ import {
   removeBookmark,
   updateBookmark,
 } from "../services/bookmarks";
+import {
+  checkBookmarkLinks,
+  filterDuplicateBookmarks,
+  isUnsortedBookmark,
+} from "../services/bookmarkTasks";
+import { getLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+
+type TaskMode = "unsorted" | "duplicate" | "invalid";
 
 type BookmarkFolderNode = {
   id?: string;
@@ -132,13 +142,29 @@ function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
   );
 }
 
+function getTaskMode(searchParams: URLSearchParams): TaskMode | null {
+  const task = searchParams.get("task");
+  if (task === "unsorted" || task === "duplicate" || task === "invalid") return task;
+  return searchParams.get("search") === "duplicate" ? "duplicate" : null;
+}
+
+function formatScanTime(timestamp: number) {
+  return new Date(timestamp).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function ManageBookmarks() {
-  const { bookmarks, loadBookmarks, settings } = useAppStore();
+  const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, settings } = useAppStore();
   const [searchParams] = useSearchParams();
+  const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [searchQuery, setSearchQuery] = useState(() => {
     const value = searchParams.get("search") ?? "";
-    return value === "1" || value === "duplicate" ? "" : value;
+    return value === "1" || value === "duplicate" || searchParams.get("task") ? "" : value;
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title: "", url: "", path: "" });
@@ -153,6 +179,9 @@ export function ManageBookmarks() {
   const [draggedBookmark, setDraggedBookmark] = useState<BookmarkNode | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
+  const [scanProgress, setScanProgress] = useState({ checked: 0, total: 0 });
+  const [scanningLinks, setScanningLinks] = useState(false);
   const dragSessionRef = useRef<DragSession | null>(null);
   const folderLookupRef = useRef<Map<string, BookmarkFolderNode>>(new Map());
   const activeDropFolderRef = useRef<BookmarkFolderNode | null>(null);
@@ -161,61 +190,74 @@ export function ManageBookmarks() {
   const hoverExpandFolderKeyRef = useRef<string | null>(null);
 
   const loadManagedBookmarks = useCallback(async () => {
-    const [, nextFolders] = await Promise.all([loadBookmarks(), getAllBookmarkFolders()]);
+    const [, , nextFolders] = await Promise.all([loadBookmarks(), loadRecommendations(), getAllBookmarkFolders()]);
     setFolders(nextFolders);
-  }, [loadBookmarks]);
+  }, [loadBookmarks, loadRecommendations]);
 
   useEffect(() => {
     void loadManagedBookmarks();
   }, [loadManagedBookmarks]);
 
-  const duplicateMode = searchParams.get("search") === "duplicate" && !searchQuery;
+  useEffect(() => {
+    void getLinkHealthReport().then(setLinkHealthReport);
+  }, []);
 
-  const duplicateUrls = useMemo(() => {
-    const counts = new Map<string, number>();
-    const normalize = (url: string) => {
-      try {
-        const parsed = new URL(url);
-        parsed.search = "";
-        parsed.hash = "";
-        return parsed.toString();
-      } catch {
-        return url;
-      }
-    };
+  useEffect(() => {
+    if (taskMode) setSearchQuery("");
+  }, [taskMode]);
 
-    bookmarks.forEach((bookmark) => {
-      if (!bookmark.url) return;
-      const key = normalize(bookmark.url);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    });
+  const invalidBookmarkIds = useMemo(() => {
+    return new Set(
+      linkHealthReport?.results
+        .filter((result) => result.status === "invalid")
+        .map((result) => result.bookmarkId) ?? []
+    );
+  }, [linkHealthReport]);
 
-    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([url]) => url));
-  }, [bookmarks]);
+  const taskBookmarks = useMemo(() => {
+    if (taskMode === "unsorted") return bookmarks.filter(isUnsortedBookmark);
+    if (taskMode === "duplicate") return filterDuplicateBookmarks(bookmarks);
+    if (taskMode === "invalid") return bookmarks.filter((bookmark) => invalidBookmarkIds.has(bookmark.id));
+    return bookmarks;
+  }, [bookmarks, invalidBookmarkIds, taskMode]);
 
   const filteredBookmarks = useMemo(() => {
-    const normalize = (url: string) => {
-      try {
-        const parsed = new URL(url);
-        parsed.search = "";
-        parsed.hash = "";
-        return parsed.toString();
-      } catch {
-        return url;
-      }
-    };
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return taskBookmarks;
 
-    if (duplicateMode) {
-      return bookmarks.filter((bookmark) => bookmark.url && duplicateUrls.has(normalize(bookmark.url)));
-    }
-
-    const query = searchQuery.toLowerCase();
-    return bookmarks.filter(
-      (bookmark) =>
+    return taskBookmarks.filter((bookmark) => {
+      return (
         bookmark.title.toLowerCase().includes(query) ||
-        bookmark.url?.toLowerCase().includes(query)
-    );
-  }, [bookmarks, duplicateMode, duplicateUrls, searchQuery]);
+        bookmark.url?.toLowerCase().includes(query) ||
+        bookmark.path.join(" / ").toLowerCase().includes(query)
+      );
+    });
+  }, [searchQuery, taskBookmarks]);
+
+  const invalidReasonById = useMemo(() => {
+    const lookup = new Map<string, string>();
+    linkHealthReport?.results.forEach((result) => {
+      if (result.status === "invalid") lookup.set(result.bookmarkId, result.reason ?? "疑似无法访问");
+    });
+    return lookup;
+  }, [linkHealthReport]);
+
+  const pageTitle = useMemo(() => {
+    if (taskMode === "unsorted") return "未分类书签";
+    if (taskMode === "duplicate") return "重复链接";
+    if (taskMode === "invalid") return "失效链接";
+    return "管理书签";
+  }, [taskMode]);
+
+  const pageSubtitle = useMemo(() => {
+    if (taskMode === "invalid") {
+      if (!linkHealthReport) return "手动检测书签链接状态";
+      return `上次检测 ${linkHealthReport.checkedCount} 个，发现 ${linkHealthReport.invalidCount} 个疑似失效`;
+    }
+    if (taskMode === "unsorted") return `${taskBookmarks.length} 个书签在待整理/未分类位置`;
+    if (taskMode === "duplicate") return `${taskBookmarks.length} 个书签存在重复 URL`;
+    return `${bookmarks.length} 个本地书签`;
+  }, [bookmarks.length, linkHealthReport, taskBookmarks.length, taskMode]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -225,7 +267,7 @@ export function ManageBookmarks() {
   }, [folderLookup]);
 
   const visibleExpandedFolders = useMemo(() => {
-    if (!searchQuery) return expandedFolders;
+    if (!searchQuery && !taskMode) return expandedFolders;
 
     const keys = new Set<string>();
     const collect = (node: BookmarkFolderNode) => {
@@ -234,7 +276,7 @@ export function ManageBookmarks() {
     };
     collect(folderTree);
     return keys;
-  }, [expandedFolders, folderTree, searchQuery]);
+  }, [expandedFolders, folderTree, searchQuery, taskMode]);
 
   useEffect(() => {
     const clearPendingTimer = () => {
@@ -508,6 +550,12 @@ export function ManageBookmarks() {
           <span className="bookmark-tree-row__chevron" />
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
           <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+          {taskMode === "invalid" && invalidReasonById.has(bookmark.id) && (
+            <span className="bookmark-tree-row__status" title={invalidReasonById.get(bookmark.id)}>
+              <AlertTriangle className="w-3 h-3" />
+              {invalidReasonById.get(bookmark.id)}
+            </span>
+          )}
           {bookmark.url && (
             <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
               <ExternalLink className="w-3 h-3" />
@@ -546,6 +594,35 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleLinkScan = async () => {
+    setScanningLinks(true);
+    setMessage("");
+    setScanProgress({ checked: 0, total: bookmarks.length });
+    try {
+      const report = await checkBookmarkLinks(bookmarks, (checked, total) => {
+        setScanProgress({ checked, total });
+      });
+      setLinkHealthReport(report);
+      setMessage(`检测完成：发现 ${report.invalidCount} 个疑似失效链接，跳过 ${report.skippedCount} 个非网页链接。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "链接检测失败");
+    } finally {
+      setScanningLinks(false);
+    }
+  };
+
+  const emptyMessage = useMemo(() => {
+    if (searchQuery) return "未找到匹配的书签";
+    if (taskMode === "unsorted") {
+      return pendingRecommendations.length > 0 ? "暂无未分类文件夹书签，可先处理上方 AI 推荐" : "暂无未分类书签";
+    }
+    if (taskMode === "duplicate") return "暂无重复链接";
+    if (taskMode === "invalid") {
+      return linkHealthReport ? "未发现疑似失效链接" : "尚未检测链接，点击开始检测后查看结果";
+    }
+    return "暂无书签";
+  }, [linkHealthReport, pendingRecommendations.length, searchQuery, taskMode]);
+
   return (
     <div className="extension-page">
       <div className="extension-page__inner">
@@ -555,14 +632,16 @@ export function ManageBookmarks() {
               <ArrowLeft className="extension-page__back-icon" />
             </Link>
             <div>
-              <h1 className="extension-page__title">管理书签</h1>
-              <p className="extension-page__subtitle">{bookmarks.length} 个本地书签</p>
+              <h1 className="extension-page__title">{pageTitle}</h1>
+              <p className="extension-page__subtitle">{pageSubtitle}</p>
             </div>
           </div>
-          <button onClick={() => setShowAddForm(true)} className="extension-page__primary-button">
-            <Plus className="w-4 h-4" />
-            添加书签
-          </button>
+          {!taskMode && (
+            <button onClick={() => setShowAddForm(true)} className="extension-page__primary-button">
+              <Plus className="w-4 h-4" />
+              添加书签
+            </button>
+          )}
         </div>
 
         {message && (
@@ -571,26 +650,63 @@ export function ManageBookmarks() {
           </div>
         )}
 
+        {taskMode === "unsorted" && pendingRecommendations.length > 0 && (
+          <div className="extension-notice extension-notice--blue extension-notice--left">
+            <p>
+              另有 {pendingRecommendations.length} 条 AI 分类建议等待确认。
+              <Link to="/recommendations">处理推荐</Link>
+            </p>
+          </div>
+        )}
+
+        {taskMode === "invalid" && (
+          <section className="bookmark-task-panel">
+            <div className="bookmark-task-panel__main">
+              <strong>手动检测链接</strong>
+              <p>
+                仅检测 http/https 书签。401、403、429 会视为可到达，不会标记为失效。
+              </p>
+              {linkHealthReport && (
+                <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleLinkScan()}
+              disabled={scanningLinks || bookmarks.length === 0}
+              className="extension-page__wide-primary bookmark-task-panel__button"
+            >
+              <RefreshCw className={`w-4 h-4 ${scanningLinks ? "bookmark-task-panel__spin" : ""}`} />
+              {scanningLinks ? `检测中 ${scanProgress.checked}/${scanProgress.total}` : linkHealthReport ? "重新检测" : "开始检测"}
+            </button>
+            {scanningLinks && scanProgress.total > 0 && (
+              <div className="bookmark-task-progress" aria-hidden="true">
+                <span style={{ width: `${Math.round((scanProgress.checked / scanProgress.total) * 100)}%` }} />
+              </div>
+            )}
+          </section>
+        )}
+
         <div className="extension-search-field manage-bookmarks-search">
           <Search className="extension-search-field__icon" />
           <input
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="搜索书签..."
+            placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签..."}
             className="extension-control extension-control--search"
           />
         </div>
 
         <section className="bookmark-tree-panel">
           <div className="bookmark-tree-panel__head">
-            <h3>文件夹</h3>
-            <span>{bookmarks.length}</span>
+            <h3>{taskMode ? "任务结果" : "文件夹"}</h3>
+            <span>{filteredBookmarks.length}</span>
           </div>
           <div className="bookmark-tree">{renderFolderNode(folderTree)}</div>
         </section>
 
-        {showAddForm && (
+        {!taskMode && showAddForm && (
           <section className="extension-section extension-section--accent">
             <div className="extension-section__bar extension-section__bar--plain">
               <h3 className="extension-section__title">添加新书签</h3>
@@ -620,7 +736,7 @@ export function ManageBookmarks() {
 
         {filteredBookmarks.length === 0 && (
           <div className="extension-empty extension-empty--compact">
-            {searchQuery ? "未找到匹配的书签" : "暂无书签"}
+            {emptyMessage}
           </div>
         )}
         {draggedBookmark && (

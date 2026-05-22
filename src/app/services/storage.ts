@@ -1,5 +1,6 @@
 import type {
   BookmarkBackup,
+  BookmarkLinkHealthReport,
   FolderHabitProfile,
   OrganizeReport,
   PendingRecommendation,
@@ -17,6 +18,7 @@ export const STORAGE_KEYS = {
   previewPlan: "remarks.previewPlan",
   previewTask: "remarks.previewTask",
   folderHabitProfile: "remarks.folderHabitProfile",
+  linkHealthReport: "remarks.linkHealthReport",
 } as const;
 
 export const REPORT_HISTORY_LIMIT = 5;
@@ -109,6 +111,14 @@ export function getPendingRecommendations(): Promise<PendingRecommendation[]> {
 
 export function savePendingRecommendations(recommendations: PendingRecommendation[]): Promise<void> {
   return setStorageValue(STORAGE_KEYS.pendingRecommendations, recommendations);
+}
+
+export function getLinkHealthReport(): Promise<BookmarkLinkHealthReport | null> {
+  return getStorageValue<BookmarkLinkHealthReport | null>(STORAGE_KEYS.linkHealthReport, null);
+}
+
+export function saveLinkHealthReport(report: BookmarkLinkHealthReport): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.linkHealthReport, report);
 }
 
 export function getLastBackup(): Promise<BookmarkBackup | null> {

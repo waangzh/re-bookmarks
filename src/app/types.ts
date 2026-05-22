@@ -76,6 +76,25 @@ export type PendingRecommendation = {
   reason?: string;
 };
 
+export type BookmarkLinkHealthResult = {
+  bookmarkId: string;
+  bookmarkTitle: string;
+  bookmarkUrl: string;
+  checkedAt: number;
+  status: "ok" | "invalid" | "skipped";
+  httpStatus?: number;
+  reason?: string;
+};
+
+export type BookmarkLinkHealthReport = {
+  id: string;
+  createdAt: number;
+  checkedCount: number;
+  skippedCount: number;
+  invalidCount: number;
+  results: BookmarkLinkHealthResult[];
+};
+
 export type AIProviderType = "openai" | "deepseek" | "zhipu" | "kimi" | "gemini" | "minimax" | "qwen" | "doubao" | "custom";
 
 export type AIProviderConfig = {

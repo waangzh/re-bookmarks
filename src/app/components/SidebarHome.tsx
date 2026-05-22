@@ -17,10 +17,11 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import type { BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
+import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
+import { countDuplicateGroups, getUnsortedTaskCount } from "../services/bookmarkTasks";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
-import { getPreviewPlan } from "../services/storage";
+import { getLinkHealthReport, getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
 import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
@@ -41,23 +42,6 @@ function getDomain(url?: string) {
   } catch {
     return "";
   }
-}
-
-function isUnsortedBookmark(bookmark: BookmarkNode) {
-  if (!bookmark.path.length) return true;
-  return bookmark.path.some((part) => /待整理|未分类|unsorted/i.test(part));
-}
-
-function countDuplicateGroups(bookmarks: BookmarkNode[]) {
-  const groups = new Map<string, number>();
-
-  bookmarks.forEach((bookmark) => {
-    if (!bookmark.url) return;
-    const key = sanitizeUrl(bookmark.url);
-    groups.set(key, (groups.get(key) ?? 0) + 1);
-  });
-
-  return [...groups.values()].filter((count) => count > 1).length;
 }
 
 function formatRelativeTime(timestamp: number) {
@@ -123,6 +107,7 @@ export function SidebarHome() {
   const [currentPage, setCurrentPage] = useState<CurrentPageState | null>(null);
   const [historyEnabled, setHistoryEnabled] = useState(false);
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
+  const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
 
   useEffect(() => {
     void loadAll();
@@ -130,8 +115,9 @@ export function SidebarHome() {
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([getPreviewPlan(), getPreviewTask()]).then(([cache, task]) => {
+    void Promise.all([getPreviewPlan(), getPreviewTask(), getLinkHealthReport()]).then(([cache, task, report]) => {
       if (!alive) return;
+      setLinkHealthReport(report);
       setPreviewTask(task);
       if (task?.status === "running") {
         setPreviewState("running");
@@ -173,13 +159,12 @@ export function SidebarHome() {
   }, [settings.enableHistory]);
 
   const stats = useMemo(() => {
-    const unsortedCount = bookmarks.filter(isUnsortedBookmark).length;
     return {
       bookmarkCount: bookmarks.length,
-      unsortedCount,
+      unsortedTaskCount: getUnsortedTaskCount(bookmarks, pendingRecommendations),
       duplicateCount: countDuplicateGroups(bookmarks),
     };
-  }, [bookmarks]);
+  }, [bookmarks, pendingRecommendations]);
 
   const aiSuggestions = useMemo(() => {
     const suggestions: Array<{ label: string; to: string }> = [];
@@ -243,7 +228,7 @@ export function SidebarHome() {
               <i className="sidebar-dot sidebar-dot--amber" />
               未分类
             </span>
-            <strong>{stats.unsortedCount}</strong>
+            <strong>{stats.unsortedTaskCount}</strong>
           </span>
           <span>
             <span className="sidebar-stat-card__side-label">
@@ -323,19 +308,19 @@ export function SidebarHome() {
           <span><Tag className="w-4 h-4" />待整理</span>
         </div>
         <div className="sidebar-task-grid">
-          <Link to="/recommendations" className="sidebar-task-card sidebar-task-card--amber">
+          <Link to="/manage?task=unsorted" className="sidebar-task-card sidebar-task-card--amber">
             <span>未分类</span>
-            <strong>{Math.max(stats.unsortedCount, pendingRecommendations.length)}</strong>
+            <strong>{stats.unsortedTaskCount}</strong>
             <Tag className="w-4 h-4" />
           </Link>
-          <Link to="/manage?search=duplicate" className="sidebar-task-card sidebar-task-card--red">
+          <Link to="/manage?task=duplicate" className="sidebar-task-card sidebar-task-card--red">
             <span>重复链接</span>
             <strong>{stats.duplicateCount}</strong>
             <Link2 className="w-4 h-4" />
           </Link>
-          <Link to="/manage" className="sidebar-task-card sidebar-task-card--purple">
+          <Link to="/manage?task=invalid" className="sidebar-task-card sidebar-task-card--purple">
             <span>失效链接</span>
-            <strong>0</strong>
+            <strong>{linkHealthReport ? linkHealthReport.invalidCount : "检测"}</strong>
             <Link2 className="w-4 h-4" />
           </Link>
         </div>

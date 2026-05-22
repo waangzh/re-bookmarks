@@ -2003,6 +2003,14 @@ input {
   line-height: 1.45;
 }
 
+.extension-notice p a {
+  margin-left: 6px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .extension-notice__label {
   margin-bottom: 7px;
   font-weight: 600;
@@ -3409,6 +3417,58 @@ input {
   font-weight: 600;
 }
 
+.bookmark-task-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe8fb;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.bookmark-task-panel__main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bookmark-task-panel__main strong {
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.bookmark-task-panel__main p,
+.bookmark-task-panel__main span {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bookmark-task-panel__button {
+  min-height: 40px;
+}
+
+.bookmark-task-progress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5eaf0;
+}
+
+.bookmark-task-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f7df6;
+  transition: width 160ms ease;
+}
+
+.bookmark-task-panel__spin {
+  animation: bookmark-task-spin 900ms linear infinite;
+}
+
 .bookmark-tree-panel {
   overflow: hidden;
   border: 1px solid #e5eaf0;
@@ -3551,6 +3611,31 @@ input {
   font-weight: 600;
 }
 
+.bookmark-tree-row__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 112px;
+  min-width: 0;
+  border-radius: 999px;
+  background: #fff1f2;
+  padding: 3px 7px;
+  color: #be123c;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bookmark-tree-row__status svg {
+  flex: 0 0 auto;
+}
+
+.bookmark-tree-row__status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .bookmark-tree-edit {
   display: grid;
   gap: 9px;
@@ -3633,5 +3718,11 @@ input {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes bookmark-task-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
