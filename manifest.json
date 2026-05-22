@@ -3,7 +3,7 @@
   "name": "ReMarks",
   "version": "0.1.0",
   "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
-  "permissions": ["bookmarks", "storage", "activeTab", "favicon"],
+  "permissions": ["bookmarks", "storage", "activeTab", "favicon", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "optional_permissions": ["history"],
   "action": {
@@ -16,25 +16,13 @@
     }
   },
   "options_page": "dist/options/index.html",
+  "side_panel": {
+    "default_path": "dist/sidebar/index.html"
+  },
   "background": {
     "service_worker": "dist/background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
-      "run_at": "document_idle",
-      "match_about_blank": true,
-      "match_origin_as_fallback": true
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["dist/popup/index.html", "dist/popup.js", "dist/assets/*", "dist/chunks/*", "dist/icons/*", "dist/logo/*", "logo/*"],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "icons": {
     "16": "dist/icons/icon16.png",
     "32": "dist/icons/icon32.png",

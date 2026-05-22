@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import {
   ArrowLeft,
   Plus,
@@ -134,8 +134,12 @@ function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
 
 export function ManageBookmarks() {
   const { bookmarks, loadBookmarks, settings } = useAppStore();
+  const [searchParams] = useSearchParams();
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    const value = searchParams.get("search") ?? "";
+    return value === "1" || value === "duplicate" ? "" : value;
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title: "", url: "", path: "" });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -165,15 +169,53 @@ export function ManageBookmarks() {
     void loadManagedBookmarks();
   }, [loadManagedBookmarks]);
 
-  const filteredBookmarks = useMemo(
-    () =>
-      bookmarks.filter(
-        (bookmark) =>
-          bookmark.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          bookmark.url?.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [bookmarks, searchQuery]
-  );
+  const duplicateMode = searchParams.get("search") === "duplicate" && !searchQuery;
+
+  const duplicateUrls = useMemo(() => {
+    const counts = new Map<string, number>();
+    const normalize = (url: string) => {
+      try {
+        const parsed = new URL(url);
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      } catch {
+        return url;
+      }
+    };
+
+    bookmarks.forEach((bookmark) => {
+      if (!bookmark.url) return;
+      const key = normalize(bookmark.url);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+
+    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([url]) => url));
+  }, [bookmarks]);
+
+  const filteredBookmarks = useMemo(() => {
+    const normalize = (url: string) => {
+      try {
+        const parsed = new URL(url);
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      } catch {
+        return url;
+      }
+    };
+
+    if (duplicateMode) {
+      return bookmarks.filter((bookmark) => bookmark.url && duplicateUrls.has(normalize(bookmark.url)));
+    }
+
+    const query = searchQuery.toLowerCase();
+    return bookmarks.filter(
+      (bookmark) =>
+        bookmark.title.toLowerCase().includes(query) ||
+        bookmark.url?.toLowerCase().includes(query)
+    );
+  }, [bookmarks, duplicateMode, duplicateUrls, searchQuery]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);

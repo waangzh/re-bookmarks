@@ -18,19 +18,10 @@ if (fs.existsSync(manifestSrc)) {
     manifest.action.default_popup = "popup/index.html";
   }
   manifest.options_page = "options/index.html";
+  if (manifest.side_panel?.default_path) {
+    manifest.side_panel.default_path = manifest.side_panel.default_path.replace(/^dist\//, "");
+  }
   manifest.background.service_worker = "background.js";
-  if (manifest.content_scripts) {
-    manifest.content_scripts = manifest.content_scripts.map((script) => ({
-      ...script,
-      js: script.js.map((file) => file.replace(/^dist\//, "")),
-    }));
-  }
-  if (manifest.web_accessible_resources) {
-    manifest.web_accessible_resources = manifest.web_accessible_resources.map((resource) => ({
-      ...resource,
-      resources: [...new Set(resource.resources.map((file) => file.replace(/^dist\//, "")))],
-    }));
-  }
   manifest.action.default_icon = {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
