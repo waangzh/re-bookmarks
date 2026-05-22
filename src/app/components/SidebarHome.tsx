@@ -232,12 +232,26 @@ export function SidebarHome() {
         <div className="sidebar-stat-card__main">
           <Bookmark className="sidebar-stat-card__icon" />
           <span>当前书签</span>
-          <strong>{loading ? "..." : stats.bookmarkCount}</strong>
-          <em>个</em>
+          <span className="sidebar-stat-card__count">
+            <strong>{loading ? "..." : stats.bookmarkCount}</strong>
+            <em>个</em>
+          </span>
         </div>
         <div className="sidebar-stat-card__side">
-          <span><i className="sidebar-dot sidebar-dot--amber" />未分类 <strong>{stats.unsortedCount}</strong></span>
-          <span><i className="sidebar-dot sidebar-dot--red" />重复疑似 <strong>{stats.duplicateCount}</strong></span>
+          <span>
+            <span className="sidebar-stat-card__side-label">
+              <i className="sidebar-dot sidebar-dot--amber" />
+              未分类
+            </span>
+            <strong>{stats.unsortedCount}</strong>
+          </span>
+          <span>
+            <span className="sidebar-stat-card__side-label">
+              <i className="sidebar-dot sidebar-dot--red" />
+              重复疑似
+            </span>
+            <strong>{stats.duplicateCount}</strong>
+          </span>
         </div>
       </section>
 

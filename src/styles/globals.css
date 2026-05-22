@@ -586,17 +586,19 @@ input {
 
 .sidebar-stat-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 128px;
-  gap: 10px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(126px, 140px);
+  gap: 12px;
+  align-items: stretch;
+  padding: 14px 16px;
   background: linear-gradient(135deg, #eef6ff 0%, #ffffff 100%);
 }
 
 .sidebar-stat-card__main {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
-  gap: 6px 9px;
+  align-content: center;
+  gap: 6px 10px;
   min-width: 0;
   color: #1d4ed8;
   font-size: 13px;
@@ -604,26 +606,35 @@ input {
 }
 
 .sidebar-stat-card__icon {
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
   grid-row: span 2;
 }
 
-.sidebar-stat-card__main strong {
+.sidebar-stat-card__count {
   grid-column: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  line-height: 0.9;
+}
+
+.sidebar-stat-card__main strong {
   color: #2563eb;
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 800;
-  line-height: 0.95;
+  line-height: 0.9;
   letter-spacing: 0;
 }
 
 .sidebar-stat-card__main em {
-  align-self: end;
+  padding-bottom: 4px;
   color: #2563eb;
   font-size: 16px;
   font-style: normal;
   font-weight: 700;
+  line-height: 1;
 }
 
 .sidebar-stat-card__side {
@@ -636,7 +647,7 @@ input {
   padding: 9px 10px;
 }
 
-.sidebar-stat-card__side span {
+.sidebar-stat-card__side > span {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -648,7 +659,15 @@ input {
   white-space: nowrap;
 }
 
+.sidebar-stat-card__side-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
 .sidebar-stat-card__side strong {
+  flex: 0 0 auto;
   color: #0f172a;
   font-size: 13px;
 }
@@ -2210,11 +2229,8 @@ input {
 .history-card-list {
   display: grid;
   width: 100%;
-  max-height: calc(70px * 5 + 8px * 4);
   align-content: start;
   gap: 8px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   margin-top: 13px;
   margin-bottom: 20px;
 }
