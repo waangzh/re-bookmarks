@@ -517,44 +517,6 @@ input {
   color: #0f172a;
 }
 
-.sidebar-home__header {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 32px;
-  align-items: center;
-  min-height: 34px;
-}
-
-.sidebar-home__brand {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  gap: 8px;
-  color: #111827;
-}
-
-.sidebar-home__brand strong {
-  overflow: hidden;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-home__brand-mark {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: #2f7df6;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-}
-
 .sidebar-icon-button {
   display: grid;
   place-items: center;

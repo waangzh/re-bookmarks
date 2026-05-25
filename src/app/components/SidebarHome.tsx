@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import {
-  ArrowLeft,
   Bookmark,
   CheckCircle2,
   ChevronRight,
@@ -15,7 +14,6 @@ import {
   Settings,
   Sparkles,
   Tag,
-  X,
 } from "lucide-react";
 import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
@@ -100,7 +98,6 @@ async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<CurrentPageSta
 }
 
 export function SidebarHome() {
-  const navigate = useNavigate();
   const { settings, bookmarks, pendingRecommendations, reportHistory, lastReport, loadAll, loading } = useAppStore();
   const [previewState, setPreviewState] = useState<PreviewState>("none");
   const [previewTask, setPreviewTask] = useState<PreviewTaskCache | null>(null);
@@ -200,19 +197,6 @@ export function SidebarHome() {
 
   return (
     <main className="sidebar-home">
-      <header className="sidebar-home__header">
-        <button type="button" className="sidebar-icon-button" aria-label="返回" onClick={() => navigate(-1)}>
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <div className="sidebar-home__brand">
-          <span className="sidebar-home__brand-mark">R</span>
-          <strong>ReMarks</strong>
-        </div>
-        <button type="button" className="sidebar-icon-button" aria-label="关闭" onClick={() => window.close()}>
-          <X className="w-4 h-4" />
-        </button>
-      </header>
-
       <section className="sidebar-stat-card">
         <div className="sidebar-stat-card__main">
           <Bookmark className="sidebar-stat-card__icon" />
