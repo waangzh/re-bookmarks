@@ -3465,6 +3465,13 @@ input {
   background: #ffffff;
 }
 
+.bookmark-health-panel {
+  overflow: hidden;
+  border: 1px solid #e5eaf0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
 .bookmark-tree-panel__head {
   display: flex;
   align-items: center;
@@ -3488,6 +3495,108 @@ input {
 
 .bookmark-tree {
   padding: 6px;
+}
+
+.bookmark-health-groups {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.bookmark-health-group {
+  overflow: hidden;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.bookmark-health-group__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  padding: 10px 11px;
+  border-left: 3px solid #94a3b8;
+  background: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.bookmark-health-group__head:hover {
+  background: #f1f5f9;
+}
+
+.bookmark-health-group__chevron {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #64748b;
+}
+
+.bookmark-health-group__head h4 {
+  margin: 0;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.bookmark-health-group__head p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bookmark-health-group__count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 3px 8px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.bookmark-health-group--broken .bookmark-health-group__head {
+  border-left-color: #e11d48;
+  background: #fff7f8;
+}
+
+.bookmark-health-group--broken .bookmark-health-group__head:hover {
+  background: #ffecef;
+}
+
+.bookmark-health-group--suspicious .bookmark-health-group__head {
+  border-left-color: #d97706;
+  background: #fffbeb;
+}
+
+.bookmark-health-group--suspicious .bookmark-health-group__head:hover {
+  background: #fef3c7;
+}
+
+.bookmark-health-group--temporary .bookmark-health-group__head {
+  border-left-color: #2563eb;
+  background: #eff6ff;
+}
+
+.bookmark-health-group--temporary .bookmark-health-group__head:hover {
+  background: #dbeafe;
+}
+
+.bookmark-health-group.is-collapsed .bookmark-health-group__head {
+  border-bottom: 0;
+}
+
+.bookmark-health-group__list {
+  padding: 5px;
 }
 
 .bookmark-tree-row {

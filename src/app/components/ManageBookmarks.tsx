@@ -13,7 +13,6 @@ import {
   ChevronRight,
   X,
   Check,
-  AlertTriangle,
   RefreshCw,
 } from "lucide-react";
 import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode } from "../types";
@@ -30,7 +29,6 @@ import {
 import {
   checkBookmarkLinks,
   filterDuplicateBookmarks,
-  getLinkHealthStatusLabel,
   isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
@@ -38,6 +36,7 @@ import { getLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
 type TaskMode = "unsorted" | "duplicate" | "invalid";
+type LinkHealthGroupKey = "broken" | "suspicious" | "temporary_failed";
 
 type BookmarkFolderNode = {
   id?: string;
@@ -174,6 +173,35 @@ function formatLinkHealthSummary(report: BookmarkLinkHealthReport) {
   return `明确失效 ${brokenCount} 个，可疑 ${suspiciousCount} 个，暂时无法确认 ${temporaryFailedCount} 个`;
 }
 
+function getLinkHealthGroupKey(result: BookmarkLinkHealthResult): LinkHealthGroupKey | null {
+  if (result.status === "broken" || result.status === "invalid") return "broken";
+  if (result.status === "suspicious") return "suspicious";
+  if (result.status === "temporary_failed") return "temporary_failed";
+  return null;
+}
+
+function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
+  if (group === "broken") {
+    return {
+      title: "明确失效",
+      description: "返回 404、410、451 等明确不可用状态，优先人工复查。",
+      className: "bookmark-health-group--broken",
+    };
+  }
+  if (group === "suspicious") {
+    return {
+      title: "可疑结果",
+      description: "返回了非标准成功状态，可能是站点限制、跳转异常或需要特殊访问条件。",
+      className: "bookmark-health-group--suspicious",
+    };
+  }
+  return {
+    title: "暂时无法确认",
+    description: "请求超时、网络失败或服务端临时错误，建议稍后重试。",
+    className: "bookmark-health-group--temporary",
+  };
+}
+
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, settings } = useAppStore();
   const [searchParams] = useSearchParams();
@@ -199,6 +227,9 @@ export function ManageBookmarks() {
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
   const [scanProgress, setScanProgress] = useState({ checked: 0, total: 0 });
   const [scanningLinks, setScanningLinks] = useState(false);
+  const [collapsedLinkHealthGroups, setCollapsedLinkHealthGroups] = useState<Set<LinkHealthGroupKey>>(
+    () => new Set()
+  );
   const dragSessionRef = useRef<DragSession | null>(null);
   const folderLookupRef = useRef<Map<string, BookmarkFolderNode>>(new Map());
   const activeDropFolderRef = useRef<BookmarkFolderNode | null>(null);
@@ -251,16 +282,29 @@ export function ManageBookmarks() {
     });
   }, [searchQuery, taskBookmarks]);
 
-  const invalidReasonById = useMemo(() => {
-    const lookup = new Map<string, string>();
+  const linkHealthResultById = useMemo(() => {
+    const lookup = new Map<string, BookmarkLinkHealthResult>();
     linkHealthReport?.results.forEach((result) => {
-      if (isProblemLinkHealthResult(result)) {
-        const label = getLinkHealthStatusLabel(result);
-        lookup.set(result.bookmarkId, result.reason ? `${label}：${result.reason}` : label);
-      }
+      if (isProblemLinkHealthResult(result)) lookup.set(result.bookmarkId, result);
     });
     return lookup;
   }, [linkHealthReport]);
+
+  const groupedInvalidBookmarks = useMemo(() => {
+    const groups: Record<LinkHealthGroupKey, BookmarkNode[]> = {
+      broken: [],
+      suspicious: [],
+      temporary_failed: [],
+    };
+
+    filteredBookmarks.forEach((bookmark) => {
+      const result = linkHealthResultById.get(bookmark.id);
+      const group = result ? getLinkHealthGroupKey(result) : null;
+      if (group) groups[group].push(bookmark);
+    });
+
+    return groups;
+  }, [filteredBookmarks, linkHealthResultById]);
 
   const pageTitle = useMemo(() => {
     if (taskMode === "unsorted") return "未分类书签";
@@ -435,6 +479,18 @@ export function ManageBookmarks() {
     });
   };
 
+  const toggleLinkHealthGroup = (group: LinkHealthGroupKey) => {
+    setCollapsedLinkHealthGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("确认删除此书签？")) return;
     setBusy(true);
@@ -570,12 +626,6 @@ export function ManageBookmarks() {
           <span className="bookmark-tree-row__chevron" />
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
           <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
-          {taskMode === "invalid" && invalidReasonById.has(bookmark.id) && (
-            <span className="bookmark-tree-row__status" title={invalidReasonById.get(bookmark.id)}>
-              <AlertTriangle className="w-3 h-3" />
-              {invalidReasonById.get(bookmark.id)}
-            </span>
-          )}
           {bookmark.url && (
             <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
               <ExternalLink className="w-3 h-3" />
@@ -593,6 +643,54 @@ export function ManageBookmarks() {
       )}
     </div>
   );
+
+  const renderLinkHealthGroups = () => {
+    const groupOrder: LinkHealthGroupKey[] = ["broken", "suspicious", "temporary_failed"];
+    const visibleGroups = groupOrder.filter((group) => groupedInvalidBookmarks[group].length > 0);
+
+    if (!visibleGroups.length) return null;
+
+    return (
+      <section className="bookmark-health-panel">
+        <div className="bookmark-tree-panel__head">
+          <h3>任务结果</h3>
+          <span>{filteredBookmarks.length}</span>
+        </div>
+        <div className="bookmark-health-groups">
+          {visibleGroups.map((group) => {
+            const meta = getLinkHealthGroupMeta(group);
+            const groupBookmarks = groupedInvalidBookmarks[group];
+            const isCollapsed = collapsedLinkHealthGroups.has(group);
+
+            return (
+              <section key={group} className={`bookmark-health-group ${meta.className} ${isCollapsed ? "is-collapsed" : ""}`}>
+                <button
+                  type="button"
+                  className="bookmark-health-group__head"
+                  aria-expanded={!isCollapsed}
+                  onClick={() => toggleLinkHealthGroup(group)}
+                >
+                  <span className="bookmark-health-group__chevron">
+                    {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </span>
+                  <div>
+                    <h4>{meta.title}</h4>
+                    <p>{meta.description}</p>
+                  </div>
+                  <span className="bookmark-health-group__count">{groupBookmarks.length}</span>
+                </button>
+                {!isCollapsed && (
+                  <div className="bookmark-health-group__list">
+                    {groupBookmarks.map((bookmark) => renderBookmarkRow(bookmark, 0))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
 
   const handleAdd = async () => {
     if (!addForm.title || !addForm.url) {
@@ -707,24 +805,30 @@ export function ManageBookmarks() {
           </section>
         )}
 
-        <div className="extension-search-field manage-bookmarks-search">
-          <Search className="extension-search-field__icon" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签..."}
-            className="extension-control extension-control--search"
-          />
-        </div>
-
-        <section className="bookmark-tree-panel">
-          <div className="bookmark-tree-panel__head">
-            <h3>{taskMode ? "任务结果" : "文件夹"}</h3>
-            <span>{filteredBookmarks.length}</span>
+        {taskMode !== "invalid" && (
+          <div className="extension-search-field manage-bookmarks-search">
+            <Search className="extension-search-field__icon" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签..."}
+              className="extension-control extension-control--search"
+            />
           </div>
-          <div className="bookmark-tree">{renderFolderNode(folderTree)}</div>
-        </section>
+        )}
+
+        {taskMode === "invalid" ? (
+          renderLinkHealthGroups()
+        ) : (
+          <section className="bookmark-tree-panel">
+            <div className="bookmark-tree-panel__head">
+              <h3>{taskMode ? "任务结果" : "文件夹"}</h3>
+              <span>{filteredBookmarks.length}</span>
+            </div>
+            <div className="bookmark-tree">{renderFolderNode(folderTree)}</div>
+          </section>
+        )}
 
         {!taskMode && showAddForm && (
           <section className="extension-section extension-section--accent">
