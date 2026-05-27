@@ -25,6 +25,9 @@ import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
 
 type PreviewState = "none" | "running" | "ready";
+type HistoryPreviewState = "checking" | "disabled" | "loading" | "ready";
+
+const HISTORY_PREVIEW_ROW_COUNT = 3;
 
 type CurrentPageState = {
   title: string;
@@ -61,6 +64,20 @@ function MiniFavicon({ title, url }: { title: string; url?: string }) {
       <Globe2 className="sidebar-favicon__fallback" />
       {faviconUrl && <img src={faviconUrl} alt="" draggable={false} onError={() => setFailed(true)} />}
     </span>
+  );
+}
+
+function RecentVisitSkeleton() {
+  return (
+    <div className="sidebar-mini-list" aria-hidden="true">
+      {Array.from({ length: HISTORY_PREVIEW_ROW_COUNT }, (_, index) => (
+        <span key={index} className="sidebar-mini-row sidebar-mini-row--placeholder">
+          <span className="sidebar-favicon" />
+          <span />
+          <time />
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -102,7 +119,7 @@ export function SidebarHome() {
   const [previewState, setPreviewState] = useState<PreviewState>("none");
   const [previewTask, setPreviewTask] = useState<PreviewTaskCache | null>(null);
   const [currentPage, setCurrentPage] = useState<CurrentPageState | null>(null);
-  const [historyEnabled, setHistoryEnabled] = useState(false);
+  const [historyState, setHistoryState] = useState<HistoryPreviewState>("checking");
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
 
@@ -139,16 +156,20 @@ export function SidebarHome() {
 
   useEffect(() => {
     let alive = true;
+    setHistoryState("checking");
     void hasHistoryPermission().then(async (granted) => {
       if (!alive) return;
       const enabled = settings.enableHistory && granted;
-      setHistoryEnabled(enabled);
       if (!enabled) {
         setFrequentBookmarks([]);
+        setHistoryState("disabled");
         return;
       }
+      setHistoryState("loading");
       const frequent = await getFrequentBookmarks();
-      if (alive) setFrequentBookmarks(frequent.slice(0, 3));
+      if (!alive) return;
+      setFrequentBookmarks(frequent.slice(0, HISTORY_PREVIEW_ROW_COUNT));
+      setHistoryState("ready");
     });
     return () => {
       alive = false;
@@ -268,8 +289,10 @@ export function SidebarHome() {
           <span><Clock3 className="w-4 h-4" />最近访问</span>
           <Link to="/history">全部</Link>
         </div>
-        {historyEnabled ? (
-          frequentBookmarks.length > 0 ? (
+        <div className="sidebar-recent-body">
+          {historyState === "checking" || historyState === "loading" ? (
+            <RecentVisitSkeleton />
+          ) : historyState === "ready" && frequentBookmarks.length > 0 ? (
             <div className="sidebar-mini-list">
               {frequentBookmarks.map((bookmark) => (
                 <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="sidebar-mini-row">
@@ -279,12 +302,12 @@ export function SidebarHome() {
                 </a>
               ))}
             </div>
-          ) : (
+          ) : historyState === "ready" ? (
             <p className="sidebar-muted-copy">暂无常访问书签数据。</p>
-          )
-        ) : (
-          <Link to="/history" className="sidebar-muted-link">启用后显示本地常访问书签</Link>
-        )}
+          ) : (
+            <Link to="/history" className="sidebar-muted-link">启用后显示本地常访问书签</Link>
+          )}
+        </div>
       </section>
 
       <section className="sidebar-panel">
