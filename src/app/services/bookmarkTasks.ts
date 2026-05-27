@@ -7,8 +7,10 @@ import type {
 import { saveLinkHealthReport } from "./storage";
 
 const AUTH_OR_RATE_LIMIT_STATUSES = new Set([401, 403, 429]);
-const INVALID_STATUSES = new Set([404, 410, 451]);
+const BROKEN_STATUSES = new Set([404, 410, 451]);
 const REQUEST_TIMEOUT_MS = 8000;
+const RETRY_DELAY_MS = 800;
+const GET_RETRY_COUNT = 1;
 const LINK_CHECK_CONCURRENCY = 4;
 
 export function normalizeBookmarkUrl(url: string) {
@@ -70,9 +72,17 @@ function isReachableStatus(status: number) {
   return AUTH_OR_RATE_LIMIT_STATUSES.has(status);
 }
 
+function classifyHttpStatus(status: number): BookmarkLinkHealthResult["status"] {
+  if (isReachableStatus(status)) return "ok";
+  if (BROKEN_STATUSES.has(status)) return "broken";
+  if (status >= 500 || status === 408) return "temporary_failed";
+  return "suspicious";
+}
+
 function statusReason(status: number) {
-  if (INVALID_STATUSES.has(status)) return `HTTP ${status}`;
-  if (status >= 500) return `服务器错误 ${status}`;
+  if (BROKEN_STATUSES.has(status)) return `HTTP ${status}`;
+  if (status >= 500) return `服务器临时错误 ${status}`;
+  if (status === 408) return "请求超时";
   return `HTTP ${status}`;
 }
 
@@ -99,6 +109,56 @@ function toNetworkReason(error: unknown) {
   return error instanceof Error && error.message ? error.message : "网络请求失败";
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function shouldRetryStatus(status: number) {
+  return classifyHttpStatus(status) === "temporary_failed";
+}
+
+async function fetchGetWithRetry(url: string) {
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= GET_RETRY_COUNT; attempt += 1) {
+    if (attempt > 0) await wait(RETRY_DELAY_MS);
+
+    try {
+      const response = await fetchWithTimeout(url, "GET");
+      lastResponse = response;
+      lastError = null;
+      if (!shouldRetryStatus(response.status)) return response;
+    } catch (error) {
+      lastResponse = null;
+      lastError = error;
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  throw lastError;
+}
+
+function responseToHealthResult(
+  bookmark: BookmarkNode,
+  response: Response,
+  checkedAt: number,
+  method: "HEAD" | "GET"
+): BookmarkLinkHealthResult {
+  const status = classifyHttpStatus(response.status);
+  return {
+    bookmarkId: bookmark.id,
+    bookmarkTitle: bookmark.title,
+    bookmarkUrl: bookmark.url ?? "",
+    checkedAt,
+    status,
+    httpStatus: response.status,
+    finalUrl: response.url && response.url !== bookmark.url ? response.url : undefined,
+    checkedMethod: method,
+    reason: status === "ok" ? undefined : statusReason(response.status),
+  };
+}
+
 async function checkOneBookmark(bookmark: BookmarkNode): Promise<BookmarkLinkHealthResult> {
   const checkedAt = Date.now();
 
@@ -116,61 +176,40 @@ async function checkOneBookmark(bookmark: BookmarkNode): Promise<BookmarkLinkHea
   try {
     const headResponse = await fetchWithTimeout(bookmark.url, "HEAD");
     if (isReachableStatus(headResponse.status)) {
-      return {
-        bookmarkId: bookmark.id,
-        bookmarkTitle: bookmark.title,
-        bookmarkUrl: bookmark.url,
-        checkedAt,
-        status: "ok",
-        httpStatus: headResponse.status,
-      };
+      return responseToHealthResult(bookmark, headResponse, checkedAt, "HEAD");
     }
 
-    if (headResponse.status === 405 || !INVALID_STATUSES.has(headResponse.status)) {
-      const getResponse = await fetchWithTimeout(bookmark.url, "GET");
-      return {
-        bookmarkId: bookmark.id,
-        bookmarkTitle: bookmark.title,
-        bookmarkUrl: bookmark.url,
-        checkedAt,
-        status: isReachableStatus(getResponse.status) ? "ok" : "invalid",
-        httpStatus: getResponse.status,
-        reason: isReachableStatus(getResponse.status) ? undefined : statusReason(getResponse.status),
-      };
-    }
-
-    return {
-      bookmarkId: bookmark.id,
-      bookmarkTitle: bookmark.title,
-      bookmarkUrl: bookmark.url,
-      checkedAt,
-      status: "invalid",
-      httpStatus: headResponse.status,
-      reason: statusReason(headResponse.status),
-    };
+    const getResponse = await fetchGetWithRetry(bookmark.url);
+    return responseToHealthResult(bookmark, getResponse, checkedAt, "GET");
   } catch (headError) {
     try {
-      const getResponse = await fetchWithTimeout(bookmark.url, "GET");
-      return {
-        bookmarkId: bookmark.id,
-        bookmarkTitle: bookmark.title,
-        bookmarkUrl: bookmark.url,
-        checkedAt,
-        status: isReachableStatus(getResponse.status) ? "ok" : "invalid",
-        httpStatus: getResponse.status,
-        reason: isReachableStatus(getResponse.status) ? undefined : statusReason(getResponse.status),
-      };
+      const getResponse = await fetchGetWithRetry(bookmark.url);
+      return responseToHealthResult(bookmark, getResponse, checkedAt, "GET");
     } catch (getError) {
       return {
         bookmarkId: bookmark.id,
         bookmarkTitle: bookmark.title,
         bookmarkUrl: bookmark.url,
         checkedAt,
-        status: "invalid",
+        status: "temporary_failed",
         reason: `${toNetworkReason(headError)}；${toNetworkReason(getError)}`,
       };
     }
   }
+}
+
+export function isProblemLinkHealthResult(result: BookmarkLinkHealthResult) {
+  return result.status === "broken" ||
+    result.status === "suspicious" ||
+    result.status === "temporary_failed" ||
+    result.status === "invalid";
+}
+
+export function getLinkHealthStatusLabel(result: BookmarkLinkHealthResult) {
+  if (result.status === "broken" || result.status === "invalid") return "疑似失效";
+  if (result.status === "suspicious") return "需要复查";
+  if (result.status === "temporary_failed") return "暂时无法确认";
+  return result.status === "skipped" ? "已跳过" : "可访问";
 }
 
 export async function checkBookmarkLinks(
@@ -201,7 +240,10 @@ export async function checkBookmarkLinks(
     createdAt: Date.now(),
     checkedCount: results.filter((result) => result.status !== "skipped").length,
     skippedCount: results.filter((result) => result.status === "skipped").length,
-    invalidCount: results.filter((result) => result.status === "invalid").length,
+    brokenCount: results.filter((result) => result.status === "broken" || result.status === "invalid").length,
+    suspiciousCount: results.filter((result) => result.status === "suspicious").length,
+    temporaryFailedCount: results.filter((result) => result.status === "temporary_failed").length,
+    invalidCount: results.filter(isProblemLinkHealthResult).length,
     results,
   };
 

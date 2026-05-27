@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
-import type { BookmarkLinkHealthReport, BookmarkNode } from "../types";
+import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode } from "../types";
 import {
   createBookmark,
   ensureFolderPath,
@@ -30,6 +30,8 @@ import {
 import {
   checkBookmarkLinks,
   filterDuplicateBookmarks,
+  getLinkHealthStatusLabel,
+  isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
 import { getLinkHealthReport } from "../services/storage";
@@ -157,6 +159,21 @@ function formatScanTime(timestamp: number) {
   });
 }
 
+function countLinkHealthStatus(report: BookmarkLinkHealthReport, status: BookmarkLinkHealthResult["status"]) {
+  return report.results.filter((result) => result.status === status).length;
+}
+
+function getLinkHealthProblemCount(report: BookmarkLinkHealthReport) {
+  return report.results.filter(isProblemLinkHealthResult).length;
+}
+
+function formatLinkHealthSummary(report: BookmarkLinkHealthReport) {
+  const brokenCount = report.brokenCount ?? countLinkHealthStatus(report, "broken") + countLinkHealthStatus(report, "invalid");
+  const suspiciousCount = report.suspiciousCount ?? countLinkHealthStatus(report, "suspicious");
+  const temporaryFailedCount = report.temporaryFailedCount ?? countLinkHealthStatus(report, "temporary_failed");
+  return `明确失效 ${brokenCount} 个，可疑 ${suspiciousCount} 个，暂时无法确认 ${temporaryFailedCount} 个`;
+}
+
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, settings } = useAppStore();
   const [searchParams] = useSearchParams();
@@ -209,7 +226,7 @@ export function ManageBookmarks() {
   const invalidBookmarkIds = useMemo(() => {
     return new Set(
       linkHealthReport?.results
-        .filter((result) => result.status === "invalid")
+        .filter(isProblemLinkHealthResult)
         .map((result) => result.bookmarkId) ?? []
     );
   }, [linkHealthReport]);
@@ -237,7 +254,10 @@ export function ManageBookmarks() {
   const invalidReasonById = useMemo(() => {
     const lookup = new Map<string, string>();
     linkHealthReport?.results.forEach((result) => {
-      if (result.status === "invalid") lookup.set(result.bookmarkId, result.reason ?? "疑似无法访问");
+      if (isProblemLinkHealthResult(result)) {
+        const label = getLinkHealthStatusLabel(result);
+        lookup.set(result.bookmarkId, result.reason ? `${label}：${result.reason}` : label);
+      }
     });
     return lookup;
   }, [linkHealthReport]);
@@ -252,7 +272,7 @@ export function ManageBookmarks() {
   const pageSubtitle = useMemo(() => {
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
-      return `上次检测 ${linkHealthReport.checkedCount} 个，发现 ${linkHealthReport.invalidCount} 个疑似失效`;
+      return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${getLinkHealthProblemCount(linkHealthReport)} 个`;
     }
     if (taskMode === "unsorted") return `${taskBookmarks.length} 个书签在待整理/未分类位置`;
     if (taskMode === "duplicate") return `${taskBookmarks.length} 个书签存在重复 URL`;
@@ -603,7 +623,7 @@ export function ManageBookmarks() {
         setScanProgress({ checked, total });
       });
       setLinkHealthReport(report);
-      setMessage(`检测完成：发现 ${report.invalidCount} 个疑似失效链接，跳过 ${report.skippedCount} 个非网页链接。`);
+      setMessage(`检测完成：${formatLinkHealthSummary(report)}，跳过 ${report.skippedCount} 个非网页链接。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "链接检测失败");
     } finally {
@@ -618,7 +638,7 @@ export function ManageBookmarks() {
     }
     if (taskMode === "duplicate") return "暂无重复链接";
     if (taskMode === "invalid") {
-      return linkHealthReport ? "未发现疑似失效链接" : "尚未检测链接，点击开始检测后查看结果";
+      return linkHealthReport ? "未发现需要复查的链接" : "尚未检测链接，点击开始检测后查看结果";
     }
     return "暂无书签";
   }, [linkHealthReport, pendingRecommendations.length, searchQuery, taskMode]);
@@ -664,10 +684,10 @@ export function ManageBookmarks() {
             <div className="bookmark-task-panel__main">
               <strong>手动检测链接</strong>
               <p>
-                仅检测 http/https 书签。401、403、429 会视为可到达，不会标记为失效。
+                仅检测 http/https 书签。401、403、429 视为可到达；超时和 5xx 会标记为暂时无法确认。
               </p>
               {linkHealthReport && (
-                <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}</span>
+                <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}，{formatLinkHealthSummary(linkHealthReport)}</span>
               )}
             </div>
             <button

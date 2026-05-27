@@ -81,8 +81,10 @@ export type BookmarkLinkHealthResult = {
   bookmarkTitle: string;
   bookmarkUrl: string;
   checkedAt: number;
-  status: "ok" | "invalid" | "skipped";
+  status: "ok" | "broken" | "suspicious" | "temporary_failed" | "invalid" | "skipped";
   httpStatus?: number;
+  finalUrl?: string;
+  checkedMethod?: "HEAD" | "GET";
   reason?: string;
 };
 
@@ -91,6 +93,9 @@ export type BookmarkLinkHealthReport = {
   createdAt: number;
   checkedCount: number;
   skippedCount: number;
+  brokenCount?: number;
+  suspiciousCount?: number;
+  temporaryFailedCount?: number;
   invalidCount: number;
   results: BookmarkLinkHealthResult[];
 };
