@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
+  Archive,
   Bookmark,
   CheckCircle2,
   ChevronRight,
@@ -368,6 +369,11 @@ export function SidebarHome() {
         <Link to="/manage" className="sidebar-entry-row">
           <FolderEdit className="w-4 h-4" />
           <span>管理书签</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+        <Link to="/backups" className="sidebar-entry-row">
+          <Archive className="w-4 h-4" />
+          <span>书签备份</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
         <Link to="/habits" className="sidebar-entry-row">

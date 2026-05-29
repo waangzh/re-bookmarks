@@ -3790,6 +3790,144 @@ input {
   background: #fef2f2;
 }
 
+.extension-page--backups .extension-page__inner > * + * {
+  margin-top: 14px;
+}
+
+.backup-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.backup-summary-card {
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-summary-card__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.backup-summary-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.backup-summary-card strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.backup-summary-card--blue .backup-summary-card__icon {
+  color: #2563eb;
+}
+
+.backup-summary-card--green .backup-summary-card__icon {
+  color: #16a34a;
+}
+
+.backup-summary-card--amber .backup-summary-card__icon {
+  color: #d97706;
+}
+
+.backup-section-copy {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.backup-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.backup-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.backup-card__main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.backup-card__topline,
+.backup-card__time,
+.backup-card__metrics,
+.backup-restore-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-card__kind {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.backup-card__time {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.backup-card__metrics {
+  color: #475569;
+  font-size: 12px;
+}
+
+.backup-card__metrics span,
+.backup-restore-metrics span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.backup-card__restore {
+  width: auto;
+  min-width: 96px;
+  padding-inline: 14px;
+}
+
+.backup-restore-metrics {
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.backup-failed-list {
+  margin-top: 10px;
+}
+
+@media (max-width: 520px) {
+  .backup-summary-grid,
+  .backup-card {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-card__restore {
+    width: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .extension-page__inner > * {
     animation: extension-panel-enter 260ms ease both;

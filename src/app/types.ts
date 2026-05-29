@@ -56,9 +56,13 @@ export type TokenUsage = {
 
 export type BookmarkBackup = {
   id: string;
+  kind: "organize" | "manual" | "pre-restore";
   createdAt: number;
   tree: chrome.bookmarks.BookmarkTreeNode[];
-  movePlan: MovePlan[];
+  bookmarkCount: number;
+  folderCount: number;
+  movePlan?: MovePlan[];
+  restoreSourceId?: string;
   createdTargetFolders?: Array<{
     id: string;
     path: string[];
@@ -126,6 +130,18 @@ export type FailedMove = {
   bookmarkId: string;
   bookmarkTitle: string;
   reason: string;
+};
+
+export type BookmarkRestoreReport = {
+  id: string;
+  createdAt: number;
+  backupId: string;
+  backupCreatedAt: number;
+  restoredCount: number;
+  recreatedCount: number;
+  folderCount: number;
+  failedItems: FailedMove[];
+  preRestoreBackupId?: string;
 };
 
 export type OrganizeReport = {

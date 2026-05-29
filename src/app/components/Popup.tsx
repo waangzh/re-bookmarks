@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles, CheckCircle } from "lucide-react";
+import { Archive, Bookmark, Settings, FileText, History, Bell, FolderEdit, Sparkles, CheckCircle } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
@@ -104,6 +104,14 @@ export function Popup() {
           <div className="bookmark-popup__action-main">
             <FolderEdit className="bookmark-popup__action-icon" />
             <span>管理书签</span>
+          </div>
+          <span className="bookmark-popup__arrow">→</span>
+        </Link>
+
+        <Link to="/backups" className="bookmark-popup__action bookmark-popup__action--secondary">
+          <div className="bookmark-popup__action-main">
+            <Archive className="bookmark-popup__action-icon" />
+            <span>书签备份</span>
           </div>
           <span className="bookmark-popup__arrow">→</span>
         </Link>

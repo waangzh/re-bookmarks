@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   settings: "remarks.settings",
   pendingRecommendations: "remarks.pendingRecommendations",
   lastBackup: "remarks.lastBackup",
+  backupHistory: "remarks.backupHistory",
   lastReport: "remarks.lastReport",
   reportHistory: "remarks.reportHistory",
   previewPlan: "remarks.previewPlan",
@@ -22,6 +23,7 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const REPORT_HISTORY_LIMIT = 5;
+export const BACKUP_HISTORY_LIMIT = 5;
 
 export const DEFAULT_CLASSIFY_PROMPT = `你是浏览器书签分类助手。请根据书签标题和域名进行智能分类，输出合法的 JSON 格式。
 

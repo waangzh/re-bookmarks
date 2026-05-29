@@ -21,6 +21,7 @@ import {
 } from "./bookmarks";
 import { classifyWithAI } from "./aiProvider";
 import { normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
+import { getBookmarkTreeStats, saveBackupToHistory } from "./backups";
 import {
   getLastBackup,
   getFolderHabitProfile,
@@ -364,6 +365,14 @@ function privacySummary(settings: Settings) {
   ];
 }
 
+async function saveBackupHistoryBestEffort(backup: BookmarkBackup) {
+  try {
+    await saveBackupToHistory(backup);
+  } catch {
+    // 整理前的 lastBackup 是撤销所需的关键保护点；历史列表写入失败不应阻断整理流程。
+  }
+}
+
 async function cleanupEmptyFolders(folderIds: Set<string>): Promise<number> {
   let removedCount = 0;
 
@@ -444,17 +453,21 @@ export async function executeMovePlans(
   options: { cleanupAllEmptyFolders?: boolean; reportKind?: OrganizeReport["kind"] } = {}
 ): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
+  const backupStats = getBookmarkTreeStats(tree);
 
   // 记录执行前的文件夹
   const foldersBefore = await findAllFolderIds();
   const backup: BookmarkBackup = {
     id: `backup-${Date.now()}`,
+    kind: "organize",
     createdAt: Date.now(),
     tree,
+    ...backupStats,
     movePlan: plans,
   };
 
   await saveLastBackup(backup);
+  await saveBackupHistoryBestEffort(backup);
 
   const failedItems: FailedMove[] = [];
   let movedCount = 0;
@@ -494,7 +507,9 @@ export async function executeMovePlans(
   const createdTargetFolders = (await findAllFolderSnapshots()).filter(
     (folder) => !foldersBefore.has(folder.id)
   );
-  await saveLastBackup({ ...backup, createdTargetFolders });
+  const completedBackup = { ...backup, createdTargetFolders };
+  await saveLastBackup(completedBackup);
+  await saveBackupHistoryBestEffort(completedBackup);
 
   if (options.cleanupAllEmptyFolders) {
     removedFolders += await cleanupAllEmptyFolders();
@@ -520,11 +535,13 @@ export async function executeMovePlans(
 export async function undoLastOrganize(): Promise<OrganizeReport | null> {
   const backup = await getLastBackup();
   if (!backup) return null;
+  const movePlan = backup.movePlan ?? [];
+  if (movePlan.length === 0) return null;
 
   const failedItems: FailedMove[] = [];
   let movedCount = 0;
 
-  for (const plan of backup.movePlan) {
+  for (const plan of movePlan) {
     try {
       let targetParentId = plan.fromParentId;
       // 检查原文件夹是否仍然存在（可能被清理逻辑删除了）
@@ -557,10 +574,10 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
     kind: "undo",
     createdAt: Date.now(),
     movedCount,
-    folderCount: uniqueFolderCount(backup.movePlan),
+    folderCount: uniqueFolderCount(movePlan),
     removedFolders,
     failedItems,
-    movePlan: backup.movePlan,
+    movePlan,
     privacySummary: ["已按最近一次备份尝试恢复原位置"],
     undone: true,
   };
@@ -572,8 +589,10 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
 export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
   const backup = await getLastBackup();
   if (!backup) return null;
+  const movePlan = backup.movePlan ?? [];
+  if (movePlan.length === 0) return null;
 
-  return executeMovePlans(backup.movePlan, undefined, {
+  return executeMovePlans(movePlan, undefined, {
     cleanupAllEmptyFolders: true,
     reportKind: "reapply",
   });
