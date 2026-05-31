@@ -5,6 +5,8 @@ import {
   Archive,
   ArrowLeft,
   Bookmark,
+  ChevronDown,
+  ChevronRight,
   CheckCircle,
   Clock,
   Folder,
@@ -22,6 +24,16 @@ import { useAppStore } from "../store/useAppStore";
 
 type BusyAction = "create" | "restore" | null;
 
+type BackupFolderSummary = {
+  name: string;
+  bookmarkCount: number;
+  folderCount: number;
+  samples: string[];
+};
+
+const BACKUP_DETAIL_FOLDER_LIMIT = 20;
+const BACKUP_DETAIL_SAMPLE_LIMIT = 3;
+
 function formatBackupTime(value: number) {
   return new Date(value).toLocaleString("zh-CN", {
     month: "2-digit",
@@ -37,12 +49,67 @@ function getBackupKindLabel(kind: BookmarkBackup["kind"]) {
   return "整理前备份";
 }
 
+function buildBackupFolderSummary(backup: BookmarkBackup) {
+  const summaryMap = new Map<string, BackupFolderSummary>();
+  let rootBookmarkCount = 0;
+
+  const getSummary = (name: string) => {
+    const existing = summaryMap.get(name);
+    if (existing) return existing;
+    const nextSummary: BackupFolderSummary = {
+      name,
+      bookmarkCount: 0,
+      folderCount: 0,
+      samples: [],
+    };
+    summaryMap.set(name, nextSummary);
+    return nextSummary;
+  };
+
+  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
+    for (const node of nodes) {
+      if (node.url) {
+        const topFolder = path[0];
+        if (!topFolder) {
+          rootBookmarkCount += 1;
+          continue;
+        }
+        const summary = getSummary(topFolder);
+        summary.bookmarkCount += 1;
+        if (summary.samples.length < BACKUP_DETAIL_SAMPLE_LIMIT) {
+          summary.samples.push(node.title || node.url);
+        }
+        continue;
+      }
+
+      const nextPath = node.id === "0"
+        ? []
+        : [...path, node.title || "未命名文件夹"];
+      if (nextPath.length > 1) {
+        getSummary(nextPath[0]).folderCount += 1;
+      }
+      visit(node.children ?? [], nextPath);
+    }
+  }
+
+  visit(backup.tree, []);
+
+  const folders = [...summaryMap.values()]
+    .sort((a, b) => b.bookmarkCount - a.bookmarkCount || a.name.localeCompare(b.name, "zh-CN"));
+  return {
+    folders: folders.slice(0, BACKUP_DETAIL_FOLDER_LIMIT),
+    hiddenFolderCount: Math.max(0, folders.length - BACKUP_DETAIL_FOLDER_LIMIT),
+    rootBookmarkCount,
+  };
+}
+
 export function Backups() {
   const { bookmarks, loadAll } = useAppStore();
   const [backups, setBackups] = useState<BookmarkBackup[]>([]);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [message, setMessage] = useState("");
   const [restoreReport, setRestoreReport] = useState<BookmarkRestoreReport | null>(null);
+  const [expandedBackupIds, setExpandedBackupIds] = useState<Set<string>>(new Set());
 
   const latestBackup = backups[0] ?? null;
   const failedItems = restoreReport?.failedItems ?? [];
@@ -59,6 +126,18 @@ export function Backups() {
   const loadBackups = async () => {
     const nextBackups = await getBackupHistory();
     setBackups(nextBackups);
+  };
+
+  const toggleBackupDetail = (backupId: string) => {
+    setExpandedBackupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(backupId)) {
+        next.delete(backupId);
+      } else {
+        next.add(backupId);
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -82,8 +161,10 @@ export function Backups() {
   };
 
   const handleRestore = async (backup: BookmarkBackup) => {
+    const detail = buildBackupFolderSummary(backup);
+    const sampleFolders = detail.folders.slice(0, 3).map((folder) => folder.name).join("、") || "无顶层文件夹";
     const confirmed = confirm(
-      "确认恢复到这份备份吗？\n\n恢复前会自动保存当前状态。安全恢复不会删除备份之后新增的书签，但会尽量恢复备份中已有书签的位置、标题和链接。"
+      `确认恢复到这份备份吗？\n\n备份时间：${formatBackupTime(backup.createdAt)}\n包含：${backup.bookmarkCount} 个书签、${backup.folderCount} 个文件夹\n主要文件夹：${sampleFolders}\n\n恢复前会自动保存当前状态。安全恢复不会删除备份之后新增的书签，但会尽量恢复备份中已有书签的位置、标题和链接。`
     );
     if (!confirmed) return;
 
@@ -165,33 +246,81 @@ export function Backups() {
 
           {backups.length > 0 ? (
             <div className="backup-card-list">
-              {backups.map((backup, index) => (
-                <article key={backup.id} className="backup-card">
-                  <div className="backup-card__main">
-                    <div className="backup-card__topline">
-                      <span className="backup-card__kind">{getBackupKindLabel(backup.kind)}</span>
-                      {index === 0 && <span className="extension-pill">最新</span>}
+              {backups.map((backup, index) => {
+                const isExpanded = expandedBackupIds.has(backup.id);
+                const detail = buildBackupFolderSummary(backup);
+
+                return (
+                  <article key={backup.id} className="backup-card">
+                    <div className="backup-card__main">
+                      <div className="backup-card__topline">
+                        <span className="backup-card__kind">{getBackupKindLabel(backup.kind)}</span>
+                        {index === 0 && <span className="extension-pill">最新</span>}
+                      </div>
+                      <div className="backup-card__time">
+                        <Clock className="w-3 h-3" />
+                        {formatBackupTime(backup.createdAt)}
+                      </div>
+                      <div className="backup-card__metrics">
+                        <span><Bookmark className="w-3 h-3" />{backup.bookmarkCount} 个书签</span>
+                        <span><Folder className="w-3 h-3" />{backup.folderCount} 个文件夹</span>
+                      </div>
                     </div>
-                    <div className="backup-card__time">
-                      <Clock className="w-3 h-3" />
-                      {formatBackupTime(backup.createdAt)}
+                    <div className="backup-card__actions">
+                      <button
+                        type="button"
+                        onClick={() => toggleBackupDetail(backup.id)}
+                        className="extension-page__wide-secondary backup-card__details-toggle"
+                        aria-expanded={isExpanded}
+                      >
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        详情
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRestore(backup)}
+                        disabled={Boolean(busyAction)}
+                        className="extension-page__wide-secondary backup-card__restore"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        {busyAction === "restore" ? "恢复中" : "恢复"}
+                      </button>
                     </div>
-                    <div className="backup-card__metrics">
-                      <span><Bookmark className="w-3 h-3" />{backup.bookmarkCount} 个书签</span>
-                      <span><Folder className="w-3 h-3" />{backup.folderCount} 个文件夹</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleRestore(backup)}
-                    disabled={Boolean(busyAction)}
-                    className="extension-page__wide-secondary backup-card__restore"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    {busyAction === "restore" ? "恢复中" : "恢复"}
-                  </button>
-                </article>
-              ))}
+                    {isExpanded && (
+                      <div className="backup-card__details">
+                        {detail.rootBookmarkCount > 0 && (
+                          <div className="backup-folder-summary backup-folder-summary--root">
+                            <div>
+                              <strong>根目录书签</strong>
+                              <span>{detail.rootBookmarkCount} 个书签</span>
+                            </div>
+                          </div>
+                        )}
+                        {detail.folders.length > 0 ? (
+                          <div className="backup-folder-list">
+                            {detail.folders.map((folder) => (
+                              <div key={folder.name} className="backup-folder-summary">
+                                <div>
+                                  <strong title={folder.name}>{folder.name}</strong>
+                                  <span>{folder.bookmarkCount} 个书签 · {folder.folderCount} 个子文件夹</span>
+                                </div>
+                                {folder.samples.length > 0 && (
+                                  <p>{folder.samples.join(" / ")}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : detail.rootBookmarkCount === 0 ? (
+                          <div className="extension-empty extension-empty--compact">这份备份暂无可预览的书签分类</div>
+                        ) : null}
+                        {detail.hiddenFolderCount > 0 && (
+                          <p className="backup-detail-more">还有 {detail.hiddenFolderCount} 个文件夹未展示</p>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="extension-empty extension-empty--compact">
