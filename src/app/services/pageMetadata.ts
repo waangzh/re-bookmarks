@@ -1,10 +1,25 @@
-import type { BookmarkForAI, BookmarkNode } from "../types";
+import type { BookmarkForAI, BookmarkNode, OrganizeMode } from "../types";
+import { sanitizeUrl } from "./rules";
 
 const METADATA_FETCH_CONCURRENCY = 4;
-const METADATA_FETCH_TIMEOUT_MS = 6000;
 const METADATA_MAX_BYTES = 128 * 1024;
+const METADATA_MODE_LIMITS: Record<OrganizeMode, { fetchTimeoutMs: number; batchTimeoutMs: number }> = {
+  quick: {
+    fetchTimeoutMs: 6000,
+    batchTimeoutMs: 12000,
+  },
+  deep: {
+    fetchTimeoutMs: 15000,
+    batchTimeoutMs: 60000,
+  },
+};
 
 type PageMetadata = NonNullable<BookmarkForAI["metadata"]>;
+type MetadataFetchOptions = {
+  sendFullUrl: boolean;
+  fetchTimeoutMs: number;
+  batchSignal?: AbortSignal;
+};
 
 function unavailable(reason: string, httpStatus?: number, finalUrl?: string): PageMetadata {
   return {
@@ -87,6 +102,11 @@ function isLikelyLoginPage(metadata: PageMetadata) {
   return /(?:\/login|\/signin|\/auth|sign in|log in|login|account)/i.test(text);
 }
 
+function normalizeFinalUrl(responseUrl: string, bookmarkUrl: string | undefined, sendFullUrl: boolean) {
+  if (!responseUrl || responseUrl === bookmarkUrl) return undefined;
+  return sanitizeUrl(responseUrl, sendFullUrl);
+}
+
 async function readResponsePrefix(response: Response) {
   if (!response.body?.getReader) {
     return (await response.text()).slice(0, METADATA_MAX_BYTES);
@@ -119,11 +139,17 @@ async function readResponsePrefix(response: Response) {
   return html;
 }
 
-async function fetchOneMetadata(bookmark: Pick<BookmarkNode, "url">): Promise<PageMetadata> {
+async function fetchOneMetadata(
+  bookmark: Pick<BookmarkNode, "url">,
+  options: MetadataFetchOptions
+): Promise<PageMetadata> {
   if (!isHttpUrl(bookmark.url)) return unavailable("metadata: only http/https pages are supported");
+  if (options.batchSignal?.aborted) return unavailable("metadata: batch budget exceeded");
 
   const controller = new AbortController();
-  const timer = globalThis.setTimeout(() => controller.abort(), METADATA_FETCH_TIMEOUT_MS);
+  const abortForBatchBudget = () => controller.abort();
+  const timer = globalThis.setTimeout(() => controller.abort(), options.fetchTimeoutMs);
+  options.batchSignal?.addEventListener("abort", abortForBatchBudget, { once: true });
 
   try {
     const response = await fetch(bookmark.url ?? "", {
@@ -131,7 +157,7 @@ async function fetchOneMetadata(bookmark: Pick<BookmarkNode, "url">): Promise<Pa
       redirect: "follow",
       signal: controller.signal,
     });
-    const finalUrl = response.url && response.url !== bookmark.url ? response.url : undefined;
+    const finalUrl = normalizeFinalUrl(response.url, bookmark.url, options.sendFullUrl);
 
     if (!response.ok) {
       return unavailable(`HTTP ${response.status}`, response.status, finalUrl);
@@ -168,10 +194,11 @@ async function fetchOneMetadata(bookmark: Pick<BookmarkNode, "url">): Promise<Pa
     return metadata;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      return unavailable("metadata: fetch timeout");
+      return unavailable(options.batchSignal?.aborted ? "metadata: batch budget exceeded" : "metadata: fetch timeout");
     }
     return unavailable(error instanceof Error && error.message ? error.message : "metadata: fetch failed");
   } finally {
+    options.batchSignal?.removeEventListener("abort", abortForBatchBudget);
     globalThis.clearTimeout(timer);
   }
 }
@@ -201,12 +228,27 @@ async function mapWithConcurrency<T, R>(
 
 export async function enrichBookmarksWithPageMetadata<T extends BookmarkForAI>(
   bookmarks: T[],
-  sourceBookmarks: Array<Pick<BookmarkNode, "id" | "url">>
+  sourceBookmarks: Array<Pick<BookmarkNode, "id" | "url">>,
+  options: Pick<MetadataFetchOptions, "sendFullUrl"> & { mode?: OrganizeMode }
 ) {
   const sourceById = new Map(sourceBookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  const limits = METADATA_MODE_LIMITS[options.mode ?? "quick"];
+  const batchController = new AbortController();
+  const batchTimer = globalThis.setTimeout(
+    () => batchController.abort(),
+    limits.batchTimeoutMs
+  );
 
-  return mapWithConcurrency(bookmarks, METADATA_FETCH_CONCURRENCY, async (bookmark) => ({
-    ...bookmark,
-    metadata: await fetchOneMetadata(sourceById.get(bookmark.id) ?? {}),
-  }));
+  try {
+    return await mapWithConcurrency(bookmarks, METADATA_FETCH_CONCURRENCY, async (bookmark) => ({
+      ...bookmark,
+      metadata: await fetchOneMetadata(sourceById.get(bookmark.id) ?? {}, {
+        sendFullUrl: options.sendFullUrl,
+        fetchTimeoutMs: limits.fetchTimeoutMs,
+        batchSignal: batchController.signal,
+      }),
+    }));
+  } finally {
+    globalThis.clearTimeout(batchTimer);
+  }
 }

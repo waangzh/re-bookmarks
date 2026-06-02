@@ -9,6 +9,8 @@ export type BookmarkNode = {
   type: "folder" | "url";
 };
 
+export type OrganizeMode = "quick" | "deep";
+
 export type BookmarkForAI = {
   id: string;
   title: string;
@@ -174,6 +176,7 @@ export type PreviewPlanCache = {
   id: string;
   createdAt: number;
   bookmarkCount: number;
+  organizeMode?: OrganizeMode;
   movePlan: MovePlan[];
   tokenUsage?: TokenUsage;
 };
@@ -185,6 +188,7 @@ export type PreviewTaskCache = {
   updatedAt: number;
   bookmarkCount: number;
   selectedBookmarkIds: string[];
+  organizeMode?: OrganizeMode;
   movePlan?: MovePlan[];
   tokenUsage?: TokenUsage;
   error?: string;

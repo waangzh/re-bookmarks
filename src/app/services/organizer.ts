@@ -6,6 +6,7 @@ import type {
   MovePlan,
   OrganizeReport,
   PendingRecommendation,
+  OrganizeMode,
   Settings,
   TokenUsage,
 } from "../types";
@@ -130,10 +131,11 @@ function appendMetadataReasons(results: ClassificationResult[], bookmarks: Bookm
 
 async function prepareBookmarksForAI(
   batch: Awaited<ReturnType<typeof getAllBookmarks>>,
-  sendFullUrl: boolean
+  sendFullUrl: boolean,
+  organizeMode: OrganizeMode
 ) {
   const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, sendFullUrl));
-  return enrichBookmarksWithPageMetadata(aiBookmarks, batch);
+  return enrichBookmarksWithPageMetadata(aiBookmarks, batch, { sendFullUrl, mode: organizeMode });
 }
 
 function buildMovePlan(
@@ -284,7 +286,8 @@ export async function generateMovePlansForBookmarks(
 }
 
 export async function generateMovePlanPreviewForBookmarks(
-  urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>
+  urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>,
+  organizeMode: OrganizeMode = "quick"
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
   const [settings, habitProfile] = await Promise.all([
     getSettings(),
@@ -303,7 +306,7 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 先分类采样
     for (const batch of chunkBookmarks(sample, 20)) {
-      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl);
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
@@ -330,7 +333,7 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 阶段二：用已有分类体系约束后续批次
     for (const batch of chunkBookmarks(restBookmarks, 20)) {
-      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl);
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
@@ -656,7 +659,7 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
   if (settings.provider.apiKey) {
     let aiBookmark: BookmarkForAI | undefined;
     try {
-      [aiBookmark] = await prepareBookmarksForAI([bookmarkNode], settings.sendFullUrl);
+      [aiBookmark] = await prepareBookmarksForAI([bookmarkNode], settings.sendFullUrl, "quick");
       const [aiResult] = await classifyWithAI(settings.provider, [
         aiBookmark,
       ], {

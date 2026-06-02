@@ -3007,6 +3007,74 @@ input {
   color: #64748b;
 }
 
+.organize-mode-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.organize-mode-picker__button {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.organize-mode-picker__button svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #64748b;
+}
+
+.organize-mode-picker__button span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.organize-mode-picker__button strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.organize-mode-picker__button small {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.organize-mode-picker__button:hover {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.organize-mode-picker__button.is-active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12);
+}
+
+.organize-mode-picker__button.is-active svg {
+  color: #2563eb;
+}
+
+@media (max-width: 380px) {
+  .organize-mode-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
 .extension-checkbox {
   width: 16px;
   height: 16px;

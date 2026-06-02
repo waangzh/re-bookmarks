@@ -10,8 +10,9 @@ import {
   ChevronRight,
   Globe2,
   RefreshCw,
+  Zap,
 } from "lucide-react";
-import type { BookmarkNode, MovePlan, PreviewTaskCache, TokenUsage } from "../types";
+import type { BookmarkNode, MovePlan, OrganizeMode, PreviewTaskCache, TokenUsage } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan } from "../services/storage";
@@ -164,6 +165,7 @@ export function Preview() {
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [organizeMode, setOrganizeMode] = useState<OrganizeMode>("quick");
   const [expandedPreviewFolders, setExpandedPreviewFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
     () => new Set(["__root__"])
@@ -181,6 +183,7 @@ export function Preview() {
 
     setPlans(task.movePlan);
     setTokenUsage(task.tokenUsage);
+    setOrganizeMode(task.organizeMode ?? "quick");
     setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
     setPhase("preview");
     setLoading(false);
@@ -192,6 +195,7 @@ export function Preview() {
     setPlans([]);
     setTokenUsage(undefined);
     setActiveTaskId(task.id);
+    setOrganizeMode(task.organizeMode ?? "quick");
     setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
     setPhase("preview");
     setLoading(true);
@@ -222,6 +226,7 @@ export function Preview() {
         if (cached?.movePlan.length) {
           setPlans(cached.movePlan);
           setTokenUsage(cached.tokenUsage);
+          setOrganizeMode(cached.organizeMode ?? "quick");
           setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
           setPhase("preview");
           setLoading(false);
@@ -346,7 +351,7 @@ export function Preview() {
 
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
-      const task = await startPreviewTask(bookmarksToClassify);
+      const task = await startPreviewTask(bookmarksToClassify, organizeMode);
       if (task?.status === "completed" && restoreCompletedTask(task)) return;
       if (task?.status === "failed") {
         throw new Error(task.error ?? "生成分类失败");
@@ -671,6 +676,31 @@ export function Preview() {
               </span>
             </div>
 
+            <div className="organize-mode-picker" role="group" aria-label="选择整理模式">
+              <button
+                type="button"
+                className={`organize-mode-picker__button ${organizeMode === "quick" ? "is-active" : ""}`}
+                onClick={() => setOrganizeMode("quick")}
+              >
+                <Zap className="w-4 h-4" />
+                <span>
+                  <strong>快速整理</strong>
+                  <small>更快生成，网页元数据等待较短</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`organize-mode-picker__button ${organizeMode === "deep" ? "is-active" : ""}`}
+                onClick={() => setOrganizeMode("deep")}
+              >
+                <Globe2 className="w-4 h-4" />
+                <span>
+                  <strong>深度整理</strong>
+                  <small>等待更久，尽量抓取更多网页元数据</small>
+                </span>
+              </button>
+            </div>
+
             <section className="selection-tree-panel">
               <div className="selection-tree">
                 {renderSelectionTreeNode(selectionTree)}
@@ -719,7 +749,7 @@ export function Preview() {
             {loading ? (
               <div className="extension-empty">
                 <p>正在生成分类建议</p>
-                <span>AI 正在分析书签内容...</span>
+                <span>{organizeMode === "deep" ? "深度整理会等待更多网页元数据..." : "AI 正在分析书签内容..."}</span>
               </div>
             ) : plans.length === 0 ? (
               <div className="extension-empty">
