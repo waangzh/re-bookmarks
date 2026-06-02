@@ -15,6 +15,17 @@ export type BookmarkForAI = {
   domain: string;
   path: string;
   sanitizedUrl: string;
+  metadata?: {
+    available: boolean;
+    title?: string;
+    description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogSiteName?: string;
+    finalUrl?: string;
+    httpStatus?: number;
+    reason?: string;
+  };
 };
 
 export type FolderHabitSample = {

@@ -1,4 +1,5 @@
 import type {
+  BookmarkForAI,
   BookmarkBackup,
   ClassificationResult,
   FailedMove,
@@ -20,6 +21,7 @@ import {
   removeFolder,
 } from "./bookmarks";
 import { classifyWithAI } from "./aiProvider";
+import { enrichBookmarksWithPageMetadata } from "./pageMetadata";
 import { normalizeCategoryPath, sanitizeUrl, toBookmarkForAI } from "./rules";
 import { getBookmarkTreeStats, saveBackupToHistory } from "./backups";
 import {
@@ -104,12 +106,45 @@ function addTokenUsage(total: TokenUsage, usage: TokenUsage) {
   total.totalTokens += usage.totalTokens;
 }
 
+function appendReason(...parts: Array<string | undefined>) {
+  return parts.filter(Boolean).join("；");
+}
+
+function metadataReason(bookmark: BookmarkForAI) {
+  if (!bookmark.metadata) return undefined;
+  if (bookmark.metadata.available) return "已结合网页元数据";
+  return `网页元数据不可用：${bookmark.metadata.reason ?? "抓取失败，已降级使用标题和 URL"}`;
+}
+
+function appendMetadataReasons(results: ClassificationResult[], bookmarks: BookmarkForAI[]) {
+  const reasonById = new Map(
+    bookmarks
+      .map((bookmark) => [bookmark.id, metadataReason(bookmark)] as const)
+      .filter(([, reason]) => Boolean(reason))
+  );
+
+  for (const result of results) {
+    result.reason = appendReason(result.reason, reasonById.get(result.id));
+  }
+}
+
+async function prepareBookmarksForAI(
+  batch: Awaited<ReturnType<typeof getAllBookmarks>>,
+  sendFullUrl: boolean
+) {
+  const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, sendFullUrl));
+  return enrichBookmarksWithPageMetadata(aiBookmarks, batch);
+}
+
 function buildMovePlan(
   bookmark: Awaited<ReturnType<typeof getAllBookmarks>>[number],
   classification: ClassificationResult,
   settings: Settings,
   duplicateReason?: string
 ): MovePlan {
+  const lowConfidenceReason = classification.confidence < 0.55
+    ? "置信度低于 55%，已暂放待整理"
+    : undefined;
   const path = normalizeCategoryPath(
     classification.confidence < 0.55 ? ["待整理"] : classification.categoryPath,
     settings.allowNestedFolders,
@@ -124,7 +159,7 @@ function buildMovePlan(
     fromIndex: bookmark.index,
     toFolderPath: path,
     confidence: classification.confidence,
-    reason: [classification.reason, duplicateReason].filter(Boolean).join("；"),
+    reason: appendReason(classification.reason, lowConfidenceReason, duplicateReason),
     source: classification.source,
   };
 }
@@ -268,9 +303,9 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 先分类采样
     for (const batch of chunkBookmarks(sample, 20)) {
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
-        const aiBookmarks = batch.map((b) => toBookmarkForAI(b, settings.sendFullUrl));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
           allowNestedFolders: settings.allowNestedFolders,
           maxTopLevelFolders: settings.maxTopLevelFolders,
@@ -279,12 +314,14 @@ export async function generateMovePlanPreviewForBookmarks(
           customPrompt: settings.customPrompt,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
+        appendMetadataReasons(aiResults, aiBookmarks);
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
         }
       } catch (error) {
         const reason = classificationFailureReason(error);
-        for (const b of batch) failureReasons.set(b.id, reason);
+        const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
+        for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));
       }
     }
 
@@ -293,9 +330,9 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 阶段二：用已有分类体系约束后续批次
     for (const batch of chunkBookmarks(restBookmarks, 20)) {
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
-        const aiBookmarks = batch.map((b) => toBookmarkForAI(b, settings.sendFullUrl));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
           allowNestedFolders: settings.allowNestedFolders,
           maxTopLevelFolders: settings.maxTopLevelFolders,
@@ -305,19 +342,22 @@ export async function generateMovePlanPreviewForBookmarks(
           existingCategories: existingCategories.length > 0 ? existingCategories : undefined,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
+        appendMetadataReasons(aiResults, aiBookmarks);
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
         }
 
+        const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
         for (const b of batch) {
           if (!requestedIds.has(b.id)) continue;
           if (!results.has(b.id)) {
-            failureReasons.set(b.id, "AI 未返回此书签的分类结果");
+            failureReasons.set(b.id, appendReason("AI 未返回此书签的分类结果", metadataReasons.get(b.id)));
           }
         }
       } catch (error) {
         const reason = classificationFailureReason(error);
-        for (const b of batch) failureReasons.set(b.id, reason);
+        const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
+        for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));
       }
     }
   } else if (urlBookmarks.length) {
@@ -614,9 +654,11 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
   let classification = fallbackResult(bookmark.id, "新增书签等待 AI 分类");
 
   if (settings.provider.apiKey) {
+    let aiBookmark: BookmarkForAI | undefined;
     try {
+      [aiBookmark] = await prepareBookmarksForAI([bookmarkNode], settings.sendFullUrl);
       const [aiResult] = await classifyWithAI(settings.provider, [
-        toBookmarkForAI(bookmarkNode, settings.sendFullUrl),
+        aiBookmark,
       ], {
         allowNestedFolders: settings.allowNestedFolders,
         maxTopLevelFolders: settings.maxTopLevelFolders,
@@ -624,8 +666,12 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
         habitProfile: await getFolderHabitProfile(),
         customPrompt: settings.customPrompt,
       });
-      if (aiResult) classification = aiResult;
-    } catch {
+      if (aiResult) {
+        aiResult.reason = appendReason(aiResult.reason, metadataReason(aiBookmark));
+        classification = aiResult;
+      }
+    } catch (error) {
+      classification.reason = appendReason(classificationFailureReason(error), metadataReason(aiBookmark), classification.reason);
       // AI 分类失败时保留待整理建议
     }
   }
