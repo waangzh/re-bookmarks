@@ -1658,6 +1658,13 @@ input {
   margin-bottom: 12px;
 }
 
+.extension-field__hint {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .settings-section {
   padding: 0;
   overflow: hidden;

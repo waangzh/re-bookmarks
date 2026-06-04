@@ -418,6 +418,37 @@ export async function testAIConnection(config: AIProviderConfig) {
   return completion.content.trim().length > 0;
 }
 
+function summarizeRulePatternForPrompt(pattern: string) {
+  const text = pattern
+    .replace(/参考[:：].*$/i, "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\b[\w.-]+\.[a-z]{2,}(?:\/\S*)?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.slice(0, 160) || "参考该文件夹的主题和内容类型";
+}
+
+function buildHabitInstruction(profile: FolderHabitProfile) {
+  const preferred = (profile.preferredTopLevelFolders ?? []).slice(0, 12);
+  const folderRules = (profile.folderRules ?? []).slice(0, 12).map((rule, index) => {
+    const path = rule.folderPath.join(" / ");
+    const pattern = summarizeRulePatternForPrompt(rule.pattern);
+    return `${index + 1}. ${path}：${pattern}`;
+  });
+  const avoidRules = (profile.avoidRules ?? []).slice(0, 8).map((rule, index) => `${index + 1}. ${rule}`);
+  const parts = ["\n用户已有分类习惯："];
+
+  if (profile.promptHint) parts.push(profile.promptHint);
+  if (preferred.length) parts.push(`优先复用这些一级分类：${preferred.join("、")}。`);
+  if (folderRules.length) {
+    parts.push(`可复用文件夹规则：${folderRules.join("；")}。分类时优先匹配这些路径体现的主题和粒度。`);
+  }
+  if (avoidRules.length) parts.push(`避免规则：${avoidRules.join("；")}。`);
+  parts.push("如果书签明显匹配已有文件夹规则，优先返回该规则路径；无法匹配时再创建克制的新分类或归入待整理。");
+
+  return parts.join(" ");
+}
+
 export async function classifyWithAI(
   config: AIProviderConfig,
   bookmarks: BookmarkForAI[],
@@ -435,7 +466,7 @@ export async function classifyWithAI(
     : "";
 
   const habitInstruction = options?.habitProfile
-    ? `用户已有分类习惯：${options.habitProfile.promptHint} 优先复用这些一级分类：${options.habitProfile.preferredTopLevelFolders.join("、")}。除非明显不合适，否则新分类应贴近这些既有命名和粒度。`
+    ? buildHabitInstruction(options.habitProfile)
     : "";
 
   const completion = await chatCompletion(

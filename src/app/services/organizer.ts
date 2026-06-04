@@ -3,6 +3,7 @@ import type {
   BookmarkBackup,
   ClassificationResult,
   FailedMove,
+  FolderHabitProfile,
   MovePlan,
   OrganizeReport,
   PendingRecommendation,
@@ -193,10 +194,23 @@ function topKeys(counts: Map<string, number>, limit: number) {
   );
 }
 
+function getProtectedTopLevelFolders(habitProfile?: FolderHabitProfile | null) {
+  const folders = new Set<string>();
+  for (const folder of habitProfile?.preferredTopLevelFolders ?? []) {
+    const value = folder.trim();
+    if (value) folders.add(value);
+  }
+  for (const rule of habitProfile?.folderRules ?? []) {
+    const value = rule.folderPath[0]?.trim();
+    if (value) folders.add(value);
+  }
+  return [...folders];
+}
+
 function compactClassificationResults(
   results: Map<string, ClassificationResult>,
   settings: Settings,
-  preferredTopLevelFolders: string[] = []
+  habitProfile?: FolderHabitProfile | null
 ) {
   const validResults = [...results.values()].filter((result) => {
     const first = result.categoryPath?.[0];
@@ -204,18 +218,18 @@ function compactClassificationResults(
   });
   const topLevelCounts = countBy(validResults, (result) => result.categoryPath?.[0]);
   const hasTopLevelOverflow = topLevelCounts.size > settings.maxTopLevelFolders;
-  const preferred = preferredTopLevelFolders.filter((folder) => topLevelCounts.has(folder));
+  const protectedTopLevels = getProtectedTopLevelFolders(habitProfile).filter((folder) => topLevelCounts.has(folder));
   const allowedTopLevels = topKeys(
     topLevelCounts,
     hasTopLevelOverflow && settings.maxTopLevelFolders > 1
       ? settings.maxTopLevelFolders - 1
       : settings.maxTopLevelFolders
   );
-  for (const folder of preferred.slice(0, Math.max(1, settings.maxTopLevelFolders - 1))) {
+  for (const folder of protectedTopLevels.slice(0, Math.max(1, settings.maxTopLevelFolders - 1))) {
     allowedTopLevels.add(folder);
   }
   while (allowedTopLevels.size > Math.max(1, settings.maxTopLevelFolders - 1) && hasTopLevelOverflow) {
-    const removable = [...allowedTopLevels].reverse().find((folder) => !preferred.includes(folder));
+    const removable = [...allowedTopLevels].reverse().find((folder) => !protectedTopLevels.includes(folder));
     if (!removable) break;
     allowedTopLevels.delete(removable);
   }
@@ -369,7 +383,7 @@ export async function generateMovePlanPreviewForBookmarks(
     }
   }
 
-  compactClassificationResults(results, settings, habitProfile?.preferredTopLevelFolders);
+  compactClassificationResults(results, settings, habitProfile);
 
   const seenUrls = new Map<string, string>();
 

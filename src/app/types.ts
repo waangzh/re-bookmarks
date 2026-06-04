@@ -207,6 +207,8 @@ export type FolderHabitProfile = {
   }>;
   avoidRules: string[];
   promptHint: string;
+  analysisSource?: "ai" | "fallback";
+  analysisWarning?: string;
 };
 
 export type FrequentBookmark = {

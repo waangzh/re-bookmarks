@@ -15,12 +15,55 @@ function folderKey(path: string[]) {
   return path.join(" / ");
 }
 
+function uniqueStrings(items: string[]) {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const item of items) {
+    const value = item.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    next.push(value);
+  }
+  return next;
+}
+
 function stripRootFolderNames(path: string[]) {
   let next = path.map((item) => item.trim()).filter(Boolean);
   while (next.length > 0 && ROOT_FOLDER_NAMES.has(next[0])) {
     next = next.slice(1);
   }
   return next;
+}
+
+function summarizeAnalysisError(error: unknown) {
+  if (!(error instanceof Error) || !error.message.trim()) return "AI 分析失败";
+  return error.message.replace(/\s+/g, " ").slice(0, 120);
+}
+
+export function cleanFolderHabitProfile(profile: FolderHabitProfile): FolderHabitProfile {
+  const folderRuleKeys = new Set<string>();
+  const folderRules: FolderHabitProfile["folderRules"] = [];
+
+  for (const rule of profile.folderRules ?? []) {
+    const folderPath = stripRootFolderNames(rule.folderPath).slice(0, 3);
+    const pattern = rule.pattern.trim();
+    const key = folderKey(folderPath);
+    if (!folderPath.length || !pattern || folderRuleKeys.has(key)) continue;
+    folderRuleKeys.add(key);
+    folderRules.push({ folderPath, pattern });
+  }
+
+  return {
+    ...profile,
+    summary: profile.summary?.trim() ?? "",
+    preferredTopLevelFolders: uniqueStrings(profile.preferredTopLevelFolders ?? [])
+      .filter((item) => !ROOT_FOLDER_NAMES.has(item))
+      .slice(0, 16),
+    folderRules,
+    avoidRules: uniqueStrings(profile.avoidRules ?? []).slice(0, 10),
+    promptHint: profile.promptHint?.trim() ?? "",
+    analysisWarning: profile.analysisWarning?.trim() || undefined,
+  };
 }
 
 function inferSourceType(sample: FolderHabitSample) {
@@ -123,14 +166,30 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
 export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> {
   const [settings, samples] = await Promise.all([getSettings(), collectFolderHabitSamples()]);
   const fallback = buildFallbackProfile(samples);
-  const analyzed = samples.length
-    ? await analyzeFolderHabitsWithAI(settings.provider, samples, fallback).catch(() => fallback)
-    : fallback;
-  const profile: FolderHabitProfile = {
+  let analyzed = fallback;
+  let analysisSource: FolderHabitProfile["analysisSource"] = "fallback";
+  let analysisWarning: string | undefined;
+
+  if (!samples.length) {
+    analysisWarning = "未找到可分析的书签样本，已使用本地规则推断";
+  } else if (!settings.provider.apiKey) {
+    analysisWarning = "未配置 API Key，已使用本地规则推断";
+  } else {
+    try {
+      analyzed = await analyzeFolderHabitsWithAI(settings.provider, samples, fallback);
+      analysisSource = "ai";
+    } catch (error) {
+      analysisWarning = `AI 分析失败，已使用本地规则推断：${summarizeAnalysisError(error)}`;
+    }
+  }
+
+  const profile = cleanFolderHabitProfile({
     id: `habit-${Date.now()}`,
     createdAt: Date.now(),
     ...analyzed,
-  };
+    analysisSource,
+    analysisWarning,
+  });
 
   await saveFolderHabitProfile(profile);
   await clearPreviewPlan();
@@ -138,20 +197,10 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
 }
 
 export async function saveEditedFolderHabitProfile(profile: FolderHabitProfile): Promise<FolderHabitProfile> {
-  const next = {
+  const next = cleanFolderHabitProfile({
     ...profile,
-    preferredTopLevelFolders: profile.preferredTopLevelFolders
-      .map((item) => item.trim())
-      .filter((item) => item && !ROOT_FOLDER_NAMES.has(item)),
-    folderRules: profile.folderRules
-      .map((rule) => ({
-        folderPath: stripRootFolderNames(rule.folderPath),
-        pattern: rule.pattern.trim(),
-      }))
-      .filter((rule) => rule.folderPath.length > 0 && rule.pattern),
-    avoidRules: profile.avoidRules.map((item) => item.trim()).filter(Boolean),
-    promptHint: profile.promptHint.trim(),
-  };
+    analysisWarning: profile.analysisWarning,
+  });
   await saveFolderHabitProfile(next);
   await clearPreviewPlan();
   return next;

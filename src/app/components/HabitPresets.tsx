@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ChevronRight, Plus, Save, Sparkles, Trash2 } from "lu
 import type { FolderHabitProfile } from "../types";
 import {
   analyzeAndSaveFolderHabits,
+  cleanFolderHabitProfile,
   getFolderHabitProfile,
   saveEditedFolderHabitProfile,
 } from "../services/habits";
@@ -26,7 +27,7 @@ function pathToText(path: string[]) {
 }
 
 function textToPath(text: string) {
-  return text.split("/").flatMap((part) => part.split(" / ")).map((part) => part.trim()).filter(Boolean);
+  return text.split(" / ").map((part) => part.trim()).filter(Boolean);
 }
 
 function resizeTextarea(element: HTMLTextAreaElement) {
@@ -85,8 +86,7 @@ export function HabitPresets() {
           setProfile(emptyProfile());
           return;
         }
-        const cleaned = await saveEditedFolderHabitProfile(stored);
-        setProfile(cleaned);
+        setProfile(cleanFolderHabitProfile(stored));
       })
       .finally(() => setStatus("idle"));
   }, []);
@@ -101,7 +101,7 @@ export function HabitPresets() {
     try {
       const next = await analyzeAndSaveFolderHabits();
       setProfile(next);
-      setMessage("已重新分析当前书签分类习惯");
+      setMessage(next.analysisWarning ?? "已重新分析当前书签分类习惯");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "分析失败");
@@ -155,6 +155,12 @@ export function HabitPresets() {
           </button>
         </div>
 
+        <div className="extension-summary-panel habit-presets-help">
+          <p>
+            重新分析会把现有文件夹路径、书签标题、域名和去除 query/hash 的 URL 样例发送给已配置的 AI Provider；不会发送浏览历史。
+          </p>
+        </div>
+
         {message && (
           <div className={`extension-status ${status === "error" ? "extension-status--error" : "extension-status--success"}`}>
             <span>{message}</span>
@@ -169,6 +175,7 @@ export function HabitPresets() {
                 已学习 {current.folderCount} 个文件夹、{current.bookmarkCount} 个书签。最后更新时间：
                 {current.createdAt ? new Date(current.createdAt).toLocaleString() : "未生成"}
               </p>
+              {current.analysisWarning && <p>{current.analysisWarning}</p>}
             </div>
             <div className="extension-field">
               <label>总结</label>
@@ -265,6 +272,7 @@ export function HabitPresets() {
                       className="extension-control"
                       placeholder="开发 / 文档"
                     />
+                    <p className="extension-field__hint">使用空格斜杠空格（ / ）分隔层级；AI/ML、C/C++ 会保留为单个文件夹名。</p>
                   </div>
                   <div className="habit-rule-card__actions">
                     <button
