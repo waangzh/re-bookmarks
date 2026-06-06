@@ -12,17 +12,19 @@ import {
   Folder,
   RotateCcw,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import type { BookmarkBackup, BookmarkRestoreReport } from "../types";
 import {
   createManualBackup,
+  deleteBackup,
   getBackupHistory,
   restoreBackup,
 } from "../services/backups";
 import { BACKUP_HISTORY_LIMIT } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
-type BusyAction = "create" | "restore" | null;
+type BusyAction = "create" | "restore" | "delete" | null;
 
 type BackupFolderSummary = {
   name: string;
@@ -183,6 +185,31 @@ export function Backups() {
     }
   };
 
+  const handleDeleteBackup = async (backup: BookmarkBackup) => {
+    const confirmed = confirm(
+      `确认删除这份备份吗？\n\n备份时间：${formatBackupTime(backup.createdAt)}\n包含：${backup.bookmarkCount} 个书签、${backup.folderCount} 个文件夹\n\n删除后不能从 ReMarks 的备份记录中恢复这份备份。`
+    );
+    if (!confirmed) return;
+
+    setBusyAction("delete");
+    setMessage("");
+    setRestoreReport(null);
+    try {
+      await deleteBackup(backup.id);
+      setExpandedBackupIds((prev) => {
+        const next = new Set(prev);
+        next.delete(backup.id);
+        return next;
+      });
+      await loadBackups();
+      setMessage("已删除备份记录");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除备份失败");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   return (
     <div className="extension-page extension-page--backups">
       <div className="extension-page__inner">
@@ -284,6 +311,15 @@ export function Backups() {
                       >
                         <RotateCcw className="w-4 h-4" />
                         {busyAction === "restore" ? "恢复中" : "恢复"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteBackup(backup)}
+                        disabled={Boolean(busyAction)}
+                        className="extension-page__wide-secondary backup-card__delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        {busyAction === "delete" ? "删除中" : "删除"}
                       </button>
                     </div>
                     {isExpanded && (

@@ -121,8 +121,8 @@ function normalizeBackup(backup: BookmarkBackup): BookmarkBackup {
 }
 
 export async function getBackupHistory(): Promise<BookmarkBackup[]> {
-  const backups = await getStorageValue<BookmarkBackup[]>(STORAGE_KEYS.backupHistory, []);
-  if (backups.length > 0) {
+  const backups = await getStorageValue<BookmarkBackup[] | null>(STORAGE_KEYS.backupHistory, null);
+  if (backups) {
     return backups.map(normalizeBackup).slice(0, BACKUP_HISTORY_LIMIT);
   }
 
@@ -156,6 +156,14 @@ export async function saveBackupToHistory(backup: BookmarkBackup): Promise<void>
     ...backups.filter((item) => item.id !== normalizedBackup.id),
   ];
   await writeBackupHistory(nextBackups);
+}
+
+export async function deleteBackup(backupId: string): Promise<void> {
+  const backups = await getBackupHistory();
+  await setStorageValue(
+    STORAGE_KEYS.backupHistory,
+    backups.filter((backup) => backup.id !== backupId)
+  );
 }
 
 async function createBackup(kind: BookmarkBackup["kind"], restoreSourceId?: string): Promise<BookmarkBackup> {
