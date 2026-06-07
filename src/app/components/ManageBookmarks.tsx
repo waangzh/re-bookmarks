@@ -59,6 +59,8 @@ type DragSession = {
   timer: number;
 };
 
+const DEFAULT_EXPANDED_ROOT_FOLDER_TITLES = new Set(["收藏夹栏", "书签栏", "Bookmarks Bar", "Favorites Bar"]);
+
 function createFolderNode(title: string, path: string[], id?: string, parentId?: string): BookmarkFolderNode {
   return {
     id,
@@ -121,6 +123,10 @@ function collectFolderLookup(root: BookmarkFolderNode) {
   };
   collect(root);
   return lookup;
+}
+
+function findDefaultExpandedRootFolder(root: BookmarkFolderNode) {
+  return root.children.find((folder) => DEFAULT_EXPANDED_ROOT_FOLDER_TITLES.has(folder.title));
 }
 
 function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
@@ -236,6 +242,7 @@ export function ManageBookmarks() {
   const suppressNextFolderClickRef = useRef(false);
   const hoverExpandTimerRef = useRef<number | null>(null);
   const hoverExpandFolderKeyRef = useRef<string | null>(null);
+  const didApplyDefaultExpandedFolderRef = useRef(false);
 
   const loadManagedBookmarks = useCallback(async () => {
     const [, , nextFolders] = await Promise.all([loadBookmarks(), loadRecommendations(), getAllBookmarkFolders()]);
@@ -329,6 +336,21 @@ export function ManageBookmarks() {
   useEffect(() => {
     folderLookupRef.current = folderLookup;
   }, [folderLookup]);
+
+  useEffect(() => {
+    if (didApplyDefaultExpandedFolderRef.current) return;
+
+    const defaultExpandedFolder = findDefaultExpandedRootFolder(folderTree);
+    if (!defaultExpandedFolder) return;
+
+    didApplyDefaultExpandedFolderRef.current = true;
+    setExpandedFolders((prev) => {
+      if (prev.has(defaultExpandedFolder.key)) return prev;
+      const next = new Set(prev);
+      next.add(defaultExpandedFolder.key);
+      return next;
+    });
+  }, [folderTree]);
 
   const visibleExpandedFolders = useMemo(() => {
     if (!searchQuery && !taskMode) return expandedFolders;
