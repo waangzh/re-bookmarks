@@ -8,6 +8,7 @@ import type {
   OrganizeReport,
   PendingRecommendation,
   OrganizeMode,
+  PreviewTaskProgress,
   Settings,
   TokenUsage,
 } from "../types";
@@ -35,6 +36,9 @@ import {
   saveReportToHistory,
   savePendingRecommendations,
 } from "./storage";
+
+type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
+type PreviewProgressReporter = (progress: PreviewTaskProgress) => void | Promise<void>;
 
 function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId: string): string[] | null {
   function search(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]): string[] | null {
@@ -134,6 +138,23 @@ function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw new DOMException("整理任务已取消", "AbortError");
   }
+}
+
+function createProgressEmitter(
+  onProgress?: PreviewProgressReporter,
+  startedAt = Date.now()
+) {
+  return async (progress: PreviewProgressUpdate) => {
+    try {
+      await onProgress?.({
+        ...progress,
+        startedAt,
+        updatedAt: Date.now(),
+      });
+    } catch {
+      // 进度写入只影响 UI 状态，不应中断实际分类和预览生成。
+    }
+  };
 }
 
 async function prepareBookmarksForAI(
@@ -309,7 +330,7 @@ export async function generateMovePlansForBookmarks(
 export async function generateMovePlanPreviewForBookmarks(
   urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>,
   organizeMode: OrganizeMode = "quick",
-  options: { signal?: AbortSignal } = {}
+  options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
   const [settings, habitProfile] = await Promise.all([
     getSettings(),
@@ -318,17 +339,35 @@ export async function generateMovePlanPreviewForBookmarks(
   const results = new Map<string, ClassificationResult>();
   const failureReasons = new Map<string, string>();
   const tokenUsage = createTokenUsage();
+  const emitProgress = createProgressEmitter(options.onProgress, options.progressStartedAt);
+  let completedBatches = 0;
+  let processedBookmarks = 0;
+  let totalBatches = 0;
+
+  const reportProgress = async (phase: PreviewTaskProgress["phase"], currentBatchSize?: number) => {
+    await emitProgress({
+      phase,
+      completedBatches,
+      totalBatches,
+      processedBookmarks,
+      totalBookmarks: urlBookmarks.length,
+      currentBatchSize,
+    });
+  };
 
   if (urlBookmarks.length && settings.provider.apiKey) {
     // 阶段一：采样首次分类，建立统一分类体系
     const sampleSize = Math.min(30, urlBookmarks.length);
     const sample = urlBookmarks.slice(0, sampleSize);
     const restBookmarks = urlBookmarks.slice(sampleSize);
+    const sampleBatches = chunkBookmarks(sample, 20);
+    const restBatches = chunkBookmarks(restBookmarks, 20);
     let existingCategories: string[] = [];
+    totalBatches = sampleBatches.length + restBatches.length;
 
-    // 先分类采样
-    for (const batch of chunkBookmarks(sample, 20)) {
+    const classifyBatch = async (batch: typeof urlBookmarks, existingCategoriesForBatch?: string[]) => {
       throwIfAborted(options.signal);
+      await reportProgress("preparing", batch.length);
       const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode, options.signal);
       throwIfAborted(options.signal);
       try {
@@ -339,41 +378,10 @@ export async function generateMovePlanPreviewForBookmarks(
           maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
           habitProfile,
           customPrompt: settings.customPrompt,
+          existingCategories: existingCategoriesForBatch?.length ? existingCategoriesForBatch : undefined,
           signal: options.signal,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
-        });
-        throwIfAborted(options.signal);
-        appendMetadataReasons(aiResults, aiBookmarks);
-        for (const result of aiResults) {
-          if (requestedIds.has(result.id)) results.set(result.id, result);
-        }
-      } catch (error) {
-        throwIfAborted(options.signal);
-        const reason = classificationFailureReason(error);
-        const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
-        for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));
-      }
-    }
-
-    // 提取已有的分类体系
-    existingCategories = extractCategoryScheme(results);
-
-    // 阶段二：用已有分类体系约束后续批次
-    for (const batch of chunkBookmarks(restBookmarks, 20)) {
-      throwIfAborted(options.signal);
-      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode, options.signal);
-      throwIfAborted(options.signal);
-      try {
-        const requestedIds = new Set(batch.map((b) => b.id));
-        const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
-          allowNestedFolders: settings.allowNestedFolders,
-          maxTopLevelFolders: settings.maxTopLevelFolders,
-          maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
-          habitProfile,
-          customPrompt: settings.customPrompt,
-          existingCategories: existingCategories.length > 0 ? existingCategories : undefined,
-          signal: options.signal,
-          onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
+          onStage: (stage) => reportProgress(stage, batch.length),
         });
         throwIfAborted(options.signal);
         appendMetadataReasons(aiResults, aiBookmarks);
@@ -394,6 +402,23 @@ export async function generateMovePlanPreviewForBookmarks(
         const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
         for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));
       }
+
+      completedBatches += 1;
+      processedBookmarks += batch.length;
+      await reportProgress("parsing_results");
+    };
+
+    // 先分类采样
+    for (const batch of sampleBatches) {
+      await classifyBatch(batch);
+    }
+
+    // 提取已有的分类体系
+    existingCategories = extractCategoryScheme(results);
+
+    // 阶段二：用已有分类体系约束后续批次
+    for (const batch of restBatches) {
+      await classifyBatch(batch, existingCategories);
     }
   } else if (urlBookmarks.length) {
     for (const bookmark of urlBookmarks) {
@@ -401,6 +426,8 @@ export async function generateMovePlanPreviewForBookmarks(
     }
   }
 
+  if (!settings.provider.apiKey) processedBookmarks = urlBookmarks.length;
+  await reportProgress("generating_preview");
   compactClassificationResults(results, settings, habitProfile);
 
   const seenUrls = new Map<string, string>();

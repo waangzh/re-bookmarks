@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Zap,
 } from "lucide-react";
-import type { BookmarkNode, MovePlan, OrganizeMode, PreviewTaskCache, TokenUsage } from "../types";
+import type { BookmarkNode, MovePlan, OrganizeMode, PreviewTaskCache, PreviewTaskProgress, TokenUsage } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan } from "../services/storage";
@@ -41,6 +41,8 @@ type PreviewFolderNode = {
 };
 
 const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
+const QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT = 300;
+const STALLED_PROGRESS_WARNING_MS = 2 * 60 * 1000;
 
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
   return {
@@ -154,19 +156,61 @@ function formatTokenCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
-function estimateClassificationDuration(bookmarkCount: number, mode: OrganizeMode) {
-  if (bookmarkCount <= 0) return "预计用时：正在估算";
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "不足 1 分钟";
+  const minutes = Math.ceil(ms / 60000);
+  if (minutes < 60) return `约 ${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes > 0 ? `约 ${hours} 小时 ${restMinutes} 分钟` : `约 ${hours} 小时`;
+}
 
-  const batchCount = Math.max(1, Math.ceil(bookmarkCount / 20));
-  const perBatchMinutes = mode === "deep"
-    ? { min: 1.5, max: 3 }
-    : { min: 0.5, max: 1 };
-  const minMinutes = Math.max(1, Math.ceil(batchCount * perBatchMinutes.min));
-  const maxMinutes = Math.max(minMinutes, Math.ceil(batchCount * perBatchMinutes.max));
+function getProgressPhaseLabel(phase?: PreviewTaskProgress["phase"]) {
+  switch (phase) {
+    case "queued":
+      return "等待开始";
+    case "preparing":
+      return "正在生成预览";
+    case "requesting_ai":
+      return "正在请求 AI";
+    case "parsing_results":
+      return "正在解析结果";
+    case "generating_preview":
+      return "正在生成预览";
+    default:
+      return "正在处理";
+  }
+}
 
-  return minMinutes === maxMinutes
-    ? `预计用时：约 ${minMinutes} 分钟`
-    : `预计用时：约 ${minMinutes}-${maxMinutes} 分钟`;
+function getRemainingTimeText(progress: PreviewTaskProgress | undefined, now: number) {
+  if (!progress) return "预计剩余时间：正在估算";
+  if (progress.totalBatches > 0) {
+    if (progress.completedBatches <= 0) return "预计剩余时间：正在估算";
+    const elapsed = Math.max(1, now - progress.startedAt);
+    const averageBatchMs = elapsed / progress.completedBatches;
+    const remainingBatches = Math.max(0, progress.totalBatches - progress.completedBatches);
+    return `预计剩余时间：${formatDuration(averageBatchMs * remainingBatches)}`;
+  }
+
+  if (progress.totalBookmarks > 0 && progress.processedBookmarks > 0) {
+    const elapsed = Math.max(1, now - progress.startedAt);
+    const averageBookmarkMs = elapsed / progress.processedBookmarks;
+    const remainingBookmarks = Math.max(0, progress.totalBookmarks - progress.processedBookmarks);
+    return `预计剩余时间：${formatDuration(averageBookmarkMs * remainingBookmarks)}`;
+  }
+
+  return "预计剩余时间：正在估算";
+}
+
+function getProgressPercent(progress: PreviewTaskProgress | undefined) {
+  if (!progress) return 0;
+  if (progress.totalBatches > 0) {
+    return Math.min(100, Math.round((progress.completedBatches / progress.totalBatches) * 100));
+  }
+  if (progress.totalBookmarks > 0) {
+    return Math.min(100, Math.round((progress.processedBookmarks / progress.totalBookmarks) * 100));
+  }
+  return 0;
 }
 
 export function Preview() {
@@ -183,6 +227,8 @@ export function Preview() {
   const [cacheMessage, setCacheMessage] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [processingBookmarkCount, setProcessingBookmarkCount] = useState(0);
+  const [taskProgress, setTaskProgress] = useState<PreviewTaskProgress | undefined>();
+  const [now, setNow] = useState(Date.now());
   const [organizeMode, setOrganizeMode] = useState<OrganizeMode>("quick");
   const [expandedPreviewFolders, setExpandedPreviewFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
@@ -203,6 +249,7 @@ export function Preview() {
     setTokenUsage(task.tokenUsage);
     setOrganizeMode(task.organizeMode ?? "quick");
     setProcessingBookmarkCount(0);
+    setTaskProgress(undefined);
     setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
     setPhase("preview");
     setLoading(false);
@@ -215,6 +262,7 @@ export function Preview() {
     setTokenUsage(undefined);
     setActiveTaskId(task.id);
     setProcessingBookmarkCount(task.bookmarkCount);
+    setTaskProgress(task.progress);
     setOrganizeMode(task.organizeMode ?? "quick");
     setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
     setPhase("preview");
@@ -283,6 +331,7 @@ export function Preview() {
         setActiveTaskId(null);
         setCacheMessage("");
         setPlans([]);
+        setTaskProgress(undefined);
         setPhase("selection");
         setLoading(true);
         try {
@@ -293,6 +342,7 @@ export function Preview() {
         return;
       }
       if (task.id !== activeTaskId) return;
+      setTaskProgress(task.progress);
 
       if (task.status === "completed") {
         restoreCompletedTask(task);
@@ -304,6 +354,7 @@ export function Preview() {
         setError(task.error ?? "生成分类失败");
         setCacheMessage("");
         setPlans([]);
+        setTaskProgress(undefined);
         setPhase("selection");
         setLoading(true);
         try {
@@ -325,9 +376,18 @@ export function Preview() {
     };
   }, [activeTaskId, loading, phase]);
 
+  useEffect(() => {
+    if (!loading || phase !== "preview") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading, phase]);
+
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
   const isDeepSelectionTooLarge = organizeMode === "deep" && selectedIds.size > DEEP_ORGANIZE_BOOKMARK_LIMIT;
+  const isQuickSelectionLarge = organizeMode === "quick" && selectedIds.size > QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT;
   const deepSelectionLimitMessage = `深度整理单次最多建议选择 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速整理。`;
+
+  const quickSelectionLargeMessage = `当前选择 ${selectedIds.size} 个书签，快速整理建议单次不超过 ${QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT} 个。数量较大时建议按文件夹分批整理，避免 AI 请求排队过久。`;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -393,6 +453,7 @@ export function Preview() {
     setLoading(true);
     setError("");
     setTokenUsage(undefined);
+    setTaskProgress(undefined);
 
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
@@ -421,6 +482,7 @@ export function Preview() {
     setTokenUsage(undefined);
     setActiveTaskId(null);
     setProcessingBookmarkCount(0);
+    setTaskProgress(undefined);
     setLoading(true);
     setError("");
     try {
@@ -437,9 +499,17 @@ export function Preview() {
 
   const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
-  const estimatedDuration = useMemo(
-    () => estimateClassificationDuration(processingBookmarkCount || selectedIds.size, organizeMode),
-    [organizeMode, processingBookmarkCount, selectedIds.size]
+  const progressPercent = getProgressPercent(taskProgress);
+  const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
+  const progressBatchText = taskProgress?.totalBatches
+    ? `已完成 ${taskProgress.completedBatches}/${taskProgress.totalBatches} 批次`
+    : "正在准备批次";
+  const progressBookmarkText = taskProgress
+    ? `已处理 ${taskProgress.processedBookmarks}/${taskProgress.totalBookmarks} 个书签`
+    : `待处理 ${processingBookmarkCount || selectedIds.size} 个书签`;
+  const remainingTimeText = getRemainingTimeText(taskProgress, now);
+  const isTaskProgressStalled = Boolean(
+    loading && taskProgress && now - taskProgress.updatedAt > STALLED_PROGRESS_WARNING_MS
   );
 
   const handleConfirm = async () => {
@@ -758,6 +828,12 @@ export function Preview() {
               </div>
             )}
 
+            {isQuickSelectionLarge && (
+              <div className="extension-notice extension-notice--amber">
+                <p>{quickSelectionLargeMessage}</p>
+              </div>
+            )}
+
             <section className="selection-tree-panel">
               <div className="selection-tree">
                 {renderSelectionTreeNode(selectionTree)}
@@ -804,13 +880,23 @@ export function Preview() {
             )}
 
             {loading ? (
-              <div className="extension-empty">
-                <p>正在生成分类建议</p>
+              <div className="extension-empty extension-empty--progress">
+                <p>{progressPhaseLabel}</p>
                 <span>{organizeMode === "deep" ? "深度整理会等待更多网页元数据..." : "AI 正在分析书签内容..."}</span>
-                <span>{estimatedDuration}</span>
+                <span>{remainingTimeText}</span>
+                <span>{progressBatchText}</span>
+                <span>{progressBookmarkText}</span>
+                <div className="preview-task-progress" aria-label="整理预览生成进度">
+                  <span style={{ width: `${progressPercent}%` }} />
+                </div>
+                {isTaskProgressStalled && (
+                  <span className="preview-task-warning">
+                    后台任务超过 2 分钟没有进度更新，建议取消后重试或减少本次整理数量。
+                  </span>
+                )}
                 <button onClick={handleRegenerate} className="extension-page__wide-secondary">
                   <RefreshCw className="w-4 h-4" />
-                  取消整理
+                  取消并重新选择
                 </button>
               </div>
             ) : plans.length === 0 ? (

@@ -10,6 +10,7 @@ import {
 export const PREVIEW_TASK_MESSAGE = "remarks:preview-task";
 const QUICK_TASK_TIMEOUT_MS = 30 * 60 * 1000;
 const DEEP_TASK_TIMEOUT_MS = 90 * 60 * 1000;
+const STALLED_TASK_TIMEOUT_MS = 3 * 60 * 1000;
 const STALE_TASK_ERROR = "上次生成任务已超时，请重新开始";
 const runningTaskControllers = new Map<string, AbortController>();
 
@@ -49,6 +50,15 @@ function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode
     bookmarkCount: bookmarks.length,
     selectedBookmarkIds: bookmarks.map((bookmark) => bookmark.id),
     organizeMode,
+    progress: {
+      phase: "queued",
+      completedBatches: 0,
+      totalBatches: 0,
+      processedBookmarks: 0,
+      totalBookmarks: bookmarks.length,
+      startedAt: now,
+      updatedAt: now,
+    },
   };
 }
 
@@ -63,7 +73,7 @@ function getTaskTimeoutMs(task: PreviewTaskCache) {
 function isStaleRunningTask(task: PreviewTaskCache, now = Date.now()) {
   if (task.status !== "running") return false;
   const lastActiveAt = task.updatedAt || task.createdAt;
-  return now - lastActiveAt > getTaskTimeoutMs(task);
+  return now - lastActiveAt > Math.min(getTaskTimeoutMs(task), STALLED_TASK_TIMEOUT_MS);
 }
 
 async function getRawPreviewTask() {
@@ -111,7 +121,19 @@ async function completePreviewTask(
   signal?: AbortSignal
 ) {
   try {
-    const previewResult = await generateMovePlanPreviewForBookmarks(bookmarks, organizeMode, { signal });
+    const previewResult = await generateMovePlanPreviewForBookmarks(bookmarks, organizeMode, {
+      signal,
+      progressStartedAt: Date.now(),
+      onProgress: async (progress) => {
+        const currentTask = await getRawPreviewTask();
+        if (!isSameRunningTask(currentTask, taskId)) return;
+        await savePreviewTask({
+          ...currentTask,
+          updatedAt: progress.updatedAt,
+          progress,
+        });
+      },
+    });
     const currentTask = await getRawPreviewTask();
     if (!isSameRunningTask(currentTask, taskId)) return;
 

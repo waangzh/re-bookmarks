@@ -5,6 +5,7 @@ import type {
   ClassificationResult,
   FolderHabitProfile,
   FolderHabitSample,
+  PreviewTaskPhase,
   TokenUsage,
 } from "../types";
 
@@ -17,6 +18,7 @@ type ClassificationOptions = {
   existingCategories?: string[];
   signal?: AbortSignal;
   onTokenUsage?: (usage: TokenUsage) => void;
+  onStage?: (stage: Extract<PreviewTaskPhase, "requesting_ai" | "parsing_results">) => void | Promise<void>;
 };
 
 export type CategoryScheme = {
@@ -510,6 +512,8 @@ export async function classifyWithAI(
     ? buildHabitInstruction(options.habitProfile)
     : "";
 
+  await options?.onStage?.("requesting_ai");
+
   const completion = await chatCompletion(
     config,
     [
@@ -529,6 +533,8 @@ export async function classifyWithAI(
   );
 
   if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
+
+  await options?.onStage?.("parsing_results");
 
   const results = parseResults(completion.content);
   debugAI("parsed results", {

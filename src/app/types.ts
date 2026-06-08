@@ -181,6 +181,24 @@ export type PreviewPlanCache = {
   tokenUsage?: TokenUsage;
 };
 
+export type PreviewTaskPhase =
+  | "queued"
+  | "preparing"
+  | "requesting_ai"
+  | "parsing_results"
+  | "generating_preview";
+
+export type PreviewTaskProgress = {
+  phase: PreviewTaskPhase;
+  completedBatches: number;
+  totalBatches: number;
+  processedBookmarks: number;
+  totalBookmarks: number;
+  currentBatchSize?: number;
+  startedAt: number;
+  updatedAt: number;
+};
+
 export type PreviewTaskCache = {
   id: string;
   status: "running" | "completed" | "failed";
@@ -192,6 +210,7 @@ export type PreviewTaskCache = {
   movePlan?: MovePlan[];
   tokenUsage?: TokenUsage;
   error?: string;
+  progress?: PreviewTaskProgress;
 };
 
 export type FolderHabitProfile = {
