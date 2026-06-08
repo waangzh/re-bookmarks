@@ -40,6 +40,8 @@ type PreviewFolderNode = {
   plans: MovePlan[];
 };
 
+const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
+
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
   return {
     key: path.join("/") || "__root__",
@@ -223,11 +225,13 @@ export function Preview() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
+      let keepLoading = false;
       setLoading(true);
       try {
         const task = await getPreviewTask();
         if (!alive) return;
         if (task?.status === "running") {
+          keepLoading = true;
           restoreRunningTask(task);
           return;
         }
@@ -259,7 +263,7 @@ export function Preview() {
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载书签失败");
       } finally {
-        if (alive) setLoading(false);
+        if (alive && !keepLoading) setLoading(false);
       }
     };
     void load();
@@ -322,6 +326,8 @@ export function Preview() {
   }, [activeTaskId, loading, phase]);
 
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
+  const isDeepSelectionTooLarge = organizeMode === "deep" && selectedIds.size > DEEP_ORGANIZE_BOOKMARK_LIMIT;
+  const deepSelectionLimitMessage = `深度整理单次最多建议选择 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速整理。`;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -377,6 +383,10 @@ export function Preview() {
   const handleStartClassify = async () => {
     if (selectedIds.size === 0) {
       setError("请至少选择一个书签");
+      return;
+    }
+    if (isDeepSelectionTooLarge) {
+      setError(deepSelectionLimitMessage);
       return;
     }
     setPhase("preview");
@@ -742,6 +752,12 @@ export function Preview() {
               </button>
             </div>
 
+            {isDeepSelectionTooLarge && (
+              <div className="extension-notice extension-notice--amber">
+                <p>{deepSelectionLimitMessage}</p>
+              </div>
+            )}
+
             <section className="selection-tree-panel">
               <div className="selection-tree">
                 {renderSelectionTreeNode(selectionTree)}
@@ -750,7 +766,7 @@ export function Preview() {
 
             <button
               onClick={handleStartClassify}
-              disabled={selectedIds.size === 0}
+              disabled={selectedIds.size === 0 || isDeepSelectionTooLarge}
               className="extension-page__wide-primary"
             >
               <Check className="w-5 h-5" />
