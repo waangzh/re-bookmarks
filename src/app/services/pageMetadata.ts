@@ -229,15 +229,20 @@ async function mapWithConcurrency<T, R>(
 export async function enrichBookmarksWithPageMetadata<T extends BookmarkForAI>(
   bookmarks: T[],
   sourceBookmarks: Array<Pick<BookmarkNode, "id" | "url">>,
-  options: Pick<MetadataFetchOptions, "sendFullUrl"> & { mode?: OrganizeMode }
+  options: Pick<MetadataFetchOptions, "sendFullUrl"> & { mode?: OrganizeMode; signal?: AbortSignal }
 ) {
   const sourceById = new Map(sourceBookmarks.map((bookmark) => [bookmark.id, bookmark]));
   const limits = METADATA_MODE_LIMITS[options.mode ?? "quick"];
   const batchController = new AbortController();
+  const abortForExternalSignal = () => batchController.abort();
   const batchTimer = globalThis.setTimeout(
     () => batchController.abort(),
     limits.batchTimeoutMs
   );
+  if (options.signal?.aborted) {
+    batchController.abort();
+  }
+  options.signal?.addEventListener("abort", abortForExternalSignal, { once: true });
 
   try {
     return await mapWithConcurrency(bookmarks, METADATA_FETCH_CONCURRENCY, async (bookmark) => ({
@@ -249,6 +254,7 @@ export async function enrichBookmarksWithPageMetadata<T extends BookmarkForAI>(
       }),
     }));
   } finally {
+    options.signal?.removeEventListener("abort", abortForExternalSignal);
     globalThis.clearTimeout(batchTimer);
   }
 }

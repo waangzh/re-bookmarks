@@ -152,6 +152,21 @@ function formatTokenCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+function estimateClassificationDuration(bookmarkCount: number, mode: OrganizeMode) {
+  if (bookmarkCount <= 0) return "预计用时：正在估算";
+
+  const batchCount = Math.max(1, Math.ceil(bookmarkCount / 20));
+  const perBatchMinutes = mode === "deep"
+    ? { min: 1.5, max: 3 }
+    : { min: 0.5, max: 1 };
+  const minMinutes = Math.max(1, Math.ceil(batchCount * perBatchMinutes.min));
+  const maxMinutes = Math.max(minMinutes, Math.ceil(batchCount * perBatchMinutes.max));
+
+  return minMinutes === maxMinutes
+    ? `预计用时：约 ${minMinutes} 分钟`
+    : `预计用时：约 ${minMinutes}-${maxMinutes} 分钟`;
+}
+
 export function Preview() {
   const navigate = useNavigate();
   const { loadAll } = useAppStore();
@@ -165,6 +180,7 @@ export function Preview() {
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [processingBookmarkCount, setProcessingBookmarkCount] = useState(0);
   const [organizeMode, setOrganizeMode] = useState<OrganizeMode>("quick");
   const [expandedPreviewFolders, setExpandedPreviewFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
@@ -184,6 +200,7 @@ export function Preview() {
     setPlans(task.movePlan);
     setTokenUsage(task.tokenUsage);
     setOrganizeMode(task.organizeMode ?? "quick");
+    setProcessingBookmarkCount(0);
     setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
     setPhase("preview");
     setLoading(false);
@@ -195,6 +212,7 @@ export function Preview() {
     setPlans([]);
     setTokenUsage(undefined);
     setActiveTaskId(task.id);
+    setProcessingBookmarkCount(task.bookmarkCount);
     setOrganizeMode(task.organizeMode ?? "quick");
     setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
     setPhase("preview");
@@ -218,6 +236,8 @@ export function Preview() {
         }
         if (task?.status === "failed" && task.error) {
           setError(task.error);
+          await loadSelectableBookmarks();
+          return;
         }
 
         // 先检查是否有缓存的预览
@@ -227,6 +247,7 @@ export function Preview() {
           setPlans(cached.movePlan);
           setTokenUsage(cached.tokenUsage);
           setOrganizeMode(cached.organizeMode ?? "quick");
+          setProcessingBookmarkCount(0);
           setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
           setPhase("preview");
           setLoading(false);
@@ -253,7 +274,21 @@ export function Preview() {
     let alive = true;
     const pollTask = async () => {
       const task = await getPreviewTask();
-      if (!alive || task?.id !== activeTaskId) return;
+      if (!alive) return;
+      if (!task) {
+        setActiveTaskId(null);
+        setCacheMessage("");
+        setPlans([]);
+        setPhase("selection");
+        setLoading(true);
+        try {
+          await loadSelectableBookmarks();
+        } finally {
+          if (alive) setLoading(false);
+        }
+        return;
+      }
+      if (task.id !== activeTaskId) return;
 
       if (task.status === "completed") {
         restoreCompletedTask(task);
@@ -351,6 +386,7 @@ export function Preview() {
 
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
+      setProcessingBookmarkCount(bookmarksToClassify.length);
       const task = await startPreviewTask(bookmarksToClassify, organizeMode);
       if (task?.status === "completed" && restoreCompletedTask(task)) return;
       if (task?.status === "failed") {
@@ -374,6 +410,7 @@ export function Preview() {
     setCacheMessage("");
     setTokenUsage(undefined);
     setActiveTaskId(null);
+    setProcessingBookmarkCount(0);
     setLoading(true);
     setError("");
     try {
@@ -390,6 +427,10 @@ export function Preview() {
 
   const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
+  const estimatedDuration = useMemo(
+    () => estimateClassificationDuration(processingBookmarkCount || selectedIds.size, organizeMode),
+    [organizeMode, processingBookmarkCount, selectedIds.size]
+  );
 
   const handleConfirm = async () => {
     if (!plans.length) return;
@@ -750,6 +791,11 @@ export function Preview() {
               <div className="extension-empty">
                 <p>正在生成分类建议</p>
                 <span>{organizeMode === "deep" ? "深度整理会等待更多网页元数据..." : "AI 正在分析书签内容..."}</span>
+                <span>{estimatedDuration}</span>
+                <button onClick={handleRegenerate} className="extension-page__wide-secondary">
+                  <RefreshCw className="w-4 h-4" />
+                  取消整理
+                </button>
               </div>
             ) : plans.length === 0 ? (
               <div className="extension-empty">

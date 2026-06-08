@@ -2,12 +2,16 @@ import type { BookmarkNode, OrganizeMode, PreviewTaskCache } from "../types";
 import { generateMovePlanPreviewForBookmarks } from "./organizer";
 import {
   clearPreviewTask,
-  getPreviewTask,
+  getPreviewTask as getStoredPreviewTask,
   savePreviewPlan,
   savePreviewTask,
 } from "./storage";
 
 export const PREVIEW_TASK_MESSAGE = "remarks:preview-task";
+const QUICK_TASK_TIMEOUT_MS = 30 * 60 * 1000;
+const DEEP_TASK_TIMEOUT_MS = 90 * 60 * 1000;
+const STALE_TASK_ERROR = "上次生成任务已超时，请重新开始";
+const runningTaskControllers = new Map<string, AbortController>();
 
 type PreviewTaskMessage =
   | {
@@ -52,10 +56,63 @@ function isSameRunningTask(task: PreviewTaskCache | null, taskId: string) {
   return task?.id === taskId && task.status === "running";
 }
 
-async function completePreviewTask(bookmarks: BookmarkNode[], taskId: string, organizeMode: OrganizeMode) {
+function getTaskTimeoutMs(task: PreviewTaskCache) {
+  return task.organizeMode === "deep" ? DEEP_TASK_TIMEOUT_MS : QUICK_TASK_TIMEOUT_MS;
+}
+
+function isStaleRunningTask(task: PreviewTaskCache, now = Date.now()) {
+  if (task.status !== "running") return false;
+  const lastActiveAt = task.updatedAt || task.createdAt;
+  return now - lastActiveAt > getTaskTimeoutMs(task);
+}
+
+async function getRawPreviewTask() {
+  return getStoredPreviewTask();
+}
+
+function createTaskController(taskId: string) {
+  abortPreviewTask(taskId);
+  const controller = new AbortController();
+  runningTaskControllers.set(taskId, controller);
+  return controller;
+}
+
+function abortPreviewTask(taskId?: string) {
+  if (taskId) {
+    runningTaskControllers.get(taskId)?.abort();
+    runningTaskControllers.delete(taskId);
+    return;
+  }
+
+  for (const controller of runningTaskControllers.values()) {
+    controller.abort();
+  }
+  runningTaskControllers.clear();
+}
+
+export async function getPreviewTask() {
+  const task = await getRawPreviewTask();
+  if (!task || !isStaleRunningTask(task)) return task;
+
+  const failedTask: PreviewTaskCache = {
+    ...task,
+    status: "failed",
+    updatedAt: Date.now(),
+    error: STALE_TASK_ERROR,
+  };
+  await savePreviewTask(failedTask);
+  return failedTask;
+}
+
+async function completePreviewTask(
+  bookmarks: BookmarkNode[],
+  taskId: string,
+  organizeMode: OrganizeMode,
+  signal?: AbortSignal
+) {
   try {
-    const previewResult = await generateMovePlanPreviewForBookmarks(bookmarks, organizeMode);
-    const currentTask = await getPreviewTask();
+    const previewResult = await generateMovePlanPreviewForBookmarks(bookmarks, organizeMode, { signal });
+    const currentTask = await getRawPreviewTask();
     if (!isSameRunningTask(currentTask, taskId)) return;
 
     const completedTask: PreviewTaskCache = {
@@ -78,7 +135,7 @@ async function completePreviewTask(bookmarks: BookmarkNode[], taskId: string, or
       }),
     ]);
   } catch (error) {
-    const currentTask = await getPreviewTask();
+    const currentTask = await getRawPreviewTask();
     if (!isSameRunningTask(currentTask, taskId)) return;
 
     await savePreviewTask({
@@ -87,13 +144,18 @@ async function completePreviewTask(bookmarks: BookmarkNode[], taskId: string, or
       updatedAt: Date.now(),
       error: error instanceof Error ? error.message : "生成分类失败",
     });
+  } finally {
+    if (runningTaskControllers.get(taskId)?.signal === signal) {
+      runningTaskControllers.delete(taskId);
+    }
   }
 }
 
 export async function launchPreviewTask(bookmarks: BookmarkNode[]) {
   const task = createRunningTask(bookmarks, "quick");
   await savePreviewTask(task);
-  void completePreviewTask(bookmarks, task.id, "quick");
+  const controller = createTaskController(task.id);
+  void completePreviewTask(bookmarks, task.id, "quick", controller.signal);
   return task;
 }
 
@@ -118,7 +180,8 @@ export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: 
   await savePreviewTask(task);
 
   if (!hasRuntimeMessaging()) {
-    void completePreviewTask(bookmarks, task.id, organizeMode);
+    const controller = createTaskController(task.id);
+    void completePreviewTask(bookmarks, task.id, organizeMode, controller.signal);
     return task;
   }
 
@@ -132,7 +195,8 @@ export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: 
     },
     () => {
       if (chrome.runtime.lastError) {
-        void completePreviewTask(bookmarks, task.id, organizeMode);
+        const controller = createTaskController(task.id);
+        void completePreviewTask(bookmarks, task.id, organizeMode, controller.signal);
       }
     }
   );
@@ -142,6 +206,7 @@ export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: 
 
 export async function requestClearPreviewTask() {
   if (!hasRuntimeMessaging()) {
+    abortPreviewTask();
     await clearPreviewTask();
     return null;
   }
@@ -152,6 +217,7 @@ export async function requestClearPreviewTask() {
       action: "clear",
     });
   } catch {
+    abortPreviewTask();
     await clearPreviewTask();
     return null;
   }
@@ -167,14 +233,14 @@ export function isPreviewTaskMessage(message: unknown): message is PreviewTaskMe
 
 export async function handlePreviewTaskMessage(message: PreviewTaskMessage) {
   if (message.action === "run") {
-    await completePreviewTask(message.bookmarks, message.taskId, message.organizeMode ?? "quick");
+    const controller = createTaskController(message.taskId);
+    await completePreviewTask(message.bookmarks, message.taskId, message.organizeMode ?? "quick", controller.signal);
     return getPreviewTask();
   }
   if (message.action === "clear") {
+    abortPreviewTask();
     await clearPreviewTask();
     return null;
   }
   return getPreviewTask();
 }
-
-export { getPreviewTask };

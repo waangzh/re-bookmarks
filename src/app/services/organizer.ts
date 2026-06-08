@@ -130,13 +130,20 @@ function appendMetadataReasons(results: ClassificationResult[], bookmarks: Bookm
   }
 }
 
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new DOMException("整理任务已取消", "AbortError");
+  }
+}
+
 async function prepareBookmarksForAI(
   batch: Awaited<ReturnType<typeof getAllBookmarks>>,
   sendFullUrl: boolean,
-  organizeMode: OrganizeMode
+  organizeMode: OrganizeMode,
+  signal?: AbortSignal
 ) {
   const aiBookmarks = batch.map((bookmark) => toBookmarkForAI(bookmark, sendFullUrl));
-  return enrichBookmarksWithPageMetadata(aiBookmarks, batch, { sendFullUrl, mode: organizeMode });
+  return enrichBookmarksWithPageMetadata(aiBookmarks, batch, { sendFullUrl, mode: organizeMode, signal });
 }
 
 function buildMovePlan(
@@ -301,7 +308,8 @@ export async function generateMovePlansForBookmarks(
 
 export async function generateMovePlanPreviewForBookmarks(
   urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>,
-  organizeMode: OrganizeMode = "quick"
+  organizeMode: OrganizeMode = "quick",
+  options: { signal?: AbortSignal } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
   const [settings, habitProfile] = await Promise.all([
     getSettings(),
@@ -320,7 +328,9 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 先分类采样
     for (const batch of chunkBookmarks(sample, 20)) {
-      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode);
+      throwIfAborted(options.signal);
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode, options.signal);
+      throwIfAborted(options.signal);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
@@ -329,13 +339,16 @@ export async function generateMovePlanPreviewForBookmarks(
           maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
           habitProfile,
           customPrompt: settings.customPrompt,
+          signal: options.signal,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
+        throwIfAborted(options.signal);
         appendMetadataReasons(aiResults, aiBookmarks);
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
         }
       } catch (error) {
+        throwIfAborted(options.signal);
         const reason = classificationFailureReason(error);
         const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
         for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));
@@ -347,7 +360,9 @@ export async function generateMovePlanPreviewForBookmarks(
 
     // 阶段二：用已有分类体系约束后续批次
     for (const batch of chunkBookmarks(restBookmarks, 20)) {
-      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode);
+      throwIfAborted(options.signal);
+      const aiBookmarks = await prepareBookmarksForAI(batch, settings.sendFullUrl, organizeMode, options.signal);
+      throwIfAborted(options.signal);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
         const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
@@ -357,8 +372,10 @@ export async function generateMovePlanPreviewForBookmarks(
           habitProfile,
           customPrompt: settings.customPrompt,
           existingCategories: existingCategories.length > 0 ? existingCategories : undefined,
+          signal: options.signal,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
         });
+        throwIfAborted(options.signal);
         appendMetadataReasons(aiResults, aiBookmarks);
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
@@ -372,6 +389,7 @@ export async function generateMovePlanPreviewForBookmarks(
           }
         }
       } catch (error) {
+        throwIfAborted(options.signal);
         const reason = classificationFailureReason(error);
         const metadataReasons = new Map(aiBookmarks.map((bookmark) => [bookmark.id, metadataReason(bookmark)]));
         for (const b of batch) failureReasons.set(b.id, appendReason(reason, metadataReasons.get(b.id)));

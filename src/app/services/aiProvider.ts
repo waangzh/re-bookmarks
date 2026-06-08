@@ -15,6 +15,7 @@ type ClassificationOptions = {
   habitProfile?: FolderHabitProfile | null;
   customPrompt?: string;
   existingCategories?: string[];
+  signal?: AbortSignal;
   onTokenUsage?: (usage: TokenUsage) => void;
 };
 
@@ -24,6 +25,9 @@ export type CategoryScheme = {
 };
 
 type TokenParam = "max_tokens" | "max_completion_tokens";
+const CLASSIFICATION_REQUEST_TIMEOUT_MS = 90 * 1000;
+const CONNECTION_TEST_TIMEOUT_MS = 15 * 1000;
+const HABIT_ANALYSIS_TIMEOUT_MS = 120 * 1000;
 
 export type AIProviderProfile = {
   type: AIProviderType;
@@ -355,7 +359,9 @@ async function chatCompletion(
   config: AIProviderConfig,
   messages: Array<{ role: string; content: string }>,
   maxTokens = 800,
-  jsonMode = false
+  jsonMode = false,
+  timeoutMs = CLASSIFICATION_REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal
 ) {
   if (!config.apiKey) throw new Error("缺少 API Key");
 
@@ -383,37 +389,72 @@ async function chatCompletion(
     messageCount: messages.length,
   });
 
-  const response = await fetch(`${endpoint}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const abortForExternalSignal = () => controller.abort();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  if (signal?.aborted) {
+    throw new DOMException("AI request canceled", "AbortError");
+  }
+  signal?.addEventListener("abort", abortForExternalSignal, { once: true });
+
+  try {
+    response = await fetch(`${endpoint}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    globalThis.clearTimeout(timer);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      signal?.removeEventListener("abort", abortForExternalSignal);
+      if (signal?.aborted) throw new DOMException("AI request canceled", "AbortError");
+      throw new Error("AI 请求超时，请稍后重试或检查模型服务");
+    }
+    signal?.removeEventListener("abort", abortForExternalSignal);
+    throw error;
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    globalThis.clearTimeout(timer);
+    signal?.removeEventListener("abort", abortForExternalSignal);
     throw new Error(`AI 请求失败：${response.status}${detail ? ` ${detail.slice(0, 160)}` : ""}`);
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: unknown;
-  };
-  const content = data.choices?.[0]?.message?.content ?? "";
-  debugAI("raw response content", content);
-  return {
-    content,
-    tokenUsage: normalizeTokenUsage(data.usage),
-  };
+  try {
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: unknown;
+    };
+    const content = data.choices?.[0]?.message?.content ?? "";
+    debugAI("raw response content", content);
+    return {
+      content,
+      tokenUsage: normalizeTokenUsage(data.usage),
+    };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("AI 请求超时，请稍后重试或检查模型服务");
+    }
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", abortForExternalSignal);
+    globalThis.clearTimeout(timer);
+  }
 }
 
 export async function testAIConnection(config: AIProviderConfig) {
   const completion = await chatCompletion(
     config,
     [{ role: "user", content: "Return only the word ok." }],
-    8
+    8,
+    false,
+    CONNECTION_TEST_TIMEOUT_MS
   );
   return completion.content.trim().length > 0;
 }
@@ -482,7 +523,9 @@ export async function classifyWithAI(
       },
     ],
     4000,
-    true
+    true,
+    CLASSIFICATION_REQUEST_TIMEOUT_MS,
+    options?.signal
   );
 
   if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
@@ -521,7 +564,8 @@ export async function analyzeFolderHabitsWithAI(
       },
     ],
     2600,
-    true
+    true,
+    HABIT_ANALYSIS_TIMEOUT_MS
   );
 
   return parseHabitProfile(completion.content, fallback);

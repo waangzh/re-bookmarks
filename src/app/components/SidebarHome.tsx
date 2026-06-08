@@ -142,6 +142,10 @@ export function SidebarHome() {
         setPreviewState("running");
         return;
       }
+      if (task?.status === "failed") {
+        setPreviewState("none");
+        return;
+      }
       setPreviewState(cache?.movePlan?.length || task?.movePlan?.length ? "ready" : "none");
     });
     return () => {
