@@ -30,9 +30,11 @@ import {
 import {
   checkBookmarkLinks,
   filterDuplicateBookmarks,
+  getDuplicateBookmarkGroups,
   isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
+import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
 import { getLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
@@ -220,6 +222,23 @@ function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
   };
 }
 
+function bookmarkMatchesQuery(bookmark: BookmarkNode, query: string) {
+  return (
+    bookmark.title.toLowerCase().includes(query) ||
+    bookmark.url?.toLowerCase().includes(query) ||
+    bookmark.path.join(" / ").toLowerCase().includes(query)
+  );
+}
+
+function getDuplicateGroupLabel() {
+  return "精确重复";
+}
+
+function getDuplicateGroupDescription(group: DuplicateBookmarkGroup) {
+  if (group.kind === "exact") return group.key;
+  return group.domain || group.key;
+}
+
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, settings } = useAppStore();
   const [searchParams] = useSearchParams();
@@ -289,6 +308,11 @@ export function ManageBookmarks() {
     return bookmarks;
   }, [bookmarks, invalidBookmarkIds, taskMode]);
 
+  const duplicateGroups = useMemo(() => {
+    if (taskMode !== "duplicate") return [];
+    return getDuplicateBookmarkGroups(bookmarks);
+  }, [bookmarks, taskMode]);
+
   const pendingRecommendationBookmarkIds = useMemo(() => {
     return new Set(pendingRecommendations.map((recommendation) => recommendation.bookmarkId));
   }, [pendingRecommendations]);
@@ -309,14 +333,25 @@ export function ManageBookmarks() {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return visibleTaskBookmarks;
 
-    return visibleTaskBookmarks.filter((bookmark) => {
-      return (
-        bookmark.title.toLowerCase().includes(query) ||
-        bookmark.url?.toLowerCase().includes(query) ||
-        bookmark.path.join(" / ").toLowerCase().includes(query)
-      );
-    });
+    return visibleTaskBookmarks.filter((bookmark) => bookmarkMatchesQuery(bookmark, query));
   }, [searchQuery, visibleTaskBookmarks]);
+
+  const filteredDuplicateGroups = useMemo(() => {
+    if (taskMode !== "duplicate") return [];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return duplicateGroups;
+
+    return duplicateGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((bookmark) => bookmarkMatchesQuery(bookmark, query)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [duplicateGroups, searchQuery, taskMode]);
+
+  const filteredDuplicateBookmarkCount = useMemo(() => {
+    return filteredDuplicateGroups.reduce((total, group) => total + group.items.length, 0);
+  }, [filteredDuplicateGroups]);
 
   const filteredPendingRecommendations = useMemo(() => {
     if (taskMode !== "unsorted") return [];
@@ -365,14 +400,14 @@ export function ManageBookmarks() {
   }, [taskMode]);
 
   const pageSubtitle = useMemo(() => {
+    if (taskMode === "duplicate") return `${duplicateGroups.length} 组重复 URL，涉及 ${taskBookmarks.length} 个书签`;
     if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理：${pendingRecommendations.length} 条 AI 建议，${visibleTaskBookmarks.length} 个待手动归档`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
       return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${getLinkHealthProblemCount(linkHealthReport)} 个`;
     }
-    if (taskMode === "duplicate") return `${taskBookmarks.length} 个书签存在重复 URL`;
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
+  }, [bookmarks.length, duplicateGroups.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -908,6 +943,35 @@ export function ManageBookmarks() {
     );
   };
 
+  const renderDuplicateTasks = () => {
+    if (!filteredDuplicateGroups.length) return null;
+
+    return (
+      <section className="bookmark-health-panel">
+        <div className="bookmark-tree-panel__head">
+          <h3>重复检测结果</h3>
+          <span>{filteredDuplicateBookmarkCount}</span>
+        </div>
+        <div className="bookmark-unsorted-list">
+          {filteredDuplicateGroups.map((group) => (
+            <article key={group.id} className="bookmark-unsorted-card">
+              <div className="bookmark-unsorted-card__content">
+                <div className="bookmark-unsorted-card__title-row">
+                  <h4>{getDuplicateGroupLabel()}</h4>
+                  <span>{group.items.length} 个</span>
+                </div>
+                <p className="bookmark-unsorted-card__url">{getDuplicateGroupDescription(group)}</p>
+              </div>
+              <div className="bookmark-tree">
+                {group.items.map((bookmark) => renderBookmarkRow(bookmark, 0))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   const renderLinkHealthGroups = () => {
     const groupOrder: LinkHealthGroupKey[] = ["broken", "suspicious", "temporary_failed"];
     const visibleGroups = groupOrder.filter((group) => groupedInvalidBookmarks[group].length > 0);
@@ -1077,6 +1141,8 @@ export function ManageBookmarks() {
           renderLinkHealthGroups()
         ) : taskMode === "unsorted" ? (
           renderUnsortedTasks()
+        ) : taskMode === "duplicate" ? (
+          renderDuplicateTasks()
         ) : (
           <section className="bookmark-tree-panel">
             <div className="bookmark-tree-panel__head">
@@ -1115,7 +1181,7 @@ export function ManageBookmarks() {
           </section>
         )}
 
-        {taskMode !== "unsorted" && filteredBookmarks.length === 0 && (
+        {taskMode !== "unsorted" && (taskMode === "duplicate" ? filteredDuplicateGroups.length === 0 : filteredBookmarks.length === 0) && (
           <div className="extension-empty extension-empty--compact">
             {emptyMessage}
           </div>

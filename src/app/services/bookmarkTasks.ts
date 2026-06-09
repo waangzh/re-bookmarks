@@ -12,15 +12,50 @@ const REQUEST_TIMEOUT_MS = 8000;
 const RETRY_DELAY_MS = 800;
 const GET_RETRY_COUNT = 1;
 const LINK_CHECK_CONCURRENCY = 4;
+const TRACKING_PARAM_PATTERNS = [
+  /^utm_/i,
+  /^fbclid$/i,
+  /^gclid$/i,
+  /^msclkid$/i,
+  /^mc_cid$/i,
+  /^mc_eid$/i,
+];
+
+export type DuplicateBookmarkMatchKind = "exact";
+
+export type DuplicateBookmarkGroup = {
+  id: string;
+  kind: DuplicateBookmarkMatchKind;
+  key: string;
+  domain: string;
+  items: BookmarkNode[];
+};
+
+function isTrackingParam(name: string) {
+  return TRACKING_PARAM_PATTERNS.some((pattern) => pattern.test(name));
+}
 
 export function normalizeBookmarkUrl(url: string) {
   try {
-    const parsed = new URL(url);
-    parsed.hash = "";
-    parsed.search = "";
+    const parsed = new URL(url.trim());
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    Array.from(parsed.searchParams.keys()).forEach((key) => {
+      if (isTrackingParam(key)) parsed.searchParams.delete(key);
+    });
+    parsed.searchParams.sort();
+    if (parsed.hash === "#") parsed.hash = "";
     return parsed.toString();
   } catch {
     return url.trim();
+  }
+}
+
+function getUrlDomain(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
   }
 }
 
@@ -54,13 +89,48 @@ export function getDuplicateUrlKeys(bookmarks: BookmarkNode[]) {
   );
 }
 
+function createDuplicateGroup(
+  kind: DuplicateBookmarkMatchKind,
+  key: string,
+  items: BookmarkNode[]
+): DuplicateBookmarkGroup {
+  return {
+    id: `${kind}:${key}`,
+    kind,
+    key,
+    domain: getUrlDomain(items[0]?.url ? normalizeBookmarkUrl(items[0].url) : ""),
+    items,
+  };
+}
+
+function getExactDuplicateGroups(bookmarks: BookmarkNode[]) {
+  const byUrl = new Map<string, BookmarkNode[]>();
+  bookmarks.forEach((bookmark) => {
+    if (!bookmark.url) return;
+    const key = normalizeBookmarkUrl(bookmark.url);
+    const group = byUrl.get(key) ?? [];
+    group.push(bookmark);
+    byUrl.set(key, group);
+  });
+
+  return [...byUrl.entries()]
+    .filter(([, items]) => items.length > 1)
+    .map(([key, items]) => createDuplicateGroup("exact", key, items));
+}
+
+export function getDuplicateBookmarkGroups(bookmarks: BookmarkNode[]): DuplicateBookmarkGroup[] {
+  return getExactDuplicateGroups(bookmarks);
+}
+
 export function countDuplicateGroups(bookmarks: BookmarkNode[]) {
-  return [...getDuplicateUrlCounts(bookmarks).values()].filter((count) => count > 1).length;
+  return getDuplicateBookmarkGroups(bookmarks).length;
 }
 
 export function filterDuplicateBookmarks(bookmarks: BookmarkNode[]) {
-  const duplicateUrls = getDuplicateUrlKeys(bookmarks);
-  return bookmarks.filter((bookmark) => bookmark.url && duplicateUrls.has(normalizeBookmarkUrl(bookmark.url)));
+  const duplicateIds = new Set(
+    getDuplicateBookmarkGroups(bookmarks).flatMap((group) => group.items.map((bookmark) => bookmark.id))
+  );
+  return bookmarks.filter((bookmark) => duplicateIds.has(bookmark.id));
 }
 
 function isHttpBookmark(bookmark: BookmarkNode) {
