@@ -3570,6 +3570,226 @@ input {
   animation: bookmark-task-spin 900ms linear infinite;
 }
 
+.bookmark-unsorted-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.bookmark-unsorted-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.bookmark-unsorted-summary__item {
+  min-width: 0;
+  border: 1px solid #e5eaf0;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 11px;
+}
+
+.bookmark-unsorted-summary__item {
+  display: grid;
+  gap: 5px;
+}
+
+.bookmark-unsorted-summary__item svg {
+  color: #64748b;
+}
+
+.bookmark-unsorted-summary__item span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bookmark-unsorted-summary__item strong {
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.bookmark-unsorted-summary__item--ai {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.bookmark-unsorted-summary__item--ai svg,
+.bookmark-unsorted-summary__item--ai strong {
+  color: #2563eb;
+}
+
+.bookmark-unsorted-summary__item--manual {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.bookmark-unsorted-summary__item--manual svg,
+.bookmark-unsorted-summary__item--manual strong {
+  color: #d97706;
+}
+
+.bookmark-unsorted-section {
+  overflow: hidden;
+  border: 1px solid #e5eaf0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.bookmark-unsorted-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #eef2f7;
+  padding: 12px 13px;
+}
+
+.bookmark-unsorted-section__head h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.bookmark-unsorted-section__head p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.bookmark-unsorted-section__head > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #f1f5f9;
+  padding: 3px 8px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.bookmark-unsorted-list {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.bookmark-unsorted-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #e8edf4;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.bookmark-unsorted-card--recommendation {
+  border-color: #dbeafe;
+  background: #f8fbff;
+}
+
+.bookmark-unsorted-card__main {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+}
+
+.bookmark-unsorted-card__favicon,
+.bookmark-unsorted-card__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: contain;
+}
+
+.bookmark-unsorted-card__icon {
+  color: #94a3b8;
+}
+
+.bookmark-unsorted-card__content {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.bookmark-unsorted-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bookmark-unsorted-card__title-row h4 {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-unsorted-card__url,
+.bookmark-unsorted-card__meta {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.bookmark-unsorted-card__url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-unsorted-card__meta {
+  overflow-wrap: anywhere;
+}
+
+.bookmark-unsorted-target {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 7px 8px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bookmark-unsorted-target span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-unsorted-target b {
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.bookmark-unsorted-card__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .bookmark-tree-panel {
   overflow: hidden;
   border: 1px solid #e5eaf0;

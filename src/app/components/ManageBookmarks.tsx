@@ -14,8 +14,9 @@ import {
   X,
   Check,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
-import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode } from "../types";
+import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, PendingRecommendation } from "../types";
 import {
   createBookmark,
   ensureFolderPath,
@@ -32,6 +33,7 @@ import {
   isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
+import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
 import { getLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -129,12 +131,22 @@ function findDefaultExpandedRootFolder(root: BookmarkFolderNode) {
   return root.children.find((folder) => DEFAULT_EXPANDED_ROOT_FOLDER_TITLES.has(folder.title));
 }
 
-function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
+function BookmarkFavicon({
+  title,
+  url,
+  className = "bookmark-tree-row__favicon",
+  fallbackClassName = "bookmark-tree-row__bookmark-icon",
+}: {
+  title: string;
+  url?: string;
+  className?: string;
+  fallbackClassName?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const faviconUrl = url && !failed ? getBookmarkFaviconUrl(url) : "";
 
   if (!faviconUrl) {
-    return <Bookmark className="bookmark-tree-row__bookmark-icon" />;
+    return <Bookmark className={fallbackClassName} />;
   }
 
   return (
@@ -142,7 +154,7 @@ function BookmarkFavicon({ title, url }: { title: string; url?: string }) {
       src={faviconUrl}
       alt=""
       title={title}
-      className="bookmark-tree-row__favicon"
+      className={className}
       draggable={false}
       onError={() => setFailed(true)}
     />
@@ -227,6 +239,7 @@ export function ManageBookmarks() {
   const [selectedFolder, setSelectedFolder] = useState<string>("__root__");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
   const [draggedBookmark, setDraggedBookmark] = useState<BookmarkNode | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -276,18 +289,49 @@ export function ManageBookmarks() {
     return bookmarks;
   }, [bookmarks, invalidBookmarkIds, taskMode]);
 
+  const pendingRecommendationBookmarkIds = useMemo(() => {
+    return new Set(pendingRecommendations.map((recommendation) => recommendation.bookmarkId));
+  }, [pendingRecommendations]);
+
+  const visibleTaskBookmarks = useMemo(() => {
+    if (taskMode !== "unsorted") return taskBookmarks;
+    return taskBookmarks.filter((bookmark) => !pendingRecommendationBookmarkIds.has(bookmark.id));
+  }, [pendingRecommendationBookmarkIds, taskBookmarks, taskMode]);
+
+  const unsortedTaskTotal = useMemo(() => {
+    if (taskMode !== "unsorted") return taskBookmarks.length;
+    const ids = new Set(taskBookmarks.map((bookmark) => bookmark.id));
+    pendingRecommendations.forEach((recommendation) => ids.add(recommendation.bookmarkId));
+    return ids.size;
+  }, [pendingRecommendations, taskBookmarks, taskMode]);
+
   const filteredBookmarks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return taskBookmarks;
+    if (!query) return visibleTaskBookmarks;
 
-    return taskBookmarks.filter((bookmark) => {
+    return visibleTaskBookmarks.filter((bookmark) => {
       return (
         bookmark.title.toLowerCase().includes(query) ||
         bookmark.url?.toLowerCase().includes(query) ||
         bookmark.path.join(" / ").toLowerCase().includes(query)
       );
     });
-  }, [searchQuery, taskBookmarks]);
+  }, [searchQuery, visibleTaskBookmarks]);
+
+  const filteredPendingRecommendations = useMemo(() => {
+    if (taskMode !== "unsorted") return [];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return pendingRecommendations;
+
+    return pendingRecommendations.filter((recommendation) => {
+      return (
+        recommendation.bookmarkTitle.toLowerCase().includes(query) ||
+        recommendation.bookmarkUrl?.toLowerCase().includes(query) ||
+        recommendation.suggestedFolderPath.join(" / ").toLowerCase().includes(query) ||
+        recommendation.reason?.toLowerCase().includes(query)
+      );
+    });
+  }, [pendingRecommendations, searchQuery, taskMode]);
 
   const linkHealthResultById = useMemo(() => {
     const lookup = new Map<string, BookmarkLinkHealthResult>();
@@ -321,14 +365,14 @@ export function ManageBookmarks() {
   }, [taskMode]);
 
   const pageSubtitle = useMemo(() => {
+    if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理：${pendingRecommendations.length} 条 AI 建议，${visibleTaskBookmarks.length} 个待手动归档`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
       return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${getLinkHealthProblemCount(linkHealthReport)} 个`;
     }
-    if (taskMode === "unsorted") return `${taskBookmarks.length} 个书签在待整理/未分类位置`;
     if (taskMode === "duplicate") return `${taskBookmarks.length} 个书签存在重复 URL`;
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks.length, linkHealthReport, taskBookmarks.length, taskMode]);
+  }, [bookmarks.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -557,6 +601,34 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleAcceptRecommendation = async (recommendation: PendingRecommendation) => {
+    setBusyRecommendationId(recommendation.id);
+    setMessage("");
+    try {
+      await acceptRecommendation(recommendation);
+      await loadManagedBookmarks();
+      setMessage(`已移动到 ${recommendation.suggestedFolderPath.join(" / ")}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "接受推荐失败");
+    } finally {
+      setBusyRecommendationId(null);
+    }
+  };
+
+  const handleRejectRecommendation = async (id: string) => {
+    setBusyRecommendationId(id);
+    setMessage("");
+    try {
+      await removeRecommendation(id);
+      await loadManagedBookmarks();
+      setMessage("已忽略这条 AI 建议");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "忽略推荐失败");
+    } finally {
+      setBusyRecommendationId(null);
+    }
+  };
+
   const renderFolderNode = (folder: BookmarkFolderNode, depth = 0) => {
     const isExpanded = visibleExpandedFolders.has(folder.key);
     const isSelected = selectedFolder === folder.key;
@@ -665,6 +737,176 @@ export function ManageBookmarks() {
       )}
     </div>
   );
+
+  const renderUnsortedBookmarkCard = (bookmark: BookmarkNode) => {
+    const isEditing = editingId === bookmark.id;
+
+    return (
+      <article key={bookmark.id} className="bookmark-unsorted-card">
+        {isEditing ? (
+          <div className="bookmark-tree-edit">
+            <input type="text" value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })} className="extension-control" />
+            <input type="url" value={editForm.url} onChange={(event) => setEditForm({ ...editForm, url: event.target.value })} className="extension-control" />
+            <input type="text" value={editForm.path} onChange={(event) => setEditForm({ ...editForm, path: event.target.value })} className="extension-control" placeholder="目标文件夹路径，例如：工作 / 文档" />
+            <div className="extension-button-row">
+              <button onClick={handleEditSave} disabled={busy} className="extension-page__wide-primary">
+                <Check className="w-4 h-4" />
+                保存归档
+              </button>
+              <button onClick={() => setEditingId(null)} className="extension-page__wide-secondary">
+                <X className="w-4 h-4" />
+                取消
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="bookmark-unsorted-card__main">
+              <BookmarkFavicon
+                title={bookmark.title}
+                url={bookmark.url}
+                className="bookmark-unsorted-card__favicon"
+                fallbackClassName="bookmark-unsorted-card__icon"
+              />
+              <div className="bookmark-unsorted-card__content">
+                <div className="bookmark-unsorted-card__title-row">
+                  <h4 title={bookmark.title}>{bookmark.title}</h4>
+                  {bookmark.url && (
+                    <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+                {bookmark.url && <p className="bookmark-unsorted-card__url">{bookmark.url}</p>}
+                <p className="bookmark-unsorted-card__meta">当前位置：{bookmark.path.join(" / ") || "根目录"}</p>
+              </div>
+            </div>
+            <div className="bookmark-unsorted-card__actions">
+              <button type="button" onClick={() => handleEditStart(bookmark)} className="extension-page__wide-primary">
+                <Folder className="w-4 h-4" />
+                选择归档位置
+              </button>
+              <button type="button" onClick={() => void handleDelete(bookmark.id)} disabled={busy} className="extension-page__wide-secondary">
+                <Trash2 className="w-4 h-4" />
+                删除
+              </button>
+            </div>
+          </>
+        )}
+      </article>
+    );
+  };
+
+  const renderRecommendationCard = (recommendation: PendingRecommendation) => {
+    const isBusy = busyRecommendationId === recommendation.id;
+
+    return (
+      <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
+        <div className="bookmark-unsorted-card__main">
+          <BookmarkFavicon
+            title={recommendation.bookmarkTitle}
+            url={recommendation.bookmarkUrl}
+            className="bookmark-unsorted-card__favicon"
+            fallbackClassName="bookmark-unsorted-card__icon"
+          />
+          <div className="bookmark-unsorted-card__content">
+            <div className="bookmark-unsorted-card__title-row">
+              <h4 title={recommendation.bookmarkTitle}>{recommendation.bookmarkTitle}</h4>
+              {recommendation.bookmarkUrl && (
+                <a href={recommendation.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+            {recommendation.bookmarkUrl && <p className="bookmark-unsorted-card__url">{recommendation.bookmarkUrl}</p>}
+            <div className="bookmark-unsorted-target">
+              <Folder className="w-4 h-4" />
+              <span>{recommendation.suggestedFolderPath.join(" / ")}</span>
+              <b>{Math.round(recommendation.confidence * 100)}%</b>
+            </div>
+            {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
+          </div>
+        </div>
+        <div className="bookmark-unsorted-card__actions">
+          <button
+            type="button"
+            onClick={() => void handleAcceptRecommendation(recommendation)}
+            disabled={isBusy || Boolean(busyRecommendationId)}
+            className="extension-page__wide-primary"
+          >
+            <Check className="w-4 h-4" />
+            接受并移动
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRejectRecommendation(recommendation.id)}
+            disabled={isBusy || Boolean(busyRecommendationId)}
+            className="extension-page__wide-secondary"
+          >
+            <X className="w-4 h-4" />
+            忽略
+          </button>
+        </div>
+      </article>
+    );
+  };
+
+  const renderUnsortedTasks = () => {
+    const hasVisibleItems = filteredPendingRecommendations.length > 0 || filteredBookmarks.length > 0;
+
+    return (
+      <div className="bookmark-unsorted-layout">
+        <section className="bookmark-unsorted-summary">
+          <div className="bookmark-unsorted-summary__item bookmark-unsorted-summary__item--ai">
+            <Sparkles className="w-4 h-4" />
+            <span>AI 建议</span>
+            <strong>{pendingRecommendations.length}</strong>
+          </div>
+          <div className="bookmark-unsorted-summary__item bookmark-unsorted-summary__item--manual">
+            <Folder className="w-4 h-4" />
+            <span>待手动归档</span>
+            <strong>{visibleTaskBookmarks.length}</strong>
+          </div>
+        </section>
+
+        {filteredPendingRecommendations.length > 0 && (
+          <section className="bookmark-unsorted-section">
+            <div className="bookmark-unsorted-section__head">
+              <div>
+                <h3>待确认 AI 推荐</h3>
+                <p>接受后会移动到建议文件夹；忽略只移除这条推荐，不删除书签。</p>
+              </div>
+              <span>{filteredPendingRecommendations.length}</span>
+            </div>
+            <div className="bookmark-unsorted-list">
+              {filteredPendingRecommendations.map(renderRecommendationCard)}
+            </div>
+          </section>
+        )}
+
+        {filteredBookmarks.length > 0 && (
+          <section className="bookmark-unsorted-section">
+            <div className="bookmark-unsorted-section__head">
+              <div>
+                <h3>待整理位置中的书签</h3>
+                <p>这些书签仍在根目录、待整理或未分类文件夹中，可直接指定目标路径。</p>
+              </div>
+              <span>{filteredBookmarks.length}</span>
+            </div>
+            <div className="bookmark-unsorted-list">
+              {filteredBookmarks.map(renderUnsortedBookmarkCard)}
+            </div>
+          </section>
+        )}
+
+        {!hasVisibleItems && (
+          <div className="extension-empty extension-empty--compact">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderLinkHealthGroups = () => {
     const groupOrder: LinkHealthGroupKey[] = ["broken", "suspicious", "temporary_failed"];
@@ -790,15 +1032,6 @@ export function ManageBookmarks() {
           </div>
         )}
 
-        {taskMode === "unsorted" && pendingRecommendations.length > 0 && (
-          <div className="extension-notice extension-notice--blue extension-notice--left">
-            <p>
-              另有 {pendingRecommendations.length} 条 AI 分类建议等待确认。
-              <Link to="/recommendations">处理推荐</Link>
-            </p>
-          </div>
-        )}
-
         {taskMode === "invalid" && (
           <section className="bookmark-task-panel">
             <div className="bookmark-task-panel__main">
@@ -842,6 +1075,8 @@ export function ManageBookmarks() {
 
         {taskMode === "invalid" ? (
           renderLinkHealthGroups()
+        ) : taskMode === "unsorted" ? (
+          renderUnsortedTasks()
         ) : (
           <section className="bookmark-tree-panel">
             <div className="bookmark-tree-panel__head">
@@ -880,7 +1115,7 @@ export function ManageBookmarks() {
           </section>
         )}
 
-        {filteredBookmarks.length === 0 && (
+        {taskMode !== "unsorted" && filteredBookmarks.length === 0 && (
           <div className="extension-empty extension-empty--compact">
             {emptyMessage}
           </div>
