@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   ArrowLeft,
@@ -15,7 +15,7 @@ import {
 import type { BookmarkNode, MovePlan, OrganizeMode, PreviewTaskCache, PreviewTaskProgress, TokenUsage } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { clearPreviewPlan, getPreviewPlan } from "../services/storage";
+import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -38,6 +38,16 @@ type PreviewFolderNode = {
   count: number;
   children: PreviewFolderNode[];
   plans: MovePlan[];
+};
+
+type LongPressSession = {
+  plan: MovePlan;
+  active: boolean;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  timer: number;
 };
 
 const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
@@ -152,6 +162,16 @@ function countPreviewFolders(root: PreviewFolderNode) {
   return count;
 }
 
+function collectPreviewFolderLookup(root: PreviewFolderNode) {
+  const lookup = new Map<string, PreviewFolderNode>();
+  const collect = (folder: PreviewFolderNode) => {
+    if (folder.path.length > 0) lookup.set(folder.key, folder);
+    folder.children.forEach(collect);
+  };
+  collect(root);
+  return lookup;
+}
+
 function formatTokenCount(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
@@ -222,6 +242,10 @@ export function Preview() {
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [draggedPlan, setDraggedPlan] = useState<MovePlan | null>(null);
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [savingPreviewDrop, setSavingPreviewDrop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
@@ -234,6 +258,10 @@ export function Preview() {
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
     () => new Set(["__root__"])
   );
+  const longPressSessionRef = useRef<LongPressSession | null>(null);
+  const previewFolderLookupRef = useRef<Map<string, PreviewFolderNode>>(new Map());
+  const activeDropFolderRef = useRef<PreviewFolderNode | null>(null);
+  const suppressNextPreviewClickRef = useRef(false);
 
   const loadSelectableBookmarks = async () => {
     const bookmarks = await getAllBookmarks();
@@ -382,6 +410,14 @@ export function Preview() {
     return () => window.clearInterval(timer);
   }, [loading, phase]);
 
+  useEffect(() => {
+    return () => {
+      if (longPressSessionRef.current) {
+        window.clearTimeout(longPressSessionRef.current.timer);
+      }
+    };
+  }, []);
+
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
   const isDeepSelectionTooLarge = organizeMode === "deep" && selectedIds.size > DEEP_ORGANIZE_BOOKMARK_LIMIT;
   const isQuickSelectionLarge = organizeMode === "quick" && selectedIds.size > QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT;
@@ -478,6 +514,9 @@ export function Preview() {
   const handleRegenerate = async () => {
     setExpandedPreviewFolders(new Set());
     setSelectedPlan(null);
+    setDraggedPlan(null);
+    setDragOverFolder(null);
+    setSavingPreviewDrop(false);
     setCacheMessage("");
     setTokenUsage(undefined);
     setActiveTaskId(null);
@@ -499,6 +538,7 @@ export function Preview() {
 
   const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
+  const previewFolderLookup = useMemo(() => collectPreviewFolderLookup(previewTree), [previewTree]);
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -511,6 +551,154 @@ export function Preview() {
   const isTaskProgressStalled = Boolean(
     loading && taskProgress && now - taskProgress.updatedAt > STALLED_PROGRESS_WARNING_MS
   );
+
+  useEffect(() => {
+    previewFolderLookupRef.current = previewFolderLookup;
+  }, [previewFolderLookup]);
+
+  const clearLongPressSession = () => {
+    if (!longPressSessionRef.current) return;
+    window.clearTimeout(longPressSessionRef.current.timer);
+    longPressSessionRef.current = null;
+  };
+
+  const resetPreviewDrag = () => {
+    clearLongPressSession();
+    activeDropFolderRef.current = null;
+    setDraggedPlan(null);
+    setDragOverFolder(null);
+  };
+
+  const handlePreviewRowPointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    plan: MovePlan
+  ) => {
+    if (loading || event.button !== 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("a,input,select,textarea")) return;
+
+    clearLongPressSession();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    longPressSessionRef.current = {
+      plan,
+      active: false,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      timer: window.setTimeout(() => {
+        const session = longPressSessionRef.current;
+        if (!session || session.plan.bookmarkId !== plan.bookmarkId) return;
+        session.active = true;
+        window.getSelection()?.removeAllRanges();
+        setSelectedPlan(plan.bookmarkId);
+        setDraggedPlan(plan);
+        setDragPosition({ x: session.x, y: session.y });
+      }, 420),
+    };
+  };
+
+  const handlePreviewRowPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const session = longPressSessionRef.current;
+    if (!session) return;
+
+    const movement = Math.hypot(event.clientX - session.startX, event.clientY - session.startY);
+    if (!session.active && movement > 8) {
+      resetPreviewDrag();
+      return;
+    }
+    if (!session.active) return;
+
+    event.preventDefault();
+    session.x = event.clientX;
+    session.y = event.clientY;
+    setDragPosition({ x: event.clientX, y: event.clientY });
+
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const row = element instanceof Element ? element.closest<HTMLElement>("[data-preview-folder-key]") : null;
+    const folderKey = row?.dataset.previewFolderKey;
+    const folder = folderKey ? previewFolderLookupRef.current.get(folderKey) : null;
+    const currentTargetKey = session.plan.toFolderPath.join("/");
+
+    if (folder && folder.key !== currentTargetKey) {
+      activeDropFolderRef.current = folder;
+      setDragOverFolder(folder.key);
+    } else {
+      activeDropFolderRef.current = null;
+      setDragOverFolder(null);
+    }
+  };
+
+  const applyPreviewDrop = async (sourcePlan: MovePlan, targetFolder: PreviewFolderNode) => {
+    const targetPath = targetFolder.path;
+    const previousPlans = plans;
+    const nextPlans = plans.map((plan) =>
+      plan.bookmarkId === sourcePlan.bookmarkId
+        ? {
+            ...plan,
+            toFolderPath: targetPath,
+            confidence: 1,
+            reason: `手动拖动到预览文件夹：${targetPath.join(" / ")}`,
+            source: "manual" as const,
+          }
+        : plan
+    );
+
+    setPlans(nextPlans);
+    setSavingPreviewDrop(true);
+    setExpandedPreviewFolders((prev) => {
+      const next = new Set(prev);
+      targetPath.forEach((_, index) => {
+        next.add(targetPath.slice(0, index + 1).join("/"));
+      });
+      return next;
+    });
+    setCacheMessage("已更新预览计划，正在保存调整...");
+
+    try {
+      await Promise.all([
+        requestClearPreviewTask(),
+        savePreviewPlan({
+          id: `preview-drag-${Date.now()}`,
+          createdAt: Date.now(),
+          bookmarkCount: nextPlans.length,
+          organizeMode,
+          movePlan: nextPlans,
+          tokenUsage,
+        }),
+      ]);
+
+      setCacheMessage("已更新预览计划，确认整理前不会移动书签");
+    } catch (err) {
+      setPlans(previousPlans);
+      setCacheMessage("");
+      setError(err instanceof Error ? err.message : "保存手动调整失败");
+    } finally {
+      setSavingPreviewDrop(false);
+    }
+  };
+
+  const handlePreviewRowPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const session = longPressSessionRef.current;
+    if (!session) return;
+
+    const wasActive = session.active;
+    const sourcePlan = session.plan;
+    const targetFolder = activeDropFolderRef.current;
+    if (wasActive) {
+      event.preventDefault();
+      suppressNextPreviewClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextPreviewClickRef.current = false;
+      }, 100);
+    }
+
+    resetPreviewDrag();
+    if (wasActive && targetFolder) {
+      void applyPreviewDrop(sourcePlan, targetFolder);
+    }
+  };
 
   const handleConfirm = async () => {
     if (!plans.length) return;
@@ -653,14 +841,17 @@ export function Preview() {
     const isExpanded = expandedPreviewFolders.has(folder.key);
     const hasChildren = folder.children.length > 0 || folder.plans.length > 0;
     const folderPath = folder.path.join(" / ");
+    const isDropTarget = Boolean(draggedPlan && folder.key !== draggedPlan.toFolderPath.join("/"));
+    const isDragOver = dragOverFolder === folder.key;
 
     return (
       <div key={folder.key} className="preview-tree-node">
         <button
           type="button"
-          className="preview-tree-row preview-tree-row--folder"
+          className={`preview-tree-row preview-tree-row--folder ${isDropTarget ? "is-drop-target" : ""} ${isDragOver ? "is-drag-over" : ""}`}
           style={{ "--tree-depth": depth } as CSSProperties}
           aria-expanded={isExpanded}
+          data-preview-folder-key={folder.key}
           onClick={() => toggleFolder(folder.key)}
         >
           <span className="preview-tree-row__expand">
@@ -688,9 +879,17 @@ export function Preview() {
       key={plan.bookmarkId}
       className={`preview-tree-row preview-tree-row--bookmark ${
         selectedPlan === plan.bookmarkId ? "is-selected" : ""
-      }`}
+      } ${draggedPlan?.bookmarkId === plan.bookmarkId ? "is-dragging" : ""}`}
       style={{ "--tree-depth": depth } as CSSProperties}
-      onClick={() => setSelectedPlan(plan.bookmarkId)}
+      aria-label={`长按并拖动 ${plan.bookmarkTitle} 到预览文件夹`}
+      onPointerDown={(event) => handlePreviewRowPointerDown(event, plan)}
+      onPointerMove={handlePreviewRowPointerMove}
+      onPointerUp={handlePreviewRowPointerUp}
+      onPointerCancel={resetPreviewDrag}
+      onClick={() => {
+        if (suppressNextPreviewClickRef.current) return;
+        setSelectedPlan(plan.bookmarkId);
+      }}
     >
       <span className="preview-tree-row__expand" />
       <BookmarkFavicon
@@ -756,7 +955,7 @@ export function Preview() {
           {phase === "preview" && !loading && (
             <button
               onClick={handleConfirm}
-              disabled={!plans.length}
+              disabled={!plans.length || savingPreviewDrop}
               className="extension-page__primary-button"
             >
               <Check className="w-4 h-4" />
@@ -867,7 +1066,7 @@ export function Preview() {
                 <span>整理前预览</span>
               </div>
               <p>
-                将移动 {plans.length} 个书签到 {previewFolderCount} 个文件夹。确认前不会修改任何书签。
+                将移动 {plans.length} 个书签到 {previewFolderCount} 个文件夹。长按书签可拖到任意预览文件夹，确认前不会修改任何书签。
               </p>
             </div>
 
@@ -922,13 +1121,28 @@ export function Preview() {
 
             <button
               onClick={handleConfirm}
-              disabled={!plans.length || loading}
+              disabled={!plans.length || loading || savingPreviewDrop}
               className="extension-page__wide-primary"
             >
               <Check className="w-5 h-5" />
               确认整理 {plans.length} 个书签
             </button>
           </>
+        )}
+
+        {draggedPlan && (
+          <div
+            className="preview-drag-ghost"
+            style={{ left: dragPosition.x, top: dragPosition.y } as CSSProperties}
+            aria-hidden="true"
+          >
+            <BookmarkFavicon
+              title={draggedPlan.bookmarkTitle}
+              url={draggedPlan.bookmarkUrl}
+              className="preview-tree-row__favicon"
+            />
+            <span>{draggedPlan.bookmarkTitle}</span>
+          </div>
         )}
       </div>
     </div>
