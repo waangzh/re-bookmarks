@@ -31,12 +31,13 @@ import {
   checkBookmarkLinks,
   filterDuplicateBookmarks,
   getDuplicateBookmarkGroups,
+  getLinkHealthProblemCount as countLinkHealthProblems,
   isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
-import { getLinkHealthReport } from "../services/storage";
+import { getLinkHealthReport, removeBookmarkFromLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
 type TaskMode = "unsorted" | "duplicate" | "invalid";
@@ -180,10 +181,6 @@ function formatScanTime(timestamp: number) {
 
 function countLinkHealthStatus(report: BookmarkLinkHealthReport, status: BookmarkLinkHealthResult["status"]) {
   return report.results.filter((result) => result.status === status).length;
-}
-
-function getLinkHealthProblemCount(report: BookmarkLinkHealthReport) {
-  return report.results.filter(isProblemLinkHealthResult).length;
 }
 
 function formatLinkHealthSummary(report: BookmarkLinkHealthReport) {
@@ -404,10 +401,10 @@ export function ManageBookmarks() {
     if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理：${pendingRecommendations.length} 条 AI 建议，${visibleTaskBookmarks.length} 个待手动归档`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
-      return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${getLinkHealthProblemCount(linkHealthReport)} 个`;
+      return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${countLinkHealthProblems(linkHealthReport, bookmarks)} 个`;
     }
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks.length, duplicateGroups.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
+  }, [bookmarks, duplicateGroups.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -598,7 +595,11 @@ export function ManageBookmarks() {
     setMessage("");
     try {
       await removeBookmark(id);
-      await loadManagedBookmarks();
+      const [nextReport] = await Promise.all([
+        removeBookmarkFromLinkHealthReport(id),
+        loadManagedBookmarks(),
+      ]);
+      setLinkHealthReport(nextReport);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "删除失败");
     } finally {

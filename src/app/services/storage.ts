@@ -123,6 +123,37 @@ export function saveLinkHealthReport(report: BookmarkLinkHealthReport): Promise<
   return setStorageValue(STORAGE_KEYS.linkHealthReport, report);
 }
 
+function isLinkHealthProblemStatus(status: BookmarkLinkHealthReport["results"][number]["status"]) {
+  return status === "broken" ||
+    status === "suspicious" ||
+    status === "temporary_failed" ||
+    status === "invalid";
+}
+
+function recomputeLinkHealthReportCounts(report: BookmarkLinkHealthReport): BookmarkLinkHealthReport {
+  return {
+    ...report,
+    checkedCount: report.results.filter((result) => result.status !== "skipped").length,
+    skippedCount: report.results.filter((result) => result.status === "skipped").length,
+    brokenCount: report.results.filter((result) => result.status === "broken" || result.status === "invalid").length,
+    suspiciousCount: report.results.filter((result) => result.status === "suspicious").length,
+    temporaryFailedCount: report.results.filter((result) => result.status === "temporary_failed").length,
+    invalidCount: report.results.filter((result) => isLinkHealthProblemStatus(result.status)).length,
+  };
+}
+
+export async function removeBookmarkFromLinkHealthReport(bookmarkId: string): Promise<BookmarkLinkHealthReport | null> {
+  const report = await getLinkHealthReport();
+  if (!report) return null;
+
+  const results = report.results.filter((result) => result.bookmarkId !== bookmarkId);
+  if (results.length === report.results.length) return report;
+
+  const nextReport = recomputeLinkHealthReportCounts({ ...report, results });
+  await saveLinkHealthReport(nextReport);
+  return nextReport;
+}
+
 export function getLastBackup(): Promise<BookmarkBackup | null> {
   return getStorageValue<BookmarkBackup | null>(STORAGE_KEYS.lastBackup, null);
 }

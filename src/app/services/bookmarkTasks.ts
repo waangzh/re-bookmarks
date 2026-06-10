@@ -275,6 +275,21 @@ export function isProblemLinkHealthResult(result: BookmarkLinkHealthResult) {
     result.status === "invalid";
 }
 
+export function getLinkHealthProblemResults(
+  report: BookmarkLinkHealthReport,
+  bookmarks?: BookmarkNode[]
+) {
+  const existingBookmarkIds = bookmarks ? new Set(bookmarks.map((bookmark) => bookmark.id)) : null;
+  return report.results.filter((result) => {
+    if (!isProblemLinkHealthResult(result)) return false;
+    return !existingBookmarkIds || existingBookmarkIds.has(result.bookmarkId);
+  });
+}
+
+export function getLinkHealthProblemCount(report: BookmarkLinkHealthReport, bookmarks?: BookmarkNode[]) {
+  return getLinkHealthProblemResults(report, bookmarks).length;
+}
+
 export function getLinkHealthStatusLabel(result: BookmarkLinkHealthResult) {
   if (result.status === "broken" || result.status === "invalid") return "疑似失效";
   if (result.status === "suspicious") return "需要复查";

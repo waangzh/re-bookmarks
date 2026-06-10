@@ -192,7 +192,7 @@ export function HabitPresets() {
             <button
               type="button"
               className="extension-text-button"
-              onClick={() => updateProfile((item) => ({ ...item, preferredTopLevelFolders: [...item.preferredTopLevelFolders, ""] }))}
+              onClick={() => updateProfile((item) => ({ ...item, preferredTopLevelFolders: ["", ...item.preferredTopLevelFolders] }))}
             >
               <Plus className="w-3 h-3" />
               添加
@@ -205,7 +205,7 @@ export function HabitPresets() {
           </div>
           <div className="habit-editor-list">
             {current.preferredTopLevelFolders.map((folder, index) => (
-              <div key={`${folder}-${index}`} className="habit-editor-row">
+              <div key={`preferred-top-level-${index}`} className="habit-editor-row">
                 <input
                   value={folder}
                   onChange={(event) =>

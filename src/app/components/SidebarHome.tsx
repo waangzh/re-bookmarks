@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
-import { countDuplicateGroups, getUnsortedTaskCount, isProblemLinkHealthResult } from "../services/bookmarkTasks";
+import { countDuplicateGroups, getLinkHealthProblemCount, getUnsortedTaskCount } from "../services/bookmarkTasks";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
 import { getLinkHealthReport, getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
@@ -29,10 +29,6 @@ type PreviewState = "none" | "running" | "ready";
 type HistoryPreviewState = "checking" | "disabled" | "loading" | "ready";
 
 const HISTORY_PREVIEW_ROW_COUNT = 3;
-
-function getLinkHealthProblemCount(report: BookmarkLinkHealthReport) {
-  return report.results.filter(isProblemLinkHealthResult).length;
-}
 
 type CurrentPageState = {
   title: string;
@@ -336,7 +332,7 @@ export function SidebarHome() {
           </Link>
           <Link to="/manage?task=invalid" className="sidebar-task-card sidebar-task-card--purple">
             <span>失效链接</span>
-            <strong>{linkHealthReport ? getLinkHealthProblemCount(linkHealthReport) : "检测"}</strong>
+            <strong>{linkHealthReport ? getLinkHealthProblemCount(linkHealthReport, bookmarks) : "检测"}</strong>
             <Link2 className="w-4 h-4" />
           </Link>
         </div>
