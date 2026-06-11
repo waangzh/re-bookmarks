@@ -3867,6 +3867,36 @@ input {
   font-weight: 600;
 }
 
+.bookmark-tree-panel__head p {
+  margin: 3px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.bookmark-tree-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bookmark-tree-panel__actions .extension-page__wide-primary,
+.bookmark-tree-panel__actions .extension-page__wide-secondary {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.bookmark-tree-panel__delete-button {
+  background: #dc2626;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.16);
+}
+
+.bookmark-tree-panel__delete-button:hover {
+  background: #b91c1c;
+}
+
 .bookmark-tree {
   padding: 6px;
 }
@@ -4023,6 +4053,22 @@ input {
   -webkit-user-select: none;
 }
 
+.bookmark-tree-row--selectable {
+  cursor: pointer;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+
+.bookmark-tree-row--selectable.is-selected {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.bookmark-tree-row__checkbox {
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+
 .bookmark-tree-row--bookmark.is-dragging {
   cursor: grabbing;
 }
@@ -4081,6 +4127,17 @@ input {
   color: #94a3b8;
   font-size: 12px;
   font-weight: 600;
+}
+
+.bookmark-tree-row__meta {
+  min-width: 0;
+  max-width: 34%;
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bookmark-tree-row__status {

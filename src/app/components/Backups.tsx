@@ -46,6 +46,7 @@ function formatBackupTime(value: number) {
 }
 
 function getBackupKindLabel(kind: BookmarkBackup["kind"]) {
+  if (kind === "duplicate-delete") return "重复删除前备份";
   if (kind === "manual") return "手动备份";
   if (kind === "pre-restore") return "恢复前保护点";
   return "整理前备份";

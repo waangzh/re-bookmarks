@@ -69,7 +69,7 @@ export type TokenUsage = {
 
 export type BookmarkBackup = {
   id: string;
-  kind: "organize" | "manual" | "pre-restore";
+  kind: "organize" | "manual" | "pre-restore" | "duplicate-delete";
   createdAt: number;
   tree: chrome.bookmarks.BookmarkTreeNode[];
   bookmarkCount: number;
