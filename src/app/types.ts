@@ -11,6 +11,8 @@ export type BookmarkNode = {
 
 export type OrganizeMode = "quick" | "deep";
 
+export type UnclassifiedHandling = "collect" | "preserveSourcePath";
+
 export type BookmarkForAI = {
   id: string;
   title: string;
@@ -134,6 +136,7 @@ export type Settings = {
   maxNestingLevel: number;
   maxTopLevelFolders: number;
   maxSubfoldersPerFolder: number;
+  unclassifiedHandling: UnclassifiedHandling;
   enableHistory: boolean;
   sendFullUrl: boolean;
   customPrompt?: string;

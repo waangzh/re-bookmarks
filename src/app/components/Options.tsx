@@ -4,6 +4,7 @@ import { ArrowLeft, Check, AlertCircle, RotateCcw } from "lucide-react";
 import type { AIProviderType, Settings } from "../types";
 import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
+import { requestClearPreviewTask } from "../services/previewTask";
 import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -62,7 +63,7 @@ export function Options() {
 
   const handleSave = async () => {
     await saveSettings(draft);
-    await clearPreviewPlan();
+    await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
     setMessage("设置已保存");
   };
 
@@ -224,6 +225,19 @@ export function Options() {
                   </select>
                 </div>
               )}
+
+              <div className="extension-field">
+                <label>未分类书签处理方式</label>
+                <select
+                  value={draft.unclassifiedHandling}
+                  onChange={(event) => setDraft({ ...draft, unclassifiedHandling: event.target.value as Settings["unclassifiedHandling"] })}
+                  className="extension-control"
+                >
+                  <option value="collect">全部放入“未分类”文件夹</option>
+                  <option value="preserveSourcePath">已有文件夹则保持原位置</option>
+                </select>
+                <p>适用于 AI 无法可靠分类、低置信度或返回待整理/未分类的书签；根层级书签仍会移动到“未分类”。</p>
+              </div>
 
               <div className="extension-switch-row">
                 <div>
