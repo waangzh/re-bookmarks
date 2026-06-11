@@ -182,6 +182,16 @@ function isUnclassifiedResult(classification: ClassificationResult) {
   return classification.confidence < 0.55 || isUnclassifiedFolderName(classification.categoryPath?.[0]);
 }
 
+function normalizePathForComparison(path: string[]) {
+  return normalizeFolderPath(path, Math.max(1, path.length));
+}
+
+function isSameFolderPath(left: string[], right: string[]) {
+  const safeLeft = normalizePathForComparison(left);
+  const safeRight = normalizePathForComparison(right);
+  return safeLeft.length === safeRight.length && safeLeft.every((part, index) => part === safeRight[index]);
+}
+
 function buildUnclassifiedPath(
   bookmark: Awaited<ReturnType<typeof getAllBookmarks>>[number],
   settings: Settings
@@ -760,12 +770,14 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
   const settings = await getSettings();
   const currentBookmark = await getBookmark(bookmark.id);
   if (!currentBookmark?.url) return null;
+  const tree = await getBookmarkTree();
+  const currentFolderPath = currentBookmark.parentId ? findFolderPathById(tree, currentBookmark.parentId) ?? [] : [];
   const bookmarkNode = {
     id: currentBookmark.id,
     parentId: currentBookmark.parentId,
     title: currentBookmark.title,
     url: currentBookmark.url,
-    path: [],
+    path: currentFolderPath,
     type: "url" as const,
   };
 
@@ -796,6 +808,24 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
 
   const latestBookmark = await getBookmark(currentBookmark.id);
   if (!latestBookmark?.url) return null;
+  const latestTree = await getBookmarkTree();
+  const latestFolderPath = latestBookmark.parentId ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath : currentFolderPath;
+  const suggestedFolderPath = isUnclassifiedResult(classification)
+    ? [UNCLASSIFIED_FOLDER_NAME]
+    : normalizeCategoryPath(
+        classification.categoryPath,
+        settings.allowNestedFolders,
+        settings.maxNestingLevel
+      );
+
+  if (isSameFolderPath(latestFolderPath, suggestedFolderPath)) {
+    const recommendations = await getPendingRecommendations();
+    const nextRecommendations = recommendations.filter((item) => item.bookmarkId !== latestBookmark.id);
+    if (nextRecommendations.length !== recommendations.length) {
+      await savePendingRecommendations(nextRecommendations);
+    }
+    return null;
+  }
 
   const recommendation: PendingRecommendation = {
     id: `rec-${Date.now()}-${latestBookmark.id}`,
@@ -803,13 +833,7 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     bookmarkTitle: latestBookmark.title,
     bookmarkUrl: latestBookmark.url,
     createdAt: Date.now(),
-    suggestedFolderPath: isUnclassifiedResult(classification)
-      ? [UNCLASSIFIED_FOLDER_NAME]
-      : normalizeCategoryPath(
-          classification.categoryPath,
-          settings.allowNestedFolders,
-          settings.maxNestingLevel
-        ),
+    suggestedFolderPath,
     confidence: classification.confidence,
     reason: classification.reason,
   };
