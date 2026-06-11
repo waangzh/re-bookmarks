@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ReMarks",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
   "permissions": ["bookmarks", "storage", "activeTab", "favicon", "sidePanel"],
   "host_permissions": ["<all_urls>"],
