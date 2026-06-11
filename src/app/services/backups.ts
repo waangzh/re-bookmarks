@@ -192,6 +192,12 @@ export async function createDuplicateDeleteBackup(): Promise<BookmarkBackup> {
   return backup;
 }
 
+export async function createInvalidDeleteBackup(): Promise<BookmarkBackup> {
+  const backup = await createBackup("invalid-delete");
+  await saveBackupToHistory(backup);
+  return backup;
+}
+
 function collectSnapshots(tree: chrome.bookmarks.BookmarkTreeNode[]) {
   const folders: FolderSnapshot[] = [];
   const bookmarks: BookmarkSnapshot[] = [];
