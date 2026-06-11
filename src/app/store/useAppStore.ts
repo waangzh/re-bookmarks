@@ -3,11 +3,11 @@ import type { BookmarkNode, OrganizeReport, PendingRecommendation, Settings } fr
 import { getAllBookmarks } from "../services/bookmarks";
 import {
   DEFAULT_SETTINGS,
-  getPendingRecommendations,
   getReportHistory,
   getSettings,
   saveSettings,
 } from "../services/storage";
+import { getActivePendingRecommendations } from "../services/recommendations";
 
 type AppState = {
   settings: Settings;
@@ -40,7 +40,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const [settings, bookmarks, pendingRecommendations, reportHistory] = await Promise.all([
         getSettings(),
         getAllBookmarks(),
-        getPendingRecommendations(),
+        getActivePendingRecommendations(),
         getReportHistory(),
       ]);
       set({
@@ -60,7 +60,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ bookmarks });
   },
   async loadRecommendations() {
-    const pendingRecommendations = await getPendingRecommendations();
+    const pendingRecommendations = await getActivePendingRecommendations();
     set({ pendingRecommendations });
   },
   async loadSettings() {

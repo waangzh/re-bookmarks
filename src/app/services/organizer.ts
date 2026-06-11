@@ -704,11 +704,13 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
   if (!bookmark.url) return null;
 
   const settings = await getSettings();
+  const currentBookmark = await getBookmark(bookmark.id);
+  if (!currentBookmark?.url) return null;
   const bookmarkNode = {
-    id: bookmark.id,
-    parentId: bookmark.parentId,
-    title: bookmark.title,
-    url: bookmark.url,
+    id: currentBookmark.id,
+    parentId: currentBookmark.parentId,
+    title: currentBookmark.title,
+    url: currentBookmark.url,
     path: [],
     type: "url" as const,
   };
@@ -738,11 +740,14 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     }
   }
 
+  const latestBookmark = await getBookmark(currentBookmark.id);
+  if (!latestBookmark?.url) return null;
+
   const recommendation: PendingRecommendation = {
-    id: `rec-${Date.now()}-${bookmark.id}`,
-    bookmarkId: bookmark.id,
-    bookmarkTitle: bookmark.title,
-    bookmarkUrl: bookmark.url,
+    id: `rec-${Date.now()}-${latestBookmark.id}`,
+    bookmarkId: latestBookmark.id,
+    bookmarkTitle: latestBookmark.title,
+    bookmarkUrl: latestBookmark.url,
     createdAt: Date.now(),
     suggestedFolderPath: normalizeCategoryPath(
       classification.categoryPath,
@@ -754,6 +759,17 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
   };
 
   const recommendations = await getPendingRecommendations();
-  await savePendingRecommendations([recommendation, ...recommendations]);
+  await savePendingRecommendations([
+    recommendation,
+    ...recommendations.filter((item) => item.bookmarkId !== latestBookmark.id),
+  ]);
+
+  const savedBookmark = await getBookmark(latestBookmark.id);
+  if (!savedBookmark?.url) {
+    const savedRecommendations = await getPendingRecommendations();
+    await savePendingRecommendations(savedRecommendations.filter((item) => item.bookmarkId !== latestBookmark.id));
+    return null;
+  }
+
   return recommendation;
 }

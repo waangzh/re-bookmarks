@@ -1,11 +1,15 @@
 import { createPendingRecommendation } from "@/app/services/organizer";
 import { handlePreviewTaskMessage, isPreviewTaskMessage } from "@/app/services/previewTask";
-import { updateRecommendationBadge } from "@/app/services/recommendations";
+import { removeRecommendationsForBookmark, updateRecommendationBadge } from "@/app/services/recommendations";
 
 chrome.bookmarks.onCreated.addListener((_id, bookmark) => {
   if (bookmark.url) {
     void createPendingRecommendation(bookmark).then(() => updateRecommendationBadge());
   }
+});
+
+chrome.bookmarks.onRemoved.addListener((id) => {
+  void removeRecommendationsForBookmark(id);
 });
 
 void updateRecommendationBadge();
