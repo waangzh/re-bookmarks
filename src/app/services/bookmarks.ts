@@ -227,6 +227,63 @@ export async function moveBookmark(id: string, parentId: string, index?: number)
   });
 }
 
+export async function sortFolderChildrenFoldersFirst(folderId: string): Promise<boolean> {
+  if (!hasChromeBookmarks() || folderId === "0") return false;
+
+  const children = await getFolderChildren(folderId);
+  if (children.length < 2) return false;
+
+  const orderedChildren = [
+    ...children.filter((child) => !child.url),
+    ...children.filter((child) => child.url),
+  ];
+  const alreadyGrouped = children.every((child, index) => child.id === orderedChildren[index]?.id);
+  if (alreadyGrouped) return false;
+
+  const currentOrder = children.map((child) => child.id);
+  for (let index = 0; index < orderedChildren.length; index += 1) {
+    const targetId = orderedChildren[index]?.id;
+    if (!targetId || currentOrder[index] === targetId) continue;
+
+    await moveBookmark(targetId, folderId, index);
+    const currentIndex = currentOrder.indexOf(targetId);
+    if (currentIndex >= 0) {
+      currentOrder.splice(currentIndex, 1);
+      currentOrder.splice(index, 0, targetId);
+    }
+  }
+
+  return true;
+}
+
+export async function sortFoldersAndAncestorsChildrenFoldersFirst(folderIds: string[]): Promise<number> {
+  const idsToSort = new Set<string>();
+
+  for (const folderId of folderIds) {
+    let currentId: string | undefined = folderId;
+    while (currentId && currentId !== "0") {
+      if (idsToSort.has(currentId)) break;
+      const folder = await getBookmark(currentId);
+      if (!folder || folder.url) break;
+      idsToSort.add(currentId);
+      currentId = folder.parentId;
+    }
+  }
+
+  let changedCount = 0;
+  for (const folderId of idsToSort) {
+    try {
+      if (await sortFolderChildrenFoldersFirst(folderId)) {
+        changedCount += 1;
+      }
+    } catch {
+      // 整理已完成时，排序失败不应回滚已确认的书签移动。
+    }
+  }
+
+  return changedCount;
+}
+
 export async function removeBookmark(id: string) {
   if (!hasChromeBookmarks()) return;
 

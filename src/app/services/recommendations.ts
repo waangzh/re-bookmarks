@@ -1,5 +1,10 @@
 import type { PendingRecommendation } from "../types";
-import { ensureFolderPath, getBookmark, moveBookmark } from "./bookmarks";
+import {
+  ensureFolderPath,
+  getBookmark,
+  moveBookmark,
+  sortFoldersAndAncestorsChildrenFoldersFirst,
+} from "./bookmarks";
 import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
 
 function hasChromeAction() {
@@ -79,6 +84,10 @@ export async function acceptRecommendation(recommendation: PendingRecommendation
 
   const settings = await getSettings();
   const parentId = await ensureFolderPath(recommendation.suggestedFolderPath, settings.maxNestingLevel);
+  const bookmark = await getBookmark(recommendation.bookmarkId);
   await moveBookmark(recommendation.bookmarkId, parentId);
+  await sortFoldersAndAncestorsChildrenFoldersFirst(
+    [parentId, bookmark?.parentId].filter((folderId): folderId is string => Boolean(folderId))
+  );
   return removeRecommendation(recommendation.id);
 }

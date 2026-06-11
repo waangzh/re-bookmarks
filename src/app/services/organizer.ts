@@ -22,6 +22,7 @@ import {
   moveBookmark,
   normalizeFolderPath,
   removeFolder,
+  sortFoldersAndAncestorsChildrenFoldersFirst,
 } from "./bookmarks";
 import { classifyWithAI } from "./aiProvider";
 import { enrichBookmarksWithPageMetadata } from "./pageMetadata";
@@ -574,14 +575,17 @@ export async function executeMovePlans(
   const failedItems: FailedMove[] = [];
   let movedCount = 0;
   const sourceFolderIds = new Set<string>();
+  const affectedFolderIds = new Set<string>();
 
   for (const plan of plans) {
     try {
       const parentId = await ensureFolderPath(plan.toFolderPath, settings.maxNestingLevel);
       await moveBookmark(plan.bookmarkId, parentId);
       movedCount += 1;
+      affectedFolderIds.add(parentId);
       if (plan.fromParentId) {
         sourceFolderIds.add(plan.fromParentId);
+        affectedFolderIds.add(plan.fromParentId);
       }
     } catch (error) {
       failedItems.push({
@@ -616,6 +620,7 @@ export async function executeMovePlans(
   if (options.cleanupAllEmptyFolders) {
     removedFolders += await cleanupAllEmptyFolders();
   }
+  await sortFoldersAndAncestorsChildrenFoldersFirst([...affectedFolderIds]);
 
   const report: OrganizeReport = {
     id: `report-${Date.now()}`,
