@@ -3704,7 +3704,8 @@ input {
   line-height: 1.45;
 }
 
-.bookmark-unsorted-section__head > span {
+.bookmark-unsorted-section__head > span,
+.bookmark-unsorted-section__tools > span {
   flex: 0 0 auto;
   border-radius: 999px;
   background: #f1f5f9;
@@ -3713,6 +3714,23 @@ input {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.bookmark-unsorted-section__tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  max-width: 170px;
+}
+
+.bookmark-unsorted-section__tools .extension-page__wide-primary,
+.bookmark-unsorted-section__tools .extension-page__wide-secondary {
+  min-height: 30px;
+  width: auto;
+  padding: 6px 9px;
+  font-size: 12px;
 }
 
 .bookmark-unsorted-list {
@@ -3732,8 +3750,10 @@ input {
 }
 
 .bookmark-unsorted-card--recommendation {
+  position: relative;
   border-color: #dbeafe;
   background: #f8fbff;
+  padding-right: 84px;
 }
 
 .bookmark-unsorted-card__main {
@@ -3830,6 +3850,36 @@ input {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.bookmark-unsorted-card__actions--icons {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bookmark-unsorted-card__actions--icons .extension-icon-action {
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0;
+  line-height: 0;
+}
+
+.bookmark-unsorted-card__actions--icons .extension-icon-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bookmark-unsorted-card__actions--icons .extension-icon-action--blue {
+  border-color: #bfdbfe;
+  background: #eff6ff;
 }
 
 .bookmark-tree-panel {

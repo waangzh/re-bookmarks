@@ -258,6 +258,7 @@ export function ManageBookmarks() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
+  const [bulkRecommendationAction, setBulkRecommendationAction] = useState<"accept" | "reject" | null>(null);
   const [draggedBookmark, setDraggedBookmark] = useState<BookmarkNode | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -890,6 +891,60 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleAcceptVisibleRecommendations = async () => {
+    setBulkRecommendationAction("accept");
+    setMessage("");
+    const failed: string[] = [];
+
+    try {
+      for (const recommendation of filteredPendingRecommendations) {
+        try {
+          await acceptRecommendation(recommendation);
+        } catch {
+          failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
+        }
+      }
+
+      await loadManagedBookmarks();
+      setMessage(
+        failed.length > 0
+          ? `部分建议接受失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
+          : `已接受 ${filteredPendingRecommendations.length} 条 AI 建议`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "一键接受失败");
+    } finally {
+      setBulkRecommendationAction(null);
+    }
+  };
+
+  const handleRejectVisibleRecommendations = async () => {
+    setBulkRecommendationAction("reject");
+    setMessage("");
+    const failed: string[] = [];
+
+    try {
+      for (const recommendation of filteredPendingRecommendations) {
+        try {
+          await removeRecommendation(recommendation.id);
+        } catch {
+          failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
+        }
+      }
+
+      await loadManagedBookmarks();
+      setMessage(
+        failed.length > 0
+          ? `部分建议忽略失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
+          : `已忽略 ${filteredPendingRecommendations.length} 条 AI 建议`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "一键忽略失败");
+    } finally {
+      setBulkRecommendationAction(null);
+    }
+  };
+
   const renderFolderNode = (folder: BookmarkFolderNode, depth = 0) => {
     const isExpanded = visibleExpandedFolders.has(folder.key);
     const isSelected = selectedFolder === folder.key;
@@ -1088,24 +1143,28 @@ export function ManageBookmarks() {
             {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
           </div>
         </div>
-        <div className="bookmark-unsorted-card__actions">
+        <div className="bookmark-unsorted-card__actions bookmark-unsorted-card__actions--icons">
           <button
             type="button"
             onClick={() => void handleAcceptRecommendation(recommendation)}
-            disabled={isBusy || Boolean(busyRecommendationId)}
-            className="extension-page__wide-primary"
+            disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction)}
+            className="extension-icon-action extension-icon-action--blue"
+            aria-label="Accept recommendation"
+            title="Accept recommendation"
           >
             <Check className="w-4 h-4" />
-            接受并移动
+            Accept
           </button>
           <button
             type="button"
             onClick={() => void handleRejectRecommendation(recommendation.id)}
-            disabled={isBusy || Boolean(busyRecommendationId)}
-            className="extension-page__wide-secondary"
+            disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction)}
+            className="extension-icon-action"
+            aria-label="Ignore recommendation"
+            title="Ignore recommendation"
           >
             <X className="w-4 h-4" />
-            忽略
+            Ignore
           </button>
         </div>
       </article>
@@ -1137,7 +1196,27 @@ export function ManageBookmarks() {
                 <h3>待确认 AI 推荐</h3>
                 <p>接受后会移动到建议文件夹；忽略只移除这条推荐，不删除书签。</p>
               </div>
-              <span>{filteredPendingRecommendations.length}</span>
+              <div className="bookmark-unsorted-section__tools">
+                <span>{filteredPendingRecommendations.length}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptVisibleRecommendations()}
+                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || filteredPendingRecommendations.length === 0}
+                  className="extension-page__wide-primary"
+                >
+                  <Check className="w-4 h-4" />
+                  {bulkRecommendationAction === "accept" ? "接受中" : "一键接受"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRejectVisibleRecommendations()}
+                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || filteredPendingRecommendations.length === 0}
+                  className="extension-page__wide-secondary"
+                >
+                  <X className="w-4 h-4" />
+                  {bulkRecommendationAction === "reject" ? "忽略中" : "一键忽略"}
+                </button>
+              </div>
             </div>
             <div className="bookmark-unsorted-list">
               {filteredPendingRecommendations.map(renderRecommendationCard)}
