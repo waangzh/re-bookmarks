@@ -1153,7 +1153,6 @@ export function ManageBookmarks() {
             title="Accept recommendation"
           >
             <Check className="w-4 h-4" />
-            Accept
           </button>
           <button
             type="button"
@@ -1164,7 +1163,6 @@ export function ManageBookmarks() {
             title="Ignore recommendation"
           >
             <X className="w-4 h-4" />
-            Ignore
           </button>
         </div>
       </article>
