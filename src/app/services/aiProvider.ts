@@ -132,23 +132,77 @@ function endpointFor(config: AIProviderConfig) {
 }
 
 function extractJson(content: string) {
+  return extractJsonCandidates(content)[0] ?? content.trim();
+}
+
+function extractJsonCandidates(content: string) {
   const trimmed = content.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced?.[1]) return fenced[1].trim();
-
-  const arrayStart = trimmed.indexOf("[");
-  const arrayEnd = trimmed.lastIndexOf("]");
-  if (arrayStart >= 0 && arrayEnd > arrayStart) {
-    return trimmed.slice(arrayStart, arrayEnd + 1);
+  if (fenced?.[1]) {
+    const fencedContent = fenced[1].trim();
+    const fencedCandidates = extractBalancedJsonCandidates(fencedContent);
+    return fencedCandidates.length ? fencedCandidates : [fencedContent];
   }
 
-  const objectStart = trimmed.indexOf("{");
-  const objectEnd = trimmed.lastIndexOf("}");
-  if (objectStart >= 0 && objectEnd > objectStart) {
-    return trimmed.slice(objectStart, objectEnd + 1);
+  const candidates = extractBalancedJsonCandidates(trimmed);
+  return candidates.length ? candidates : [trimmed];
+}
+
+function extractBalancedJsonCandidates(content: string) {
+  const candidates: string[] = [];
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    if (char !== "{" && char !== "[") continue;
+
+    const end = findBalancedJsonEnd(content, index);
+    if (end > index) {
+      candidates.push(content.slice(index, end + 1).trim());
+      index = end;
+    }
   }
 
-  return trimmed;
+  return candidates;
+}
+
+function findBalancedJsonEnd(content: string, start: number) {
+  const open = content[start];
+  const close = open === "{" ? "}" : "]";
+  const stack = [close];
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start + 1; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      stack.push(char === "{" ? "}" : "]");
+      continue;
+    }
+
+    if (char === "}" || char === "]") {
+      if (stack.pop() !== char) return -1;
+      if (stack.length === 0) return index;
+    }
+  }
+
+  return -1;
 }
 
 function debugAI(label: string, payload: unknown) {
@@ -267,7 +321,44 @@ function parseLooseResults(jsonText: string): ClassificationResult[] {
 }
 
 function parseHabitProfile(content: string, fallback: Omit<FolderHabitProfile, "id" | "createdAt">): Omit<FolderHabitProfile, "id" | "createdAt"> {
-  const parsed = JSON.parse(extractJson(content)) as Record<string, unknown>;
+  const candidates = extractJsonCandidates(content);
+  const errors: string[] = [];
+  let parsed: Record<string, unknown> | undefined;
+  let jsonText = candidates[0] ?? content.trim();
+
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate) as unknown;
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        errors.push("JSON is not an object");
+        continue;
+      }
+      const record = value as Record<string, unknown>;
+      const hasHabitField = ["summary", "preferredTopLevelFolders", "folderRules", "avoidRules", "promptHint"].some(
+        (key) => key in record
+      );
+      if (!hasHabitField) {
+        errors.push("JSON object does not contain habit profile fields");
+        continue;
+      }
+      parsed = record;
+      jsonText = candidate;
+      break;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (!parsed) {
+    debugAI("habit profile JSON parse failed", {
+      error: errors[0] ?? "No valid habit profile JSON found",
+      errors,
+      extractedJson: jsonText,
+      rawContent: content,
+    });
+    throw new Error(errors[0] ?? "No valid habit profile JSON found");
+  }
+
   const preferredTopLevelFolders = asStringArray(parsed.preferredTopLevelFolders).slice(0, 16);
   const folderRules = asObjectArray(parsed.folderRules)
     .map((item) => {
