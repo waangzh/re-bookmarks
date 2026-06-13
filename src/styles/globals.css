@@ -1677,7 +1677,7 @@ input {
 
 .extension-page--habits .extension-page__inner {
   display: grid;
-  gap: 22px;
+  gap: 12px;
 }
 
 .extension-page--habits .extension-page__header {
@@ -1685,7 +1685,7 @@ input {
 }
 
 .bookmark-popup-window .extension-page--habits .extension-page__inner {
-  gap: 18px;
+  gap: 12px;
 }
 
 .habit-presets-actions {
@@ -1697,7 +1697,38 @@ input {
 }
 
 .habit-presets-help {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+
+.extension-page--habits .extension-section {
+  padding: 10px 12px;
+}
+
+.extension-page--habits .extension-form {
+  gap: 10px;
+}
+
+.extension-page--habits .collapsible-section {
+  padding: 0;
+}
+
+.extension-page--habits .collapsible-section__summary {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.extension-page--habits .collapsible-section__title-group {
+  gap: 2px;
+}
+
+.extension-page--habits .collapsible-section__body {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.extension-page--habits .collapsible-section__body-actions {
+  margin-bottom: 0;
 }
 
 .extension-field__hint {
@@ -3375,7 +3406,7 @@ input {
 .habit-editor-list,
 .habit-rule-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .habit-editor-row {
@@ -3387,8 +3418,8 @@ input {
 
 .habit-rule-card {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid #e5eaf0;
   border-radius: 9px;
   background: #f8fafc;
@@ -3397,14 +3428,14 @@ input {
 .habit-rule-card__header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: start;
 }
 
 .habit-rule-card__actions {
   display: flex;
   gap: 6px;
-  margin-top: 20px;
+  margin-top: 18px;
 }
 
 .habit-rule-card__save,
@@ -3440,7 +3471,7 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   cursor: pointer;
   list-style: none;
 }
@@ -3484,7 +3515,7 @@ input {
 
 .habit-rule-feature-body {
   border-top: 1px solid #eef2f7;
-  padding: 10px 12px 12px;
+  padding: 8px 10px 10px;
 }
 
 .extension-switch-row {
