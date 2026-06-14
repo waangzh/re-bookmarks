@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
+  FileUp,
   FileText,
   FolderEdit,
   Globe2,
@@ -374,6 +375,11 @@ export function SidebarHome() {
         <Link to="/backups" className="sidebar-entry-row">
           <Archive className="w-4 h-4" />
           <span>书签备份</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+        <Link to="/import" className="sidebar-entry-row">
+          <FileUp className="w-4 h-4" />
+          <span>导入书签</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
         <Link to="/habits" className="sidebar-entry-row">

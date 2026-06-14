@@ -71,7 +71,7 @@ export type TokenUsage = {
 
 export type BookmarkBackup = {
   id: string;
-  kind: "organize" | "manual" | "pre-restore" | "duplicate-delete" | "invalid-delete";
+  kind: "organize" | "manual" | "pre-restore" | "pre-import" | "duplicate-delete" | "invalid-delete";
   createdAt: number;
   tree: chrome.bookmarks.BookmarkTreeNode[];
   bookmarkCount: number;
@@ -93,6 +93,59 @@ export type PendingRecommendation = {
   suggestedFolderPath: string[];
   confidence: number;
   reason?: string;
+};
+
+export type BookmarkImportItemStatus = "ready" | "duplicate" | "invalid";
+
+export type BookmarkImportItem = {
+  id: string;
+  title: string;
+  url: string;
+  normalizedUrl: string;
+  path: string[];
+  status: BookmarkImportItemStatus;
+  reason?: string;
+  existingBookmarkTitle?: string;
+};
+
+export type BookmarkImportPreview = {
+  id: string;
+  createdAt: number;
+  sourceFileName?: string;
+  targetRootName: string;
+  items: BookmarkImportItem[];
+  bookmarkCount: number;
+  readyCount: number;
+  duplicateCount: number;
+  invalidCount: number;
+  folderCount: number;
+};
+
+export type BookmarkImportFailedItem = {
+  itemId: string;
+  title: string;
+  url?: string;
+  path: string[];
+  reason: string;
+};
+
+export type BookmarkImportProgress = {
+  processed: number;
+  total: number;
+};
+
+export type BookmarkImportReport = {
+  id: string;
+  createdAt: number;
+  targetRootName: string;
+  backupId: string;
+  backupCreatedAt: number;
+  importedCount: number;
+  skippedCount: number;
+  duplicateCount: number;
+  invalidCount: number;
+  folderCount: number;
+  failedItems: BookmarkImportFailedItem[];
 };
 
 export type BookmarkLinkHealthResult = {

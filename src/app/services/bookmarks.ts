@@ -199,6 +199,14 @@ export async function createBookmark(title: string, url: string, folderPath: str
   return createBookmarkNode({ parentId, title, url });
 }
 
+export async function createFolderInFolder(parentId: string, title: string, index?: number) {
+  return createBookmarkNode({ parentId, title, index });
+}
+
+export async function createBookmarkInFolder(parentId: string, title: string, url: string, index?: number) {
+  return createBookmarkNode({ parentId, title, url, index });
+}
+
 export async function updateBookmark(id: string, title: string, url: string) {
   if (!hasChromeBookmarks()) return null;
 

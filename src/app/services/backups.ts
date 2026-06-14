@@ -186,6 +186,12 @@ export async function createManualBackup(): Promise<BookmarkBackup> {
   return backup;
 }
 
+export async function createPreImportBackup(): Promise<BookmarkBackup> {
+  const backup = await createBackup("pre-import");
+  await saveBackupToHistory(backup);
+  return backup;
+}
+
 export async function createDuplicateDeleteBackup(): Promise<BookmarkBackup> {
   const backup = await createBackup("duplicate-delete");
   await saveBackupToHistory(backup);

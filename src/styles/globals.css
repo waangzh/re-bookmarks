@@ -4308,6 +4308,210 @@ input {
   background: #fef2f2;
 }
 
+.extension-page--import .extension-page__inner > * + * {
+  margin-top: 14px;
+}
+
+.import-file-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.import-file-card__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.import-file-card__main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import-file-card__main h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.import-file-card__main p,
+.import-file-card__main span {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-file-card__main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-file-card__button {
+  width: auto;
+  min-width: 112px;
+  cursor: pointer;
+}
+
+.import-file-card__button input {
+  display: none;
+}
+
+.import-summary-grid {
+  margin-top: 14px;
+}
+
+.import-detail-list {
+  display: grid;
+  gap: 9px;
+}
+
+.import-detail {
+  overflow: hidden;
+  border: 1px solid #e5eaf0;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.import-detail__head {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  background: #f8fafc;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.import-detail__head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.import-detail__head p,
+.import-detail__more {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.import-detail__head strong {
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 3px 8px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.import-detail__chevron {
+  color: #64748b;
+}
+
+.import-detail--ready .import-detail__head {
+  background: #f0fdf4;
+}
+
+.import-detail--duplicate .import-detail__head {
+  background: #fffbeb;
+}
+
+.import-detail--invalid .import-detail__head {
+  background: #fff7f7;
+}
+
+.import-detail__list {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+}
+
+.import-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(82px, 32%);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  padding: 8px 9px;
+}
+
+.import-detail-row div {
+  min-width: 0;
+}
+
+.import-detail-row h4 {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-detail-row p,
+.import-detail-row span {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-detail-row span {
+  margin: 0;
+  text-align: right;
+}
+
+.import-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.import-actions .extension-page__wide-secondary {
+  width: auto;
+  min-width: 96px;
+}
+
+.import-progress {
+  margin-top: 12px;
+}
+
+.import-spin {
+  animation: bookmark-task-spin 900ms linear infinite;
+}
+
+.backup-header-actions__link {
+  width: auto;
+  min-width: 104px;
+  padding-inline: 12px;
+  text-decoration: none;
+}
+
 .extension-page--backups .extension-page__inner > * + * {
   margin-top: 14px;
 }
@@ -4532,6 +4736,29 @@ input {
 }
 
 @media (max-width: 520px) {
+  .import-file-card,
+  .import-detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .import-file-card__icon {
+    display: none;
+  }
+
+  .import-file-card__button,
+  .import-actions .extension-page__wide-secondary,
+  .backup-header-actions__link {
+    width: 100%;
+  }
+
+  .import-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .import-detail-row span {
+    text-align: left;
+  }
+
   .backup-card {
     grid-template-columns: 1fr;
   }

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CheckCircle,
   Clock,
+  FileUp,
   Folder,
   RotateCcw,
   ShieldCheck,
@@ -50,6 +51,7 @@ function getBackupKindLabel(kind: BookmarkBackup["kind"]) {
   if (kind === "duplicate-delete") return "重复删除前备份";
   if (kind === "manual") return "手动备份";
   if (kind === "pre-restore") return "恢复前保护点";
+  if (kind === "pre-import") return "导入前保护点";
   return "整理前备份";
 }
 
@@ -123,7 +125,7 @@ export function Backups() {
     return {
       total: backups.length,
       manualCount,
-      protectedCount: backups.filter((backup) => backup.kind === "pre-restore").length,
+      protectedCount: backups.filter((backup) => backup.kind === "pre-restore" || backup.kind === "pre-import").length,
     };
   }, [backups]);
 
@@ -225,6 +227,10 @@ export function Backups() {
               <p className="extension-page__subtitle">手动保存当前状态，并从最近备份安全恢复</p>
             </div>
           </div>
+          <Link to="/import" className="extension-page__wide-secondary backup-header-actions__link">
+            <FileUp className="w-4 h-4" />
+            导入书签
+          </Link>
           <button
             type="button"
             onClick={() => void handleCreateBackup()}
