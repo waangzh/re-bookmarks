@@ -38,7 +38,7 @@ import {
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
-import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
+import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getLinkHealthReport, removeBookmarkFromLinkHealthReport } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -259,6 +259,8 @@ export function ManageBookmarks() {
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
   const [bulkRecommendationAction, setBulkRecommendationAction] = useState<"accept" | "reject" | null>(null);
+  const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
+  const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [draggedBookmark, setDraggedBookmark] = useState<BookmarkNode | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -863,12 +865,42 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleEditRecommendationStart = (recommendation: PendingRecommendation) => {
+    setEditingRecommendationId(recommendation.id);
+    setRecommendationPathDraft(recommendation.suggestedFolderPath.join(" / "));
+    setMessage("");
+  };
+
+  const handleSaveRecommendationPath = async (recommendation: PendingRecommendation) => {
+    const folderPath = parseFolderPath(recommendationPathDraft, settings.maxNestingLevel);
+    if (folderPath.length === 0) {
+      setMessage("请填写目标文件夹");
+      return;
+    }
+
+    setBusyRecommendationId(recommendation.id);
+    setMessage("");
+    try {
+      await updateRecommendationFolderPath(recommendation.id, folderPath);
+      await loadManagedBookmarks();
+      setEditingRecommendationId(null);
+      setRecommendationPathDraft("");
+      setMessage(`已更新推荐目标：${folderPath.join(" / ")}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存推荐目标失败");
+    } finally {
+      setBusyRecommendationId(null);
+    }
+  };
+
   const handleAcceptRecommendation = async (recommendation: PendingRecommendation) => {
     setBusyRecommendationId(recommendation.id);
     setMessage("");
     try {
       await acceptRecommendation(recommendation);
       await loadManagedBookmarks();
+      setEditingRecommendationId(null);
+      setRecommendationPathDraft("");
       setMessage(`已移动到 ${recommendation.suggestedFolderPath.join(" / ")}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "接受推荐失败");
@@ -1115,6 +1147,7 @@ export function ManageBookmarks() {
 
   const renderRecommendationCard = (recommendation: PendingRecommendation) => {
     const isBusy = busyRecommendationId === recommendation.id;
+    const isEditingRecommendation = editingRecommendationId === recommendation.id;
 
     return (
       <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
@@ -1135,35 +1168,89 @@ export function ManageBookmarks() {
               )}
             </div>
             {recommendation.bookmarkUrl && <p className="bookmark-unsorted-card__url">{recommendation.bookmarkUrl}</p>}
-            <div className="bookmark-unsorted-target">
-              <Folder className="w-4 h-4" />
-              <span>{recommendation.suggestedFolderPath.join(" / ")}</span>
-              <b>{Math.round(recommendation.confidence * 100)}%</b>
-            </div>
+            {isEditingRecommendation ? (
+              <label className="bookmark-recommendation-edit">
+                <span>目标文件夹</span>
+                <input
+                  type="text"
+                  value={recommendationPathDraft}
+                  onChange={(event) => setRecommendationPathDraft(event.target.value)}
+                  className="extension-control"
+                  placeholder="例如：工作 / 文档"
+                  disabled={isBusy}
+                />
+              </label>
+            ) : (
+              <div className="bookmark-unsorted-target">
+                <Folder className="w-4 h-4" />
+                <span>{recommendation.suggestedFolderPath.join(" / ")}</span>
+                <b>{Math.round(recommendation.confidence * 100)}%</b>
+              </div>
+            )}
             {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
           </div>
         </div>
         <div className="bookmark-unsorted-card__actions bookmark-unsorted-card__actions--icons">
-          <button
-            type="button"
-            onClick={() => void handleAcceptRecommendation(recommendation)}
-            disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction)}
-            className="extension-icon-action extension-icon-action--blue"
-            aria-label="Accept recommendation"
-            title="Accept recommendation"
-          >
-            <Check className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleRejectRecommendation(recommendation.id)}
-            disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction)}
-            className="extension-icon-action"
-            aria-label="Ignore recommendation"
-            title="Ignore recommendation"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {isEditingRecommendation ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleSaveRecommendationPath(recommendation)}
+                disabled={isBusy || Boolean(bulkRecommendationAction)}
+                className="extension-icon-action extension-icon-action--blue"
+                aria-label="保存推荐分类"
+                title="保存推荐分类"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingRecommendationId(null);
+                  setRecommendationPathDraft("");
+                }}
+                disabled={isBusy || Boolean(bulkRecommendationAction)}
+                className="extension-icon-action"
+                aria-label="取消编辑"
+                title="取消编辑"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => handleEditRecommendationStart(recommendation)}
+                disabled={Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                className="extension-icon-action"
+                aria-label="编辑推荐分类"
+                title="编辑推荐分类"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAcceptRecommendation(recommendation)}
+                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                className="extension-icon-action extension-icon-action--blue"
+                aria-label="Accept recommendation"
+                title="Accept recommendation"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRejectRecommendation(recommendation.id)}
+                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                className="extension-icon-action"
+                aria-label="Ignore recommendation"
+                title="Ignore recommendation"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       </article>
     );
@@ -1199,7 +1286,7 @@ export function ManageBookmarks() {
                 <button
                   type="button"
                   onClick={() => void handleAcceptVisibleRecommendations()}
-                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || filteredPendingRecommendations.length === 0}
+                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
@@ -1208,7 +1295,7 @@ export function ManageBookmarks() {
                 <button
                   type="button"
                   onClick={() => void handleRejectVisibleRecommendations()}
-                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || filteredPendingRecommendations.length === 0}
+                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
                   className="extension-page__wide-secondary"
                 >
                   <X className="w-4 h-4" />

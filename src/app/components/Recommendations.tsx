@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2 } from "lucide-react";
 import type { PendingRecommendation } from "../types";
-import { acceptRecommendation, removeRecommendation } from "../services/recommendations";
+import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { parseFolderPath } from "../services/bookmarks";
 import { useAppStore } from "../store/useAppStore";
 
 type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
@@ -48,10 +49,12 @@ function ExpandableReason({ reason }: { reason: string }) {
 }
 
 export function Recommendations() {
-  const { pendingRecommendations, loadRecommendations, loadBookmarks } = useAppStore();
+  const { pendingRecommendations, loadRecommendations, loadBookmarks, settings } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<"accept" | "reject" | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("created-desc");
+  const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
+  const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -76,12 +79,41 @@ export function Recommendations() {
     });
   }, [pendingRecommendations, sortKey]);
 
+  const handleEditStart = (recommendation: PendingRecommendation) => {
+    setEditingRecommendationId(recommendation.id);
+    setRecommendationPathDraft(recommendation.suggestedFolderPath.join(" / "));
+    setError("");
+  };
+
+  const handleSavePath = async (recommendation: PendingRecommendation) => {
+    const folderPath = parseFolderPath(recommendationPathDraft, settings.maxNestingLevel);
+    if (folderPath.length === 0) {
+      setError("请填写目标文件夹");
+      return;
+    }
+
+    setBusyId(recommendation.id);
+    setError("");
+    try {
+      await updateRecommendationFolderPath(recommendation.id, folderPath);
+      await loadRecommendations();
+      setEditingRecommendationId(null);
+      setRecommendationPathDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存推荐目标失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleAccept = async (recommendation: PendingRecommendation) => {
     setBusyId(recommendation.id);
     setError("");
     try {
       await acceptRecommendation(recommendation);
       await Promise.all([loadRecommendations(), loadBookmarks()]);
+      setEditingRecommendationId(null);
+      setRecommendationPathDraft("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "接受推荐失败");
     } finally {
@@ -194,7 +226,7 @@ export function Recommendations() {
                 <button
                   type="button"
                   onClick={() => void handleAcceptAll()}
-                  disabled={Boolean(bulkAction) || sortedRecommendations.length === 0}
+                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
@@ -203,7 +235,7 @@ export function Recommendations() {
                 <button
                   type="button"
                   onClick={() => void handleRejectAll()}
-                  disabled={Boolean(bulkAction) || sortedRecommendations.length === 0}
+                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
                   className="extension-page__wide-secondary"
                 >
                   <X className="w-4 h-4" />
@@ -253,30 +285,78 @@ export function Recommendations() {
                     <span className={`extension-confidence ${getConfidenceColor(rec.confidence)}`}>{Math.round(rec.confidence * 100)}%</span>
                   </div>
 
-                  <div className="extension-folder-target">
-                    <Folder className="w-4 h-4" />
-                    <span>{rec.suggestedFolderPath.join(" / ")}</span>
-                  </div>
+                  {editingRecommendationId === rec.id ? (
+                    <label className="bookmark-recommendation-edit bookmark-recommendation-edit--section">
+                      <span>目标文件夹</span>
+                      <input
+                        type="text"
+                        value={recommendationPathDraft}
+                        onChange={(event) => setRecommendationPathDraft(event.target.value)}
+                        className="extension-control"
+                        placeholder="例如：工作 / 文档"
+                        disabled={busyId === rec.id}
+                      />
+                    </label>
+                  ) : (
+                    <div className="extension-folder-target">
+                      <Folder className="w-4 h-4" />
+                      <span>{rec.suggestedFolderPath.join(" / ")}</span>
+                    </div>
+                  )}
 
                   {rec.reason && <ExpandableReason reason={rec.reason} />}
 
-                  <div className="extension-button-row">
-                    <button
-                      onClick={() => void handleAccept(rec)}
-                      disabled={busyId === rec.id || Boolean(bulkAction)}
-                      className="extension-page__wide-primary"
-                    >
-                      <Check className="w-4 h-4" />
-                      接受
-                    </button>
-                    <button
-                      onClick={() => void handleReject(rec.id)}
-                      disabled={busyId === rec.id || Boolean(bulkAction)}
-                      className="extension-page__wide-secondary"
-                    >
-                      <X className="w-4 h-4" />
-                      忽略
-                    </button>
+                  <div className={`extension-button-row ${editingRecommendationId === rec.id ? "" : "extension-button-row--three"}`}>
+                    {editingRecommendationId === rec.id ? (
+                      <>
+                        <button
+                          onClick={() => void handleSavePath(rec)}
+                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
+                          className="extension-page__wide-primary"
+                        >
+                          <Check className="w-4 h-4" />
+                          保存
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingRecommendationId(null);
+                            setRecommendationPathDraft("");
+                          }}
+                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
+                          className="extension-page__wide-secondary"
+                        >
+                          <X className="w-4 h-4" />
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleEditStart(rec)}
+                          disabled={Boolean(busyId) || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                          className="extension-page__wide-secondary"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          编辑
+                        </button>
+                        <button
+                          onClick={() => void handleAccept(rec)}
+                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
+                          className="extension-page__wide-primary"
+                        >
+                          <Check className="w-4 h-4" />
+                          接受
+                        </button>
+                        <button
+                          onClick={() => void handleReject(rec.id)}
+                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
+                          className="extension-page__wide-secondary"
+                        >
+                          <X className="w-4 h-4" />
+                          忽略
+                        </button>
+                      </>
+                    )}
                   </div>
                 </section>
               ))}

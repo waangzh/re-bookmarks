@@ -3,6 +3,7 @@ import {
   ensureFolderPath,
   getBookmark,
   moveBookmark,
+  normalizeFolderPath,
   sortFoldersAndAncestorsChildrenFoldersFirst,
 } from "./bookmarks";
 import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
@@ -70,6 +71,33 @@ export async function removeRecommendationsForBookmark(bookmarkId: string) {
   const recommendations = await getPendingRecommendations();
   const next = recommendations.filter((recommendation) => recommendation.bookmarkId !== bookmarkId);
   if (next.length === recommendations.length) return recommendations;
+
+  await savePendingRecommendations(next);
+  await updateRecommendationBadge();
+  return next;
+}
+
+export async function updateRecommendationFolderPath(id: string, folderPath: string[]) {
+  const settings = await getSettings();
+  const safeFolderPath = normalizeFolderPath(folderPath, settings.maxNestingLevel);
+  if (safeFolderPath.length === 0) {
+    throw new Error("请填写目标文件夹");
+  }
+
+  const recommendations = await getPendingRecommendations();
+  let matched = false;
+  const next = recommendations.map((recommendation) => {
+    if (recommendation.id !== id) return recommendation;
+    matched = true;
+    return {
+      ...recommendation,
+      suggestedFolderPath: safeFolderPath,
+    };
+  });
+
+  if (!matched) {
+    throw new Error("推荐已不存在");
+  }
 
   await savePendingRecommendations(next);
   await updateRecommendationBadge();

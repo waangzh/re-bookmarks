@@ -2968,6 +2968,10 @@ input {
   margin-top: 12px;
 }
 
+.extension-button-row--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .extension-button-row > * {
   min-width: 0;
   max-width: 100%;
@@ -3782,9 +3786,10 @@ input {
 
 .bookmark-unsorted-card--recommendation {
   position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   border-color: #dbeafe;
   background: #f8fbff;
-  padding-right: 46px;
 }
 
 .bookmark-unsorted-card__main {
@@ -3876,6 +3881,33 @@ input {
   font-size: 11px;
   line-height: 1.2;
 }
+.bookmark-recommendation-edit {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 7px 8px;
+}
+
+.bookmark-recommendation-edit--section {
+  margin-top: 12px;
+  padding: 10px 11px;
+}
+
+.bookmark-recommendation-edit span {
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.bookmark-recommendation-edit .extension-control {
+  min-height: 32px;
+  border-color: #bfdbfe;
+  border-radius: 7px;
+  font-size: 12px;
+}
 
 .bookmark-unsorted-card__actions {
   display: grid;
@@ -3884,9 +3916,9 @@ input {
 }
 
 .bookmark-unsorted-card__actions--icons {
-  position: absolute;
-  top: 10px;
-  right: 6px;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
   display: flex;
   flex-direction: column;
   align-items: center;
