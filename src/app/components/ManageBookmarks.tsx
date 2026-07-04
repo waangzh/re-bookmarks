@@ -39,7 +39,12 @@ import {
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
 import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
-import { getLinkHealthReport, removeBookmarkFromLinkHealthReport } from "../services/storage";
+import {
+  getIgnoredManualTaskBookmarkIds,
+  getLinkHealthReport,
+  removeBookmarkFromLinkHealthReport,
+  saveIgnoredManualTaskBookmarkIds,
+} from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
 type TaskMode = "unsorted" | "duplicate" | "invalid";
@@ -258,6 +263,7 @@ export function ManageBookmarks() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
+  const [ignoringManualSelection, setIgnoringManualSelection] = useState(false);
   const [bulkRecommendationAction, setBulkRecommendationAction] = useState<"accept" | "reject" | null>(null);
   const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
   const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
@@ -269,6 +275,8 @@ export function ManageBookmarks() {
   const [scanningLinks, setScanningLinks] = useState(false);
   const [selectedDuplicateBookmarkIds, setSelectedDuplicateBookmarkIds] = useState<Set<string>>(() => new Set());
   const [selectedInvalidBookmarkIds, setSelectedInvalidBookmarkIds] = useState<Set<string>>(() => new Set());
+  const [selectedManualTaskBookmarkIds, setSelectedManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
+  const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
   const [collapsedLinkHealthGroups, setCollapsedLinkHealthGroups] = useState<Set<LinkHealthGroupKey>>(
     () => new Set()
   );
@@ -292,6 +300,11 @@ export function ManageBookmarks() {
   useEffect(() => {
     void getLinkHealthReport().then(setLinkHealthReport);
   }, []);
+
+  useEffect(() => {
+    if (taskMode !== "unsorted") return;
+    void getIgnoredManualTaskBookmarkIds().then((ids) => setIgnoredManualTaskBookmarkIds(new Set(ids)));
+  }, [taskMode]);
 
   useEffect(() => {
     if (taskMode) setSearchQuery("");
@@ -323,15 +336,18 @@ export function ManageBookmarks() {
 
   const visibleTaskBookmarks = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks;
-    return taskBookmarks.filter((bookmark) => !pendingRecommendationBookmarkIds.has(bookmark.id));
-  }, [pendingRecommendationBookmarkIds, taskBookmarks, taskMode]);
+    return taskBookmarks.filter((bookmark) =>
+      !pendingRecommendationBookmarkIds.has(bookmark.id) &&
+      !ignoredManualTaskBookmarkIds.has(bookmark.id)
+    );
+  }, [ignoredManualTaskBookmarkIds, pendingRecommendationBookmarkIds, taskBookmarks, taskMode]);
 
   const unsortedTaskTotal = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks.length;
-    const ids = new Set(taskBookmarks.map((bookmark) => bookmark.id));
+    const ids = new Set(visibleTaskBookmarks.map((bookmark) => bookmark.id));
     pendingRecommendations.forEach((recommendation) => ids.add(recommendation.bookmarkId));
     return ids.size;
-  }, [pendingRecommendations, taskBookmarks, taskMode]);
+  }, [pendingRecommendations, taskBookmarks.length, taskMode, visibleTaskBookmarks]);
 
   const filteredBookmarks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -339,6 +355,11 @@ export function ManageBookmarks() {
 
     return visibleTaskBookmarks.filter((bookmark) => bookmarkMatchesQuery(bookmark, query));
   }, [searchQuery, visibleTaskBookmarks]);
+
+  const visibleManualTaskBookmarkIds = useMemo(() => {
+    if (taskMode !== "unsorted") return [];
+    return filteredBookmarks.map((bookmark) => bookmark.id);
+  }, [filteredBookmarks, taskMode]);
 
   const filteredDuplicateGroups = useMemo(() => {
     if (taskMode !== "duplicate") return [];
@@ -431,6 +452,10 @@ export function ManageBookmarks() {
 
   const areAllVisibleInvalidBookmarksSelected = visibleInvalidBookmarkIds.length > 0 &&
     selectedInvalidCount === visibleInvalidBookmarkIds.length;
+  const selectedManualTaskCount = useMemo(() => {
+    return visibleManualTaskBookmarkIds.filter((id) => selectedManualTaskBookmarkIds.has(id)).length;
+  }, [selectedManualTaskBookmarkIds, visibleManualTaskBookmarkIds]);
+
 
   const pageTitle = useMemo(() => {
     if (taskMode === "unsorted") return "未分类书签";
@@ -473,6 +498,15 @@ export function ManageBookmarks() {
       return unchanged ? prev : next;
     });
   }, [visibleInvalidBookmarkIds]);
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleManualTaskBookmarkIds);
+    setSelectedManualTaskBookmarkIds((prev) => {
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      const unchanged = next.size === prev.size && [...next].every((id) => prev.has(id));
+      return unchanged ? prev : next;
+    });
+  }, [visibleManualTaskBookmarkIds]);
 
   useEffect(() => {
     if (didApplyDefaultExpandedFolderRef.current) return;
@@ -693,6 +727,18 @@ export function ManageBookmarks() {
         visibleInvalidBookmarkIds.forEach((id) => next.delete(id));
       } else {
         visibleInvalidBookmarkIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const toggleManualTaskBookmarkSelection = (bookmarkId: string) => {
+    setSelectedManualTaskBookmarkIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookmarkId)) {
+        next.delete(bookmarkId);
+      } else {
+        next.add(bookmarkId);
       }
       return next;
     });
@@ -923,6 +969,35 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleIgnoreSelectedManualTaskBookmarks = async () => {
+    const targetBookmarks = filteredBookmarks.filter((bookmark) => selectedManualTaskBookmarkIds.has(bookmark.id));
+
+    if (!targetBookmarks.length) {
+      setMessage("请先选择要忽略的手动归档书签");
+      return;
+    }
+
+    setIgnoringManualSelection(true);
+    setMessage("");
+    try {
+      const nextIds = new Set(ignoredManualTaskBookmarkIds);
+      targetBookmarks.forEach((bookmark) => nextIds.add(bookmark.id));
+      const nextList = [...nextIds];
+      await saveIgnoredManualTaskBookmarkIds(nextList);
+      setIgnoredManualTaskBookmarkIds(nextIds);
+      setSelectedManualTaskBookmarkIds((prev) => {
+        const nextSelected = new Set(prev);
+        targetBookmarks.forEach((bookmark) => nextSelected.delete(bookmark.id));
+        return nextSelected;
+      });
+      setMessage(`已忽略 ${targetBookmarks.length} 个手动归档书签`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "忽略手动归档项失败");
+    } finally {
+      setIgnoringManualSelection(false);
+    }
+  };
+
   const handleAcceptVisibleRecommendations = async () => {
     setBulkRecommendationAction("accept");
     setMessage("");
@@ -1088,9 +1163,10 @@ export function ManageBookmarks() {
 
   const renderUnsortedBookmarkCard = (bookmark: BookmarkNode) => {
     const isEditing = editingId === bookmark.id;
+    const isSelected = selectedManualTaskBookmarkIds.has(bookmark.id);
 
     return (
-      <article key={bookmark.id} className="bookmark-unsorted-card">
+      <article key={bookmark.id} className={`bookmark-unsorted-card ${isSelected ? "is-selected" : ""}`}>
         {isEditing ? (
           <div className="bookmark-tree-edit">
             <input type="text" value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })} className="extension-control" />
@@ -1109,7 +1185,14 @@ export function ManageBookmarks() {
           </div>
         ) : (
           <>
-            <div className="bookmark-unsorted-card__main">
+            <div className="bookmark-unsorted-card__main bookmark-unsorted-card__main--selectable">
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => toggleManualTaskBookmarkSelection(bookmark.id)}
+                className="extension-checkbox bookmark-unsorted-card__checkbox"
+                aria-label={`选择忽略：${bookmark.title}`}
+              />
               <BookmarkFavicon
                 title={bookmark.title}
                 url={bookmark.url}
@@ -1312,11 +1395,22 @@ export function ManageBookmarks() {
         {filteredBookmarks.length > 0 && (
           <section className="bookmark-unsorted-section">
             <div className="bookmark-unsorted-section__head">
-              <div>
+              <div className="bookmark-unsorted-section__copy">
                 <h3>待整理位置中的书签</h3>
                 <p>这些书签仍在根目录、待整理或未分类文件夹中，可直接指定目标路径。</p>
               </div>
-              <span>{filteredBookmarks.length}</span>
+              <div className="bookmark-unsorted-section__tools bookmark-unsorted-section__tools--manual">
+                <span>{filteredBookmarks.length}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleIgnoreSelectedManualTaskBookmarks()}
+                  disabled={ignoringManualSelection || selectedManualTaskCount === 0}
+                  className="extension-page__wide-secondary"
+                >
+                  <X className="w-4 h-4" />
+                  {ignoringManualSelection ? "忽略中" : "忽略"}
+                </button>
+              </div>
             </div>
             <div className="bookmark-unsorted-list">
               {filteredBookmarks.map(renderUnsortedBookmarkCard)}

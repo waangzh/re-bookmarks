@@ -20,6 +20,7 @@ export const STORAGE_KEYS = {
   previewTask: "remarks.previewTask",
   folderHabitProfile: "remarks.folderHabitProfile",
   linkHealthReport: "remarks.linkHealthReport",
+  ignoredManualTaskBookmarkIds: "remarks.ignoredManualTaskBookmarkIds",
 } as const;
 
 export const REPORT_HISTORY_LIMIT = 5;
@@ -114,6 +115,14 @@ export function getPendingRecommendations(): Promise<PendingRecommendation[]> {
 
 export function savePendingRecommendations(recommendations: PendingRecommendation[]): Promise<void> {
   return setStorageValue(STORAGE_KEYS.pendingRecommendations, recommendations);
+}
+
+export function getIgnoredManualTaskBookmarkIds(): Promise<string[]> {
+  return getStorageValue<string[]>(STORAGE_KEYS.ignoredManualTaskBookmarkIds, []);
+}
+
+export function saveIgnoredManualTaskBookmarkIds(bookmarkIds: string[]): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.ignoredManualTaskBookmarkIds, bookmarkIds);
 }
 
 export function getLinkHealthReport(): Promise<BookmarkLinkHealthReport | null> {

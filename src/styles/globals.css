@@ -3724,6 +3724,11 @@ input {
   padding: 12px 13px;
 }
 
+.bookmark-unsorted-section__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .bookmark-unsorted-section__head h3 {
   margin: 0;
   color: #172033;
@@ -3760,6 +3765,10 @@ input {
   max-width: 170px;
 }
 
+.bookmark-unsorted-section__tools--manual {
+  max-width: 150px;
+}
+
 .bookmark-unsorted-section__tools .extension-page__wide-primary,
 .bookmark-unsorted-section__tools .extension-page__wide-secondary {
   min-height: 30px;
@@ -3784,6 +3793,11 @@ input {
   padding: 10px;
 }
 
+.bookmark-unsorted-card.is-selected {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
 .bookmark-unsorted-card--recommendation {
   position: relative;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3797,6 +3811,15 @@ input {
   grid-template-columns: 26px minmax(0, 1fr);
   gap: 9px;
   min-width: 0;
+}
+
+.bookmark-unsorted-card__main--selectable {
+  grid-template-columns: 16px 26px minmax(0, 1fr);
+}
+
+.bookmark-unsorted-card__checkbox {
+  align-self: start;
+  margin-top: 3px;
 }
 
 .bookmark-unsorted-card__favicon,
