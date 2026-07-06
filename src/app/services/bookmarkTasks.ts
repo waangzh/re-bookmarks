@@ -64,9 +64,29 @@ export function isUnsortedBookmark(bookmark: BookmarkNode) {
   return bookmark.path.some((part) => /待整理|未分类|unsorted/i.test(part));
 }
 
-export function getUnsortedTaskCount(bookmarks: BookmarkNode[], recommendations: PendingRecommendation[]) {
+export function getVisibleUnsortedBookmarks(
+  bookmarks: BookmarkNode[],
+  recommendations: PendingRecommendation[],
+  ignoredManualBookmarkIds: Iterable<string> = []
+) {
+  const recommendationBookmarkIds = new Set(recommendations.map((recommendation) => recommendation.bookmarkId));
+  const ignoredIds = new Set(ignoredManualBookmarkIds);
+
+  return bookmarks.filter((bookmark) =>
+    isUnsortedBookmark(bookmark) &&
+    !recommendationBookmarkIds.has(bookmark.id) &&
+    !ignoredIds.has(bookmark.id)
+  );
+}
+
+export function getUnsortedTaskCount(
+  bookmarks: BookmarkNode[],
+  recommendations: PendingRecommendation[],
+  ignoredManualBookmarkIds: Iterable<string> = []
+) {
   const ids = new Set<string>();
-  bookmarks.filter(isUnsortedBookmark).forEach((bookmark) => ids.add(bookmark.id));
+  getVisibleUnsortedBookmarks(bookmarks, recommendations, ignoredManualBookmarkIds)
+    .forEach((bookmark) => ids.add(bookmark.id));
   recommendations.forEach((recommendation) => ids.add(recommendation.bookmarkId));
   return ids.size;
 }

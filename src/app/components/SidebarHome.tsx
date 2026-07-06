@@ -21,7 +21,7 @@ import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewT
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { countDuplicateGroups, getLinkHealthProblemCount, getUnsortedTaskCount } from "../services/bookmarkTasks";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
-import { getLinkHealthReport, getPreviewPlan } from "../services/storage";
+import { getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
 import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
@@ -124,10 +124,19 @@ export function SidebarHome() {
   const [historyState, setHistoryState] = useState<HistoryPreviewState>("checking");
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
+  const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<string[]>([]);
+  const [ignoredManualTaskLoaded, setIgnoredManualTaskLoaded] = useState(false);
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    void getIgnoredManualTaskBookmarkIds().then((ids) => {
+      setIgnoredManualTaskBookmarkIds(ids);
+      setIgnoredManualTaskLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -185,10 +194,12 @@ export function SidebarHome() {
   const stats = useMemo(() => {
     return {
       bookmarkCount: bookmarks.length,
-      unsortedTaskCount: getUnsortedTaskCount(bookmarks, pendingRecommendations),
+      unsortedTaskCount: ignoredManualTaskLoaded
+        ? getUnsortedTaskCount(bookmarks, pendingRecommendations, ignoredManualTaskBookmarkIds)
+        : null,
       duplicateCount: countDuplicateGroups(bookmarks),
     };
-  }, [bookmarks, pendingRecommendations]);
+  }, [bookmarks, ignoredManualTaskBookmarkIds, ignoredManualTaskLoaded, pendingRecommendations]);
 
   const aiSuggestions = useMemo(() => {
     const suggestions: Array<{ label: string; to: string }> = [];
@@ -239,7 +250,7 @@ export function SidebarHome() {
               <i className="sidebar-dot sidebar-dot--amber" />
               未分类
             </span>
-            <strong>{stats.unsortedTaskCount}</strong>
+            <strong>{stats.unsortedTaskCount ?? "..."}</strong>
           </span>
           <span>
             <span className="sidebar-stat-card__side-label">
@@ -323,7 +334,7 @@ export function SidebarHome() {
         <div className="sidebar-task-grid">
           <Link to="/manage?task=unsorted" className="sidebar-task-card sidebar-task-card--amber">
             <span>未分类</span>
-            <strong>{stats.unsortedTaskCount}</strong>
+            <strong>{stats.unsortedTaskCount ?? "..."}</strong>
             <Tag className="w-4 h-4" />
           </Link>
           <Link to="/manage?task=duplicate" className="sidebar-task-card sidebar-task-card--red">

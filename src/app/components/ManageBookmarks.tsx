@@ -33,6 +33,8 @@ import {
   getDuplicateBookmarkGroups,
   getLinkHealthProblemCount as countLinkHealthProblems,
   getLinkHealthStatusLabel,
+  getUnsortedTaskCount,
+  getVisibleUnsortedBookmarks,
   isProblemLinkHealthResult,
   isUnsortedBookmark,
 } from "../services/bookmarkTasks";
@@ -330,24 +332,15 @@ export function ManageBookmarks() {
     return getDuplicateBookmarkGroups(bookmarks);
   }, [bookmarks, taskMode]);
 
-  const pendingRecommendationBookmarkIds = useMemo(() => {
-    return new Set(pendingRecommendations.map((recommendation) => recommendation.bookmarkId));
-  }, [pendingRecommendations]);
-
   const visibleTaskBookmarks = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks;
-    return taskBookmarks.filter((bookmark) =>
-      !pendingRecommendationBookmarkIds.has(bookmark.id) &&
-      !ignoredManualTaskBookmarkIds.has(bookmark.id)
-    );
-  }, [ignoredManualTaskBookmarkIds, pendingRecommendationBookmarkIds, taskBookmarks, taskMode]);
+    return getVisibleUnsortedBookmarks(bookmarks, pendingRecommendations, ignoredManualTaskBookmarkIds);
+  }, [bookmarks, ignoredManualTaskBookmarkIds, pendingRecommendations, taskBookmarks, taskMode]);
 
   const unsortedTaskTotal = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks.length;
-    const ids = new Set(visibleTaskBookmarks.map((bookmark) => bookmark.id));
-    pendingRecommendations.forEach((recommendation) => ids.add(recommendation.bookmarkId));
-    return ids.size;
-  }, [pendingRecommendations, taskBookmarks.length, taskMode, visibleTaskBookmarks]);
+    return getUnsortedTaskCount(bookmarks, pendingRecommendations, ignoredManualTaskBookmarkIds);
+  }, [bookmarks, ignoredManualTaskBookmarkIds, pendingRecommendations, taskBookmarks.length, taskMode]);
 
   const filteredBookmarks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
