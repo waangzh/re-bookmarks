@@ -28,7 +28,6 @@ import {
   updateBookmark,
 } from "../services/bookmarks";
 import {
-  checkBookmarkLinks,
   filterDuplicateBookmarks,
   getDuplicateBookmarkGroups,
   getLinkHealthProblemCount as countLinkHealthProblems,
@@ -37,6 +36,7 @@ import {
   getVisibleUnsortedBookmarks,
   isProblemLinkHealthResult,
   isUnsortedBookmark,
+  startLinkHealthScan,
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
@@ -242,7 +242,14 @@ function getDuplicateGroupLabel() {
 
 function getDuplicateGroupDescription(group: DuplicateBookmarkGroup) {
   if (group.kind === "exact") return group.key;
+  if (group.kind === "normalized-path") return group.key;
   return group.domain || group.key;
+}
+
+function getDuplicateGroupKindLabel(group: DuplicateBookmarkGroup) {
+  if (group.kind === "exact") return getDuplicateGroupLabel();
+  if (group.kind === "normalized-path") return "同路径疑似重复";
+  return "标题相似疑似重复";
 }
 
 export function ManageBookmarks() {
@@ -275,6 +282,7 @@ export function ManageBookmarks() {
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
   const [scanProgress, setScanProgress] = useState({ checked: 0, total: 0 });
   const [scanningLinks, setScanningLinks] = useState(false);
+  const [linkScanActive, setLinkScanActive] = useState(false);
   const [selectedDuplicateBookmarkIds, setSelectedDuplicateBookmarkIds] = useState<Set<string>>(() => new Set());
   const [selectedInvalidBookmarkIds, setSelectedInvalidBookmarkIds] = useState<Set<string>>(() => new Set());
   const [selectedManualTaskBookmarkIds, setSelectedManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
@@ -289,6 +297,7 @@ export function ManageBookmarks() {
   const hoverExpandTimerRef = useRef<number | null>(null);
   const hoverExpandFolderKeyRef = useRef<string | null>(null);
   const didApplyDefaultExpandedFolderRef = useRef(false);
+  const resumedLinkScanIdsRef = useRef<Set<string>>(new Set());
 
   const loadManagedBookmarks = useCallback(async () => {
     const [, , nextFolders] = await Promise.all([loadBookmarks(), loadRecommendations(), getAllBookmarkFolders()]);
@@ -300,8 +309,74 @@ export function ManageBookmarks() {
   }, [loadManagedBookmarks]);
 
   useEffect(() => {
-    void getLinkHealthReport().then(setLinkHealthReport);
+    void getLinkHealthReport().then((report) => {
+      setLinkHealthReport(report);
+      if (report?.status === "running") {
+        const checked = report.results.length;
+        setScanProgress({ checked, total: report.totalCount ?? checked });
+        setScanningLinks(true);
+        setMessage("上次链接检测未完成，可继续检测。已保留已完成的检测结果。");
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (linkHealthReport?.status !== "running") return;
+
+    let canceled = false;
+    const poll = async () => {
+      while (!canceled) {
+        const report = await getLinkHealthReport();
+        if (canceled) return;
+        if (report) {
+          setLinkHealthReport(report);
+          const checked = report.results.length;
+          setScanProgress({ checked, total: report.totalCount ?? checked });
+          if (report.status === "completed") {
+            setScanningLinks(false);
+            setLinkScanActive(false);
+            setMessage(`检测完成：${formatLinkHealthSummary(report)}，跳过 ${report.skippedCount} 个非网页链接。`);
+            return;
+          }
+          if (report.status === "failed") {
+            setScanningLinks(false);
+            setLinkScanActive(false);
+            setMessage("链接检测未完成，请稍后重试。");
+            return;
+          }
+        }
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 1000));
+      }
+    };
+
+    void poll();
+    return () => {
+      canceled = true;
+    };
+  }, [linkHealthReport?.id, linkHealthReport?.status]);
+
+  useEffect(() => {
+    if (taskMode !== "invalid") return;
+    if (!bookmarks.length || linkHealthReport?.status !== "running") return;
+    if (resumedLinkScanIdsRef.current.has(linkHealthReport.id)) return;
+
+    resumedLinkScanIdsRef.current.add(linkHealthReport.id);
+    setScanningLinks(true);
+    setLinkScanActive(true);
+    void startLinkHealthScan(bookmarks)
+      .then((report) => {
+        setLinkHealthReport(report);
+        const checked = report.results.length;
+        setScanProgress({ checked, total: report.totalCount ?? bookmarks.length });
+      })
+      .catch((error: unknown) => {
+        setScanningLinks(false);
+        setMessage(error instanceof Error ? error.message : "链接检测续扫失败");
+      })
+      .finally(() => {
+        setLinkScanActive(false);
+      });
+  }, [bookmarks, linkHealthReport?.id, linkHealthReport?.status, taskMode]);
 
   useEffect(() => {
     if (taskMode !== "unsorted") return;
@@ -376,13 +451,11 @@ export function ManageBookmarks() {
   }, [filteredDuplicateGroups]);
 
   const visibleDuplicateAutoSelectIds = useMemo(() => {
-    const retainedIds = new Set(duplicateGroups.map((group) => group.items[0]?.id).filter(Boolean));
     return filteredDuplicateGroups.flatMap((group) => {
-      return group.items
-        .filter((bookmark) => !retainedIds.has(bookmark.id))
-        .map((bookmark) => bookmark.id);
+      const visibleIds = new Set(group.items.map((bookmark) => bookmark.id));
+      return group.suggestedDeleteIds.filter((id) => visibleIds.has(id));
     });
-  }, [duplicateGroups, filteredDuplicateGroups]);
+  }, [filteredDuplicateGroups]);
 
   const selectedDuplicateCount = useMemo(() => {
     return visibleDuplicateBookmarkIds.filter((id) => selectedDuplicateBookmarkIds.has(id)).length;
@@ -1420,8 +1493,14 @@ export function ManageBookmarks() {
     );
   };
 
-  const renderDuplicateBookmarkRow = (bookmark: BookmarkNode) => {
+  const renderDuplicateBookmarkRow = (bookmark: BookmarkNode, group: DuplicateBookmarkGroup) => {
     const isSelected = selectedDuplicateBookmarkIds.has(bookmark.id);
+    const isRecommendedKeep = bookmark.id === group.recommendedKeepId;
+    const duplicateActionLabel = isRecommendedKeep
+      ? "建议保留"
+      : group.suggestedDeleteIds.includes(bookmark.id)
+        ? "建议删除"
+        : "待复核";
 
     return (
       <label
@@ -1438,6 +1517,9 @@ export function ManageBookmarks() {
         <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
         <span className="bookmark-tree-row__meta" title={bookmark.path.join(" / ") || "根目录"}>
           {bookmark.path.join(" / ") || "根目录"}
+        </span>
+        <span className="bookmark-tree-row__status" title={duplicateActionLabel}>
+          {duplicateActionLabel}
         </span>
         {bookmark.url && (
           <a
@@ -1490,13 +1572,14 @@ export function ManageBookmarks() {
             <article key={group.id} className="bookmark-unsorted-card">
               <div className="bookmark-unsorted-card__content">
                 <div className="bookmark-unsorted-card__title-row">
-                  <h4>{getDuplicateGroupLabel()}</h4>
+                  <h4>{getDuplicateGroupKindLabel(group)}</h4>
                   <span>{group.items.length} 个</span>
                 </div>
                 <p className="bookmark-unsorted-card__url">{getDuplicateGroupDescription(group)}</p>
+                <p className="bookmark-unsorted-card__reason">{group.reason}</p>
               </div>
               <div className="bookmark-tree">
-                {group.items.map(renderDuplicateBookmarkRow)}
+                {group.items.map((bookmark) => renderDuplicateBookmarkRow(bookmark, group))}
               </div>
             </article>
           ))}
@@ -1649,18 +1732,22 @@ export function ManageBookmarks() {
 
   const handleLinkScan = async () => {
     setScanningLinks(true);
+    setLinkScanActive(true);
     setMessage("");
     setScanProgress({ checked: 0, total: bookmarks.length });
+    let keepScanning = false;
     try {
-      const report = await checkBookmarkLinks(bookmarks, (checked, total) => {
-        setScanProgress({ checked, total });
-      });
+      const report = await startLinkHealthScan(bookmarks);
+      keepScanning = true;
       setLinkHealthReport(report);
-      setMessage(`检测完成：${formatLinkHealthSummary(report)}，跳过 ${report.skippedCount} 个非网页链接。`);
+      resumedLinkScanIdsRef.current.add(report.id);
+      setScanProgress({ checked: report.results.length, total: report.totalCount ?? bookmarks.length });
+      setMessage("链接检测已在后台开始，可返回首页后稍后查看进度。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "链接检测失败");
     } finally {
-      setScanningLinks(false);
+      if (!keepScanning) setScanningLinks(false);
+      setLinkScanActive(false);
     }
   };
 
@@ -1717,11 +1804,17 @@ export function ManageBookmarks() {
             <button
               type="button"
               onClick={() => void handleLinkScan()}
-              disabled={scanningLinks || bookmarks.length === 0}
+              disabled={linkScanActive || bookmarks.length === 0}
               className="extension-page__wide-primary bookmark-task-panel__button"
             >
-              <RefreshCw className={`w-4 h-4 ${scanningLinks ? "bookmark-task-panel__spin" : ""}`} />
-              {scanningLinks ? `检测中 ${scanProgress.checked}/${scanProgress.total}` : linkHealthReport ? "重新检测" : "开始检测"}
+              <RefreshCw className={`w-4 h-4 ${linkScanActive ? "bookmark-task-panel__spin" : ""}`} />
+              {linkScanActive
+                ? `检测中 ${scanProgress.checked}/${scanProgress.total}`
+                : scanningLinks
+                  ? "继续检测"
+                  : linkHealthReport
+                    ? "重新检测"
+                    : "开始检测"}
             </button>
             {scanningLinks && scanProgress.total > 0 && (
               <div className="bookmark-task-progress" aria-hidden="true">

@@ -4,6 +4,7 @@ export type BookmarkNode = {
   title: string;
   url?: string;
   index?: number;
+  dateAdded?: number;
   children?: BookmarkNode[];
   path: string[];
   type: "folder" | "url";
@@ -163,6 +164,9 @@ export type BookmarkLinkHealthResult = {
 export type BookmarkLinkHealthReport = {
   id: string;
   createdAt: number;
+  updatedAt?: number;
+  status?: "running" | "completed" | "failed";
+  totalCount?: number;
   checkedCount: number;
   skippedCount: number;
   brokenCount?: number;
@@ -284,6 +288,12 @@ export type FolderHabitProfile = {
   promptHint: string;
   analysisSource?: "ai" | "fallback";
   analysisWarning?: string;
+};
+
+export type FolderHabitExportV1 = {
+  version: 1;
+  exportedAt: number;
+  profile: Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint">;
 };
 
 export type FrequentBookmark = {

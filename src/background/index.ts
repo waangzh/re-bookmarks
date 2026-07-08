@@ -1,4 +1,5 @@
 import { createPendingRecommendation } from "@/app/services/organizer";
+import { handleLinkHealthScanMessage, isLinkHealthScanMessage } from "@/app/services/bookmarkTasks";
 import { handlePreviewTaskMessage, isPreviewTaskMessage } from "@/app/services/previewTask";
 import { removeRecommendationsForBookmark, updateRecommendationBadge } from "@/app/services/recommendations";
 
@@ -19,6 +20,20 @@ if (chrome.sidePanel?.setPanelBehavior) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (isLinkHealthScanMessage(message)) {
+    void handleLinkHealthScanMessage(message)
+      .then((report) => {
+        sendResponse({ report });
+      })
+      .catch((error: unknown) => {
+        sendResponse({
+          error: error instanceof Error ? error.message : "链接检测任务处理失败",
+        });
+      });
+
+    return true;
+  }
+
   if (!isPreviewTaskMessage(message)) return false;
 
   void handlePreviewTaskMessage(message)

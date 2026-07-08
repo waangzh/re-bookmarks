@@ -38,6 +38,11 @@ export type AIProviderProfile = {
   endpoint: string;
   tokenParam: TokenParam;
   supportsJsonMode: boolean;
+  supportsTemperature: boolean;
+  endpointHint: string;
+  modelHint: string;
+  limitations: string[];
+  statusMessages: Record<string, string>;
 };
 
 export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
@@ -48,6 +53,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://api.openai.com/v1",
     tokenParam: "max_completion_tokens",
     supportsJsonMode: true,
+    supportsTemperature: false,
+    endpointHint: "使用 OpenAI /v1 OpenAI-compatible 接口。",
+    modelHint: "默认模型使用 max_completion_tokens，部分推理模型不支持 temperature。",
+    limitations: ["不发送 temperature", "支持 JSON mode"],
+    statusMessages: {},
   },
   deepseek: {
     type: "deepseek",
@@ -56,6 +66,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://api.deepseek.com",
     tokenParam: "max_tokens",
     supportsJsonMode: true,
+    supportsTemperature: true,
+    endpointHint: "DeepSeek endpoint 会自动兼容是否包含 /v1。",
+    modelHint: "使用 deepseek-chat/deepseek-reasoner 或兼容模型名。",
+    limitations: ["支持 temperature", "支持 JSON mode"],
+    statusMessages: {},
   },
   zhipu: {
     type: "zhipu",
@@ -64,6 +79,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://open.bigmodel.cn/api/paas/v4",
     tokenParam: "max_tokens",
     supportsJsonMode: true,
+    supportsTemperature: true,
+    endpointHint: "智谱 GLM 使用 /api/paas/v4 OpenAI-compatible 接口。",
+    modelHint: "填写 GLM OpenAI-compatible 模型名。",
+    limitations: ["支持 temperature", "支持 JSON mode"],
+    statusMessages: {},
   },
   kimi: {
     type: "kimi",
@@ -72,6 +92,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://api.moonshot.ai/v1",
     tokenParam: "max_tokens",
     supportsJsonMode: false,
+    supportsTemperature: true,
+    endpointHint: "Kimi 使用 Moonshot /v1 OpenAI-compatible 接口。",
+    modelHint: "填写 kimi 系列模型名。",
+    limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
+    statusMessages: {},
   },
   gemini: {
     type: "gemini",
@@ -80,6 +105,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://generativelanguage.googleapis.com/v1beta/openai",
     tokenParam: "max_tokens",
     supportsJsonMode: false,
+    supportsTemperature: true,
+    endpointHint: "Gemini 使用 Google OpenAI compatibility endpoint。",
+    modelHint: "填写 Gemini OpenAI-compatible 模型名。",
+    limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
+    statusMessages: {},
   },
   minimax: {
     type: "minimax",
@@ -88,6 +118,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://api.minimax.io/v1",
     tokenParam: "max_completion_tokens",
     supportsJsonMode: false,
+    supportsTemperature: true,
+    endpointHint: "MiniMax 使用 /v1 OpenAI-compatible 接口。",
+    modelHint: "填写 MiniMax OpenAI-compatible 模型名。",
+    limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
+    statusMessages: {},
   },
   qwen: {
     type: "qwen",
@@ -96,6 +131,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     tokenParam: "max_tokens",
     supportsJsonMode: true,
+    supportsTemperature: true,
+    endpointHint: "通义千问使用 DashScope compatible-mode endpoint。",
+    modelHint: "填写 qwen 系列兼容模式模型名。",
+    limitations: ["支持 temperature", "支持 JSON mode"],
+    statusMessages: {},
   },
   doubao: {
     type: "doubao",
@@ -104,6 +144,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://ark.cn-beijing.volces.com/api/v3",
     tokenParam: "max_tokens",
     supportsJsonMode: false,
+    supportsTemperature: true,
+    endpointHint: "豆包使用火山方舟 OpenAI-compatible endpoint。",
+    modelHint: "填写方舟 endpoint 可访问的模型或接入点名称。",
+    limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
+    statusMessages: {},
   },
   custom: {
     type: "custom",
@@ -112,6 +157,11 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     endpoint: "https://api.openai.com/v1",
     tokenParam: "max_completion_tokens",
     supportsJsonMode: true,
+    supportsTemperature: true,
+    endpointHint: "自定义 Provider 需兼容 /chat/completions。",
+    modelHint: "填写目标服务支持的模型名。",
+    limitations: ["按 OpenAI-compatible 响应解析 choices[0].message.content"],
+    statusMessages: {},
   },
 };
 
@@ -129,6 +179,24 @@ function endpointFor(config: AIProviderConfig) {
   }
   if (endpoint) return endpoint;
   return profile.endpoint;
+}
+
+function compactResponseDetail(detail: string) {
+  return detail.replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function providerStatusMessage(profile: AIProviderProfile, status: number, detail: string) {
+  const custom = profile.statusMessages[String(status)];
+  if (custom) return custom;
+
+  const suffix = compactResponseDetail(detail);
+  const detailText = suffix ? ` 服务返回：${suffix}` : "";
+  if (status === 401) return `${profile.label} 认证失败：API Key 无效、缺失或未授权。${detailText}`;
+  if (status === 403) return `${profile.label} 拒绝请求：请检查模型权限、账户余额、区域限制或 endpoint 权限。${detailText}`;
+  if (status === 404) return `${profile.label} 未找到资源：请检查 endpoint 是否正确，以及模型名是否存在。${detailText}`;
+  if (status === 429) return `${profile.label} 请求受限：额度不足、并发过高或触发限流，请稍后重试或减少本次整理数量。${detailText}`;
+  if (status >= 500) return `${profile.label} 服务端临时异常：请稍后重试，或切换模型/Provider。${detailText}`;
+  return `${profile.label} 请求失败：HTTP ${status}。${detailText}`;
 }
 
 function extractJson(content: string) {
@@ -463,9 +531,11 @@ async function chatCompletion(
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
-    temperature: 0.1,
     stream: false,
   };
+  if (profile.supportsTemperature) {
+    body.temperature = 0.1;
+  }
   body[profile.tokenParam] = maxTokens;
 
   if (jsonMode && profile.supportsJsonMode) {
@@ -506,17 +576,17 @@ async function chatCompletion(
     if (error instanceof DOMException && error.name === "AbortError") {
       signal?.removeEventListener("abort", abortForExternalSignal);
       if (signal?.aborted) throw new DOMException("AI request canceled", "AbortError");
-      throw new Error("AI 请求超时，请稍后重试或检查模型服务");
+      throw new Error(`${profile.label} 请求超时：请稍后重试、减少本次整理数量，或检查模型服务是否可用。`);
     }
     signal?.removeEventListener("abort", abortForExternalSignal);
-    throw error;
+    throw new Error(`${profile.label} 网络请求失败：请检查 endpoint、网络连接或跨域兼容性。`);
   }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     globalThis.clearTimeout(timer);
     signal?.removeEventListener("abort", abortForExternalSignal);
-    throw new Error(`AI 请求失败：${response.status}${detail ? ` ${detail.slice(0, 160)}` : ""}`);
+    throw new Error(providerStatusMessage(profile, response.status, detail));
   }
 
   try {
@@ -534,7 +604,7 @@ async function chatCompletion(
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("AI 请求超时，请稍后重试或检查模型服务");
     }
-    throw error;
+    throw new Error(`${profile.label} 返回了非 OpenAI-compatible JSON：请检查 endpoint 是否为 /chat/completions 兼容接口。`);
   } finally {
     signal?.removeEventListener("abort", abortForExternalSignal);
     globalThis.clearTimeout(timer);

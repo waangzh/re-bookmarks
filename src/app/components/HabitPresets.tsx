@@ -7,6 +7,7 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  Download,
   Folder,
   FolderOpen,
   GraduationCap,
@@ -17,13 +18,16 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import type { FolderHabitProfile } from "../types";
 import {
   analyzeAndSaveFolderHabits,
   cleanFolderHabitProfile,
+  exportFolderHabitProfile,
   getFolderHabitProfile,
+  importFolderHabitProfileJson,
   saveEditedFolderHabitProfile,
 } from "../services/habits";
 
@@ -171,6 +175,7 @@ export function HabitPresets() {
   const [message, setMessage] = useState("");
   const [openFolderGroups, setOpenFolderGroups] = useState<Set<string>>(() => new Set());
   const [openFolderMenu, setOpenFolderMenu] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getFolderHabitProfile()
@@ -214,6 +219,38 @@ export function HabitPresets() {
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "保存失败");
+      return;
+    }
+    setStatus("idle");
+  };
+
+  const handleExport = () => {
+    if (!profile) return;
+    const content = exportFolderHabitProfile(profile);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `remarks-classification-rules-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage("分类规则已导出");
+  };
+
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setStatus("saving");
+    setMessage("");
+    try {
+      const next = await importFolderHabitProfileJson(await file.text());
+      setProfile(next);
+      setMessage("分类规则已导入，旧预览缓存已清理");
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "导入失败");
       return;
     }
     setStatus("idle");
@@ -303,6 +340,21 @@ export function HabitPresets() {
             <Save className="w-4 h-4" />
             {status === "saving" ? "保存中" : "保存预设"}
           </button>
+          <button type="button" onClick={handleExport} disabled={isBusy} className="extension-page__wide-secondary">
+            <Download className="w-4 h-4" />
+            导出规则
+          </button>
+          <button type="button" onClick={() => importInputRef.current?.click()} disabled={isBusy} className="extension-page__wide-secondary">
+            <Upload className="w-4 h-4" />
+            导入规则
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="sr-only"
+            onChange={(event) => void handleImportFile(event)}
+          />
         </div>
 
         <div className="extension-summary-panel habit-presets-help habit-info-callout">

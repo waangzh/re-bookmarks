@@ -143,6 +143,7 @@ function isLinkHealthProblemStatus(status: BookmarkLinkHealthReport["results"][n
 function recomputeLinkHealthReportCounts(report: BookmarkLinkHealthReport): BookmarkLinkHealthReport {
   return {
     ...report,
+    updatedAt: Date.now(),
     checkedCount: report.results.filter((result) => result.status !== "skipped").length,
     skippedCount: report.results.filter((result) => result.status === "skipped").length,
     brokenCount: report.results.filter((result) => result.status === "broken" || result.status === "invalid").length,

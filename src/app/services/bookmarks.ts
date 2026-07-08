@@ -30,6 +30,7 @@ export function flattenBookmarkTree(
           title: node.title,
           url: node.url,
           index: node.index,
+          dateAdded: node.dateAdded,
           path,
           type: "url" as const,
         },

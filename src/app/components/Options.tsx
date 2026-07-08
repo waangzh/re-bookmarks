@@ -13,6 +13,7 @@ export function Options() {
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
 
   useEffect(() => {
     void loadSettings();
@@ -136,6 +137,23 @@ export function Options() {
                   placeholder="https://api.openai.com/v1"
                   className="extension-control"
                 />
+              </div>
+
+              <div className="extension-summary-panel">
+                <p>{providerProfile.endpointHint}</p>
+                <p>{providerProfile.modelHint}</p>
+                <p>
+                  Token 参数：{providerProfile.tokenParam}；JSON mode：
+                  {providerProfile.supportsJsonMode ? "支持" : "不支持"}；temperature：
+                  {providerProfile.supportsTemperature ? "发送" : "不发送"}。
+                </p>
+                {providerProfile.limitations.length > 0 && (
+                  <ul>
+                    {providerProfile.limitations.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <button onClick={handleTestConnection} disabled={testStatus === "testing"} className="extension-page__wide-secondary extension-page__wide-secondary--blue">

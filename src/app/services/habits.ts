@@ -1,4 +1,4 @@
-import type { FolderHabitProfile, FolderHabitSample } from "../types";
+import type { FolderHabitExportV1, FolderHabitProfile, FolderHabitSample } from "../types";
 import { analyzeFolderHabitsWithAI } from "./aiProvider";
 import { getAllBookmarks } from "./bookmarks";
 import { getDomain, sanitizeUrl } from "./rules";
@@ -10,6 +10,8 @@ import {
 } from "./storage";
 
 const ROOT_FOLDER_NAMES = new Set(["收藏夹栏", "书签栏", "其他收藏夹", "移动设备书签", "Bookmarks Bar", "Other Bookmarks", "Mobile Bookmarks"]);
+
+const FOLDER_HABIT_EXPORT_VERSION = 1;
 
 function folderKey(path: string[]) {
   return path.join(" / ");
@@ -40,6 +42,44 @@ function summarizeAnalysisError(error: unknown) {
   return error.message.replace(/\s+/g, " ").slice(0, 120);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseImportProfile(value: unknown): Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint"> {
+  if (!isRecord(value)) throw new Error("导入文件缺少 profile 对象");
+
+  const folderRules = Array.isArray(value.folderRules)
+    ? value.folderRules.flatMap((rule) => {
+        if (!isRecord(rule)) return [];
+        return [{
+          folderPath: asStringArray(rule.folderPath).slice(0, 3),
+          pattern: typeof rule.pattern === "string" ? rule.pattern : "",
+        }];
+      })
+    : [];
+
+  return {
+    summary: typeof value.summary === "string" ? value.summary : "",
+    preferredTopLevelFolders: asStringArray(value.preferredTopLevelFolders),
+    folderRules,
+    avoidRules: asStringArray(value.avoidRules),
+    promptHint: typeof value.promptHint === "string" ? value.promptHint : "",
+  };
+}
+
+function hasImportContent(profile: FolderHabitProfile) {
+  return Boolean(
+    profile.preferredTopLevelFolders.length ||
+    profile.folderRules.length ||
+    profile.avoidRules.length
+  );
+}
+
 export function cleanFolderHabitProfile(profile: FolderHabitProfile): FolderHabitProfile {
   const folderRuleKeys = new Set<string>();
   const folderRules: FolderHabitProfile["folderRules"] = [];
@@ -64,6 +104,50 @@ export function cleanFolderHabitProfile(profile: FolderHabitProfile): FolderHabi
     promptHint: profile.promptHint?.trim() ?? "",
     analysisWarning: profile.analysisWarning?.trim() || undefined,
   };
+}
+
+export function exportFolderHabitProfile(profile: FolderHabitProfile): string {
+  const cleaned = cleanFolderHabitProfile(profile);
+  const payload: FolderHabitExportV1 = {
+    version: FOLDER_HABIT_EXPORT_VERSION,
+    exportedAt: Date.now(),
+    profile: {
+      summary: cleaned.summary,
+      preferredTopLevelFolders: cleaned.preferredTopLevelFolders,
+      folderRules: cleaned.folderRules,
+      avoidRules: cleaned.avoidRules,
+      promptHint: cleaned.promptHint,
+    },
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export async function importFolderHabitProfileJson(text: string): Promise<FolderHabitProfile> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("导入文件不是有效的 JSON");
+  }
+
+  if (!isRecord(parsed)) throw new Error("导入文件格式不正确");
+  if (parsed.version !== FOLDER_HABIT_EXPORT_VERSION) throw new Error("导入文件版本不受支持");
+
+  const samples = await collectFolderHabitSamples();
+  const bookmarkCount = samples.reduce((total, sample) => total + sample.bookmarkCount, 0);
+  const next = cleanFolderHabitProfile({
+    id: `habit-${Date.now()}`,
+    createdAt: Date.now(),
+    folderCount: samples.length,
+    bookmarkCount,
+    ...parseImportProfile(parsed.profile),
+  });
+
+  if (!hasImportContent(next)) throw new Error("导入文件没有可用的分类规则");
+
+  await saveFolderHabitProfile(next);
+  await clearPreviewPlan();
+  return next;
 }
 
 function inferSourceType(sample: FolderHabitSample) {
