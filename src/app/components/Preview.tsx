@@ -19,12 +19,24 @@ import {
   Cpu,
   Globe2,
   RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+  Layers3,
+  PauseCircle,
   Zap,
 } from "lucide-react";
-import type { BookmarkNode, MovePlan, OrganizeMode, PreviewTaskCache, PreviewTaskProgress, TokenUsage } from "../types";
+import type {
+  BookmarkNode,
+  FolderHabitProfile,
+  MovePlan,
+  OrganizeMode,
+  PreviewTaskCache,
+  PreviewTaskProgress,
+  TokenUsage,
+} from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
+import { clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
@@ -60,9 +72,158 @@ type LongPressSession = {
   timer: number;
 };
 
+type PreviewRiskLevel = "auto" | "batch" | "review" | "keep";
+type PreviewPlanDecision = "move" | "keep";
+
+type PreviewRiskItem = {
+  plan: MovePlan;
+  level: PreviewRiskLevel;
+  reasons: string[];
+  sourcePath: string[];
+};
+
+type PreviewBatchGroup = {
+  key: string;
+  targetPath: string[];
+  items: PreviewRiskItem[];
+};
+
 const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
 const QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT = 300;
 const STALLED_PROGRESS_WARNING_MS = 2 * 60 * 1000;
+const AUTO_ACCEPT_CONFIDENCE = 0.9;
+const DEFAULT_EXPANDED_RISK_GROUPS = ["__batch__", "__review__"];
+
+function pathKey(path: string[]) {
+  return path.map((part) => part.trim()).filter(Boolean).join(" / ");
+}
+
+function isSamePath(left: string[], right: string[]) {
+  return pathKey(left) === pathKey(right);
+}
+
+function buildPreviewRiskAnalysis(
+  plans: MovePlan[],
+  bookmarks: BookmarkNode[],
+  habitProfile: FolderHabitProfile | null
+) {
+  const bookmarkById = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  const existingPathCounts = new Map<string, number>();
+  const existingTopLevels = new Set<string>();
+
+  for (const bookmark of bookmarks) {
+    bookmark.path.forEach((_, index) => {
+      const key = pathKey(bookmark.path.slice(0, index + 1));
+      if (key) existingPathCounts.set(key, (existingPathCounts.get(key) ?? 0) + 1);
+    });
+    if (bookmark.path[0]) existingTopLevels.add(bookmark.path[0]);
+  }
+
+  const habitPaths = new Set(
+    (habitProfile?.folderRules ?? []).map((rule) => pathKey(rule.folderPath)).filter(Boolean)
+  );
+  const preferredTopLevels = new Set(habitProfile?.preferredTopLevelFolders ?? []);
+  const auto: PreviewRiskItem[] = [];
+  const review: PreviewRiskItem[] = [];
+  const keep: PreviewRiskItem[] = [];
+  const batchCandidates: PreviewRiskItem[] = [];
+
+  for (const plan of plans) {
+    const sourcePath = bookmarkById.get(plan.bookmarkId)?.path ?? [];
+    const targetPath = plan.toFolderPath;
+    const targetKey = pathKey(targetPath);
+    const targetExists = existingPathCounts.has(targetKey);
+    const habitMatches = (existingPathCounts.get(targetKey) ?? 0) >= 2 ||
+      habitPaths.has(targetKey) ||
+      Boolean(targetPath[0] && preferredTopLevels.has(targetPath[0]));
+    const keepsTopLevel = Boolean(sourcePath[0] && targetPath[0] && sourcePath[0] === targetPath[0]);
+    const crossesTopLevel = Boolean(sourcePath[0] && targetPath[0] && sourcePath[0] !== targetPath[0]);
+    const createsTopLevel = Boolean(targetPath[0] && !existingTopLevels.has(targetPath[0]));
+    const possibleDuplicate = /重复|duplicate/i.test(plan.reason ?? "");
+    const keepsOriginalPosition = Boolean(
+      plan.keepInPlace ||
+      (sourcePath.length > 0 && isSamePath(sourcePath, targetPath))
+    );
+
+    if (keepsOriginalPosition) {
+      keep.push({
+        plan,
+        level: "keep",
+        sourcePath,
+        reasons: [
+          plan.keepInPlace ? "置信度不足，按当前默认策略不移动" : "目标与原目录一致",
+        ],
+      });
+      continue;
+    }
+
+    if (
+      plan.source === "manual" ||
+      (
+        plan.confidence >= AUTO_ACCEPT_CONFIDENCE &&
+        targetExists &&
+        habitMatches &&
+        keepsTopLevel
+      )
+    ) {
+      auto.push({
+        plan,
+        level: "auto",
+        sourcePath,
+        reasons: [
+          plan.source === "manual"
+            ? "已由你手动调整"
+            : "高置信度、复用现有目录且符合已有分类习惯",
+        ],
+      });
+      continue;
+    }
+
+    const reviewReasons = [
+      createsTopLevel ? "将新建一级文件夹" : "",
+      crossesTopLevel ? "将跨一级目录移动" : "",
+      possibleDuplicate ? "检测到可能重复；本次不会删除" : "",
+      plan.confidence < 0.7 ? "分类依据较弱" : "",
+    ].filter(Boolean);
+
+    if (reviewReasons.length > 0) {
+      review.push({ plan, level: "review", sourcePath, reasons: reviewReasons });
+      continue;
+    }
+
+    batchCandidates.push({
+      plan,
+      level: "batch",
+      sourcePath,
+      reasons: [targetExists ? "同一主题，目标目录已存在" : "同一主题，建议批量确认"],
+    });
+  }
+
+  const batchGroupsByPath = new Map<string, PreviewBatchGroup>();
+  for (const item of batchCandidates) {
+    const key = pathKey(item.plan.toFolderPath) || "待整理";
+    const group = batchGroupsByPath.get(key) ?? {
+      key,
+      targetPath: item.plan.toFolderPath,
+      items: [],
+    };
+    group.items.push(item);
+    batchGroupsByPath.set(key, group);
+  }
+
+  const sortByConfidence = (left: PreviewRiskItem, right: PreviewRiskItem) =>
+    right.plan.confidence - left.plan.confidence ||
+    left.plan.bookmarkTitle.localeCompare(right.plan.bookmarkTitle, "zh-CN");
+
+  auto.sort(sortByConfidence);
+  review.sort(sortByConfidence);
+  keep.sort(sortByConfidence);
+  const batchGroups = [...batchGroupsByPath.values()]
+    .map((group) => ({ ...group, items: group.items.sort(sortByConfidence) }))
+    .sort((left, right) => right.items.length - left.items.length || left.key.localeCompare(right.key, "zh-CN"));
+
+  return { auto, batchGroups, review, keep };
+}
 
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
   return {
@@ -248,8 +409,13 @@ export function Preview() {
   const { loadAll, loadSettings, settings } = useAppStore();
   const [phase, setPhase] = useState<PreviewPhase>("selection");
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
+  const [folderHabitProfile, setFolderHabitProfile] = useState<FolderHabitProfile | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<MovePlan[]>([]);
+  const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
+  const [expandedRiskGroups, setExpandedRiskGroups] = useState<Set<string>>(
+    () => new Set(DEFAULT_EXPANDED_RISK_GROUPS)
+  );
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [draggedPlan, setDraggedPlan] = useState<MovePlan | null>(null);
@@ -378,9 +544,13 @@ export function Preview() {
   }, [modelMenuOpen]);
 
   const loadSelectableBookmarks = async () => {
-    const bookmarks = await getAllBookmarks();
+    const [bookmarks, habitProfile] = await Promise.all([
+      getAllBookmarks(),
+      getFolderHabitProfile(),
+    ]);
     const urlBookmarks = bookmarks.filter((b) => b.url);
     setAllBookmarks(urlBookmarks);
+    setFolderHabitProfile(habitProfile);
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
   };
 
@@ -420,6 +590,8 @@ export function Preview() {
       let keepLoading = false;
       setLoading(true);
       try {
+        await loadSelectableBookmarks();
+        if (!alive) return;
         const task = await getPreviewTask();
         if (!alive) return;
         if (task?.status === "running") {
@@ -432,7 +604,6 @@ export function Preview() {
         }
         if (task?.status === "failed" && task.error) {
           setError(task.error);
-          await loadSelectableBookmarks();
           return;
         }
 
@@ -451,8 +622,7 @@ export function Preview() {
           return;
         }
 
-        // 没有缓存，加载书签列表供选择
-        await loadSelectableBookmarks();
+        // 没有缓存，使用已经加载的书签列表供选择
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载书签失败");
       } finally {
@@ -635,6 +805,8 @@ export function Preview() {
 
   const handleRegenerate = async () => {
     setExpandedPreviewFolders(new Set());
+    setExpandedRiskGroups(new Set(DEFAULT_EXPANDED_RISK_GROUPS));
+    setPlanDecisions({});
     setSelectedPlan(null);
     setDraggedPlan(null);
     setDragOverFolder(null);
@@ -661,6 +833,37 @@ export function Preview() {
   const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
   const previewFolderLookup = useMemo(() => collectPreviewFolderLookup(previewTree), [previewTree]);
+  const riskAnalysis = useMemo(
+    () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile),
+    [plans, allBookmarks, folderHabitProfile]
+  );
+  const batchRiskCount = riskAnalysis.batchGroups.reduce((total, group) => total + group.items.length, 0);
+  const actionableRiskItems = useMemo(
+    () => [
+      ...riskAnalysis.auto,
+      ...riskAnalysis.batchGroups.flatMap((group) => group.items),
+      ...riskAnalysis.review,
+      ...riskAnalysis.keep,
+    ],
+    [riskAnalysis]
+  );
+  const approvedPlans = useMemo(
+    () => plans.filter((plan) => planDecisions[plan.bookmarkId] === "move"),
+    [plans, planDecisions]
+  );
+  const pendingDecisionCount = actionableRiskItems.filter(
+    (item) =>
+      (item.level === "batch" || item.level === "review") &&
+      !planDecisions[item.plan.bookmarkId]
+  ).length;
+  const keptPlanCount = actionableRiskItems.filter(
+    (item) => planDecisions[item.plan.bookmarkId] === "keep"
+  ).length;
+  const forceReviewPlanIds = riskAnalysis.review.map((item) => item.plan.bookmarkId);
+  const allForceReviewItemsApproved = forceReviewPlanIds.length > 0 &&
+    forceReviewPlanIds.every((bookmarkId) => planDecisions[bookmarkId] === "move");
+  const allForceReviewItemsIgnored = forceReviewPlanIds.length > 0 &&
+    forceReviewPlanIds.every((bookmarkId) => planDecisions[bookmarkId] === "keep");
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -673,6 +876,22 @@ export function Preview() {
   const isTaskProgressStalled = Boolean(
     loading && taskProgress && now - taskProgress.updatedAt > STALLED_PROGRESS_WARNING_MS
   );
+
+  useEffect(() => {
+    setPlanDecisions((previous) => {
+      const next: Record<string, PreviewPlanDecision> = {};
+      for (const item of actionableRiskItems) {
+        if (item.level === "keep") {
+          next[item.plan.bookmarkId] = "keep";
+        } else if (item.level === "auto") {
+          next[item.plan.bookmarkId] = "move";
+        } else if (previous[item.plan.bookmarkId]) {
+          next[item.plan.bookmarkId] = previous[item.plan.bookmarkId];
+        }
+      }
+      return next;
+    });
+  }, [actionableRiskItems]);
 
   useEffect(() => {
     previewFolderLookupRef.current = previewFolderLookup;
@@ -763,11 +982,16 @@ export function Preview() {
             confidence: 1,
             reason: `手动拖动到预览文件夹：${targetPath.join(" / ")}`,
             source: "manual" as const,
+            keepInPlace: false,
           }
         : plan
     );
 
     setPlans(nextPlans);
+    setPlanDecisions((previous) => ({
+      ...previous,
+      [sourcePlan.bookmarkId]: "move",
+    }));
     setSavingPreviewDrop(true);
     setExpandedPreviewFolders((prev) => {
       const next = new Set(prev);
@@ -823,10 +1047,17 @@ export function Preview() {
   };
 
   const handleConfirm = async () => {
-    if (!plans.length) return;
+    if (pendingDecisionCount > 0) {
+      setError(`还有 ${pendingDecisionCount} 个风险项需要确认`);
+      return;
+    }
+    if (!approvedPlans.length) {
+      setError("当前没有已批准移动的书签");
+      return;
+    }
     setPhase("submitting");
     try {
-      await executeMovePlans(plans, tokenUsage);
+      await executeMovePlans(approvedPlans, tokenUsage);
       await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadAll();
       navigate("/report");
@@ -1045,6 +1276,128 @@ export function Preview() {
     </button>
   );
 
+  const setPlanDecision = (bookmarkIds: string[], decision: PreviewPlanDecision) => {
+    setPlanDecisions((previous) => {
+      const next = { ...previous };
+      for (const bookmarkId of bookmarkIds) next[bookmarkId] = decision;
+      return next;
+    });
+    setError("");
+  };
+
+  const toggleRiskGroup = (key: string) => {
+    setExpandedRiskGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const renderRiskPlanItem = (
+    item: PreviewRiskItem,
+    options: { showDecision?: boolean } = {}
+  ) => {
+    const { plan, sourcePath, reasons } = item;
+    const decision = planDecisions[plan.bookmarkId];
+
+    return (
+      <div
+        key={plan.bookmarkId}
+        className={`preview-risk-item${decision ? ` is-${decision}` : ""}`}
+      >
+        <BookmarkFavicon
+          title={plan.bookmarkTitle}
+          url={plan.bookmarkUrl}
+          className="preview-risk-item__favicon"
+        />
+        <div className="preview-risk-item__body">
+          <div className="preview-risk-item__title-line">
+            <strong title={plan.bookmarkTitle}>{plan.bookmarkTitle}</strong>
+            <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
+              {Math.round(plan.confidence * 100)}%
+            </span>
+          </div>
+          <div className="preview-risk-item__route">
+            <span title={sourcePath.join(" / ") || "当前根目录"}>
+              {sourcePath.join(" / ") || "当前根目录"}
+            </span>
+            <ChevronRight aria-hidden="true" />
+            <span title={plan.toFolderPath.join(" / ")}>
+              {plan.toFolderPath.join(" / ") || "保持原位"}
+            </span>
+          </div>
+          <p>{reasons.join("；")}</p>
+        </div>
+        {options.showDecision && (
+          <div className="preview-risk-item__actions" aria-label={`${plan.bookmarkTitle} 的处理方式`}>
+            <button
+              type="button"
+              className={decision === "move" ? "is-active" : ""}
+              onClick={() => setPlanDecision([plan.bookmarkId], "move")}
+            >
+              移动
+            </button>
+            <button
+              type="button"
+              className={decision === "keep" ? "is-active" : ""}
+              onClick={() => setPlanDecision([plan.bookmarkId], "keep")}
+            >
+              保留
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderBatchRiskGroup = (group: PreviewBatchGroup) => {
+    const isExpanded = expandedRiskGroups.has(group.key);
+    const bookmarkIds = group.items.map((item) => item.plan.bookmarkId);
+    const movedCount = bookmarkIds.filter((id) => planDecisions[id] === "move").length;
+    const pendingCount = bookmarkIds.filter((id) => !planDecisions[id]).length;
+
+    return (
+      <div key={group.key} className="preview-batch-group">
+        <div className="preview-batch-group__summary">
+          <div>
+            <strong>{group.items.length} 个同主题书签</strong>
+            <span>建议放入：{group.targetPath.join(" / ")}</span>
+          </div>
+          <span className={`preview-batch-group__status${pendingCount ? "" : " is-decided"}`}>
+            {pendingCount ? `${pendingCount} 个待确认` : movedCount ? `已接受 ${movedCount} 个` : "全部保留"}
+          </span>
+        </div>
+        <div className="preview-batch-group__actions">
+          <button
+            type="button"
+            className="preview-risk-action preview-risk-action--primary"
+            onClick={() => setPlanDecision(bookmarkIds, "move")}
+          >
+            接受全部
+          </button>
+          <button
+            type="button"
+            className="preview-risk-action"
+            onClick={() => toggleRiskGroup(group.key)}
+            aria-expanded={isExpanded}
+          >
+            {isExpanded ? "收起检查" : "展开检查"}
+            {isExpanded ? <ChevronDown /> : <ChevronRight />}
+          </button>
+        </div>
+        {isExpanded && (
+          <div className="preview-risk-list">
+            {group.items.map((item) => renderRiskPlanItem(item, { showDecision: true }))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.size === allBookmarks.length) {
       setSelectedIds(new Set());
@@ -1063,25 +1416,27 @@ export function Preview() {
             </Link>
             <div>
               <h1 className="extension-page__title">
-                {phase === "selection" ? "选择书签" : "整理预览"}
+                {phase === "selection" ? "选择书签" : "风险预览"}
               </h1>
               <p className="extension-page__subtitle">
                 {loading
                   ? "正在处理..."
                   : phase === "selection"
                     ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
-                    : `${plans.length} 个书签待确认`}
+                    : pendingDecisionCount
+                      ? `${pendingDecisionCount} 个风险项待确认`
+                      : `已批准移动 ${approvedPlans.length} 个书签`}
               </p>
             </div>
           </div>
           {phase === "preview" && !loading && (
             <button
               onClick={handleConfirm}
-              disabled={!plans.length || savingPreviewDrop}
+              disabled={!approvedPlans.length || pendingDecisionCount > 0 || savingPreviewDrop}
               className="extension-page__primary-button"
             >
               <Check className="w-4 h-4" />
-              确认整理
+              {pendingDecisionCount ? `待确认 ${pendingDecisionCount}` : "确认整理"}
             </button>
           )}
         </div>
@@ -1302,10 +1657,10 @@ export function Preview() {
             <div className="extension-notice extension-notice--blue">
               <div className="extension-notice__title">
                 <AlertCircle className="extension-notice__icon" />
-                <span>整理前预览</span>
+                <span>只审核有风险的变更</span>
               </div>
               <p>
-                将移动 {plans.length} 个书签到 {previewFolderCount} 个文件夹。长按书签可拖到任意预览文件夹，确认前不会修改任何书签。
+                当前批准移动 {approvedPlans.length} 个，保持原位 {keptPlanCount} 个，另有 {pendingDecisionCount} 个需要决定。确认前不会修改任何书签。
               </p>
             </div>
 
@@ -1343,11 +1698,181 @@ export function Preview() {
                 <span>请先在浏览器中添加书签</span>
               </div>
             ) : (
-              <div className="preview-tree-panel">
-                <div className="preview-tree">
-                  {previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
+              <div className="preview-risk-board">
+                <div className="preview-risk-overview" aria-label="整理风险概览">
+                  <div>
+                    <span>自动接受</span>
+                    <strong>{riskAnalysis.auto.length}</strong>
+                  </div>
+                  <div>
+                    <span>批量确认</span>
+                    <strong>{batchRiskCount}</strong>
+                  </div>
+                  <div>
+                    <span>强制审核</span>
+                    <strong>{riskAnalysis.review.length}</strong>
+                  </div>
+                  <div>
+                    <span>保持原位</span>
+                    <strong>{riskAnalysis.keep.length}</strong>
+                  </div>
                 </div>
+
+                <section className="preview-risk-section preview-risk-section--auto">
+                  <div className="preview-risk-section__header">
+                    <div className="preview-risk-section__icon"><ShieldCheck /></div>
+                    <div className="preview-risk-section__heading">
+                      <strong>自动接受候选</strong>
+                      <span>
+                        {riskAnalysis.auto.length} 个高可信书签，将移动到 {
+                          new Set(riskAnalysis.auto.map((item) => pathKey(item.plan.toFolderPath))).size
+                        } 个现有文件夹
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="preview-risk-section__toggle"
+                      onClick={() => toggleRiskGroup("__auto__")}
+                      aria-expanded={expandedRiskGroups.has("__auto__")}
+                    >
+                      {expandedRiskGroups.has("__auto__")
+                        ? "收起"
+                        : riskAnalysis.auto.length > 0
+                          ? `抽查 ${Math.min(5, riskAnalysis.auto.length)} 个`
+                          : "展开"}
+                      {expandedRiskGroups.has("__auto__") ? <ChevronDown /> : <ChevronRight />}
+                    </button>
+                  </div>
+                  {expandedRiskGroups.has("__auto__") && (
+                    riskAnalysis.auto.length > 0 ? (
+                      <div className="preview-risk-list">
+                        {riskAnalysis.auto.slice(0, 5).map((item) => renderRiskPlanItem(item))}
+                      </div>
+                    ) : (
+                      <p className="preview-risk-section__empty">没有自动接受的候选项目</p>
+                    )
+                  )}
+                </section>
+
+                <section className="preview-risk-section preview-risk-section--batch">
+                  <div className="preview-risk-section__header">
+                    <div className="preview-risk-section__icon"><Layers3 /></div>
+                    <div className="preview-risk-section__heading">
+                      <strong>批量确认</strong>
+                      <span>{batchRiskCount} 个中等风险书签，已按目标主题聚合</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="preview-risk-section__toggle"
+                      onClick={() => toggleRiskGroup("__batch__")}
+                      aria-expanded={expandedRiskGroups.has("__batch__")}
+                    >
+                      {expandedRiskGroups.has("__batch__") ? "收起" : "展开"}
+                      {expandedRiskGroups.has("__batch__") ? <ChevronDown /> : <ChevronRight />}
+                    </button>
+                  </div>
+                  {expandedRiskGroups.has("__batch__") && (
+                    riskAnalysis.batchGroups.length > 0 ? (
+                      <div className="preview-batch-groups">
+                        {riskAnalysis.batchGroups.map(renderBatchRiskGroup)}
+                      </div>
+                    ) : (
+                      <p className="preview-risk-section__empty">没有需要批量确认的项目</p>
+                    )
+                  )}
+                </section>
+
+                <section className="preview-risk-section preview-risk-section--review">
+                  <div className="preview-risk-section__header">
+                    <div className="preview-risk-section__icon"><ShieldAlert /></div>
+                    <div className="preview-risk-section__heading">
+                      <strong>强制审核</strong>
+                      <span>{riskAnalysis.review.length} 个高风险变更，必须逐项决定</span>
+                    </div>
+                    <div className="preview-risk-section__actions">
+                      <button
+                        type="button"
+                        className="preview-risk-action preview-risk-action--primary"
+                        onClick={() => setPlanDecision(forceReviewPlanIds, "move")}
+                        disabled={forceReviewPlanIds.length === 0 || allForceReviewItemsApproved}
+                        title="批准移动全部强制审核项，仍需最终确认"
+                      >
+                        {allForceReviewItemsApproved ? "已全部移动" : "全部移动"}
+                      </button>
+                      <button
+                        type="button"
+                        className="preview-risk-action preview-risk-action--ignore"
+                        onClick={() => setPlanDecision(forceReviewPlanIds, "keep")}
+                        disabled={forceReviewPlanIds.length === 0 || allForceReviewItemsIgnored}
+                        title="将全部强制审核项设为保留原位"
+                      >
+                        {allForceReviewItemsIgnored ? "已全部忽略" : "忽略全部"}
+                      </button>
+                      <button
+                        type="button"
+                        className="preview-risk-section__toggle"
+                        onClick={() => toggleRiskGroup("__review__")}
+                        aria-expanded={expandedRiskGroups.has("__review__")}
+                      >
+                        {expandedRiskGroups.has("__review__") ? "收起" : "展开"}
+                        {expandedRiskGroups.has("__review__") ? <ChevronDown /> : <ChevronRight />}
+                      </button>
+                    </div>
+                  </div>
+                  {expandedRiskGroups.has("__review__") && (
+                    riskAnalysis.review.length > 0 ? (
+                      <div className="preview-risk-list">
+                        {riskAnalysis.review.map((item) => renderRiskPlanItem(item, { showDecision: true }))}
+                      </div>
+                    ) : (
+                      <p className="preview-risk-section__empty">没有跨目录、新建一级目录或疑似重复的项目</p>
+                    )
+                  )}
+                </section>
+
+                <section className="preview-risk-section preview-risk-section--keep">
+                  <div className="preview-risk-section__header">
+                    <div className="preview-risk-section__icon"><PauseCircle /></div>
+                    <div className="preview-risk-section__heading">
+                      <strong>保持原位</strong>
+                      <span>{riskAnalysis.keep.length} 个低可信或无需移动的书签，不会执行移动</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="preview-risk-section__toggle"
+                      onClick={() => toggleRiskGroup("__keep__")}
+                      aria-expanded={expandedRiskGroups.has("__keep__")}
+                    >
+                      {expandedRiskGroups.has("__keep__")
+                        ? "收起"
+                        : riskAnalysis.keep.length > 0
+                          ? `查看 ${Math.min(5, riskAnalysis.keep.length)} 个`
+                          : "展开"}
+                      {expandedRiskGroups.has("__keep__") ? <ChevronDown /> : <ChevronRight />}
+                    </button>
+                  </div>
+                  {expandedRiskGroups.has("__keep__") && (
+                    riskAnalysis.keep.length > 0 ? (
+                      <div className="preview-risk-list">
+                        {riskAnalysis.keep.slice(0, 5).map((item) => renderRiskPlanItem(item))}
+                      </div>
+                    ) : (
+                      <p className="preview-risk-section__empty">没有保持原位的项目</p>
+                    )
+                  )}
+                </section>
               </div>
+            )}
+
+            {!loading && plans.length > 0 && (
+              <CollapsibleSection title="完整目标树" hint={`${plans.length} 个建议 / ${previewFolderCount} 个目标文件夹`}>
+                <p className="preview-tree-help">需要微调时，可长按书签并拖到目标文件夹。</p>
+                <div className="preview-tree-panel">
+                  <div className="preview-tree">
+                    {previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
+                  </div>
+                </div>
+              </CollapsibleSection>
             )}
 
             <CollapsibleSection title="整理说明" hint="备份、撤销和文件夹复用规则">
@@ -1360,11 +1885,13 @@ export function Preview() {
 
             <button
               onClick={handleConfirm}
-              disabled={!plans.length || loading || savingPreviewDrop}
+              disabled={!approvedPlans.length || pendingDecisionCount > 0 || loading || savingPreviewDrop}
               className="extension-page__wide-primary"
             >
               <Check className="w-5 h-5" />
-              确认整理 {plans.length} 个书签
+              {pendingDecisionCount > 0
+                ? `先处理 ${pendingDecisionCount} 个风险项`
+                : `确认移动 ${approvedPlans.length} 个书签`}
             </button>
           </>
         )}

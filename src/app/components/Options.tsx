@@ -483,10 +483,10 @@ export function Options() {
                   onChange={(event) => setDraft({ ...draft, unclassifiedHandling: event.target.value as Settings["unclassifiedHandling"] })}
                   className="extension-control"
                 >
+                  <option value="preserveSourcePath">保持原位置（推荐）</option>
                   <option value="collect">全部放入“未分类”文件夹</option>
-                  <option value="preserveSourcePath">已有文件夹则保持原位置</option>
                 </select>
-                <p>适用于 AI 无法可靠分类、低置信度或返回待整理/未分类的书签；根层级书签仍会移动到“未分类”。</p>
+                <p>适用于 AI 无法可靠分类、低置信度或返回待整理/未分类的书签；默认保持原位置，只有明确选择集中处理时才移动到“未分类”。</p>
               </div>
 
               <div className="extension-switch-row">

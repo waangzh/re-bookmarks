@@ -1451,6 +1451,396 @@ input {
   gap: 12px;
 }
 
+.preview-risk-board {
+  display: grid;
+  gap: 10px;
+}
+
+.preview-risk-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #dce3eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.preview-risk-overview > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+}
+
+.preview-risk-overview > div + div {
+  border-left: 1px solid #e8edf3;
+}
+
+.preview-risk-overview span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-risk-overview strong {
+  flex: 0 0 auto;
+  color: #0f172a;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.preview-risk-section {
+  overflow: hidden;
+  border: 1px solid #dfe5ec;
+  border-left-width: 4px;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.preview-risk-section--auto {
+  border-left-color: #22a06b;
+}
+
+.preview-risk-section--batch {
+  border-left-color: #3b82f6;
+}
+
+.preview-risk-section--review {
+  border-left-color: #e05a33;
+}
+
+.preview-risk-section--keep {
+  border-left-color: #94a3b8;
+}
+
+.preview-risk-section__header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 13px;
+}
+
+.preview-risk-section__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.preview-risk-section__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.preview-risk-section--auto .preview-risk-section__icon {
+  background: #eaf8f1;
+  color: #167a50;
+}
+
+.preview-risk-section--batch .preview-risk-section__icon {
+  background: #edf5ff;
+  color: #2563eb;
+}
+
+.preview-risk-section--review .preview-risk-section__icon {
+  background: #fff0eb;
+  color: #c24120;
+}
+
+.preview-risk-section__heading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.preview-risk-section__heading strong {
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.preview-risk-section__heading span {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-risk-section__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.preview-risk-section__toggle,
+.preview-risk-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 30px;
+  border: 1px solid #d7dee8;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 0 9px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.preview-risk-section__toggle:hover,
+.preview-risk-action:hover {
+  border-color: #b9c5d3;
+  background: #f8fafc;
+}
+
+.preview-risk-section__toggle svg,
+.preview-risk-action svg {
+  width: 13px;
+  height: 13px;
+}
+
+.preview-risk-action--ignore {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.preview-risk-action--ignore:hover {
+  border-color: #fdba74;
+  background: #ffedd5;
+}
+
+.preview-risk-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.preview-risk-section__empty {
+  margin: 0;
+  border-top: 1px solid #edf1f5;
+  padding: 10px 13px 11px 53px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.preview-risk-list {
+  border-top: 1px solid #e8edf3;
+}
+
+.preview-risk-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 13px;
+  background: #ffffff;
+}
+
+.preview-risk-item + .preview-risk-item {
+  border-top: 1px solid #edf1f5;
+}
+
+.preview-risk-item.is-move {
+  background: #fbfefd;
+}
+
+.preview-risk-item.is-keep {
+  background: #fafbfc;
+}
+
+.preview-risk-item__favicon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+
+.preview-risk-item__favicon img {
+  inset: 3px;
+  width: 16px;
+  height: 16px;
+}
+
+.preview-risk-item__body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.preview-risk-item__title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.preview-risk-item__title-line strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #27364a;
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-risk-item__route {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.preview-risk-item__route span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-risk-item__route span:last-child {
+  color: #315f96;
+  font-weight: 650;
+}
+
+.preview-risk-item__route svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.preview-risk-item__body p {
+  margin: 0;
+  color: #7c899a;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.preview-risk-item__actions {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid #d7dee8;
+  border-radius: 7px;
+}
+
+.preview-risk-item__actions button {
+  min-height: 28px;
+  border: 0;
+  background: #ffffff;
+  padding: 0 8px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.preview-risk-item__actions button + button {
+  border-left: 1px solid #d7dee8;
+}
+
+.preview-risk-item__actions button.is-active {
+  background: #eaf2ff;
+  color: #1d4ed8;
+}
+
+.preview-risk-item__actions button:last-child.is-active {
+  background: #eef1f5;
+  color: #475569;
+}
+
+.preview-batch-groups {
+  border-top: 1px solid #e8edf3;
+}
+
+.preview-batch-group {
+  padding: 11px 13px;
+}
+
+.preview-batch-group + .preview-batch-group {
+  border-top: 1px solid #e8edf3;
+}
+
+.preview-batch-group__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-batch-group__summary > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.preview-batch-group__summary strong {
+  color: #27364a;
+  font-size: 12px;
+}
+
+.preview-batch-group__summary span {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-batch-group__status {
+  flex: 0 0 auto;
+  color: #b45309;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.preview-batch-group__status.is-decided {
+  color: #167a50;
+}
+
+.preview-batch-group__actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.preview-risk-action--primary {
+  border-color: #b8d3f5;
+  background: #edf5ff;
+  color: #1d4ed8;
+}
+
+.preview-batch-group > .preview-risk-list {
+  margin: 10px -13px -11px;
+}
+
+.preview-tree-help {
+  margin: 0 0 9px;
+  color: #64748b;
+  font-size: 11px;
+}
+
 .preview-tree-panel {
   overflow: hidden;
   border: 1px solid #e5eaf0;
@@ -1657,6 +2047,57 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .preview-risk-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-risk-overview > div:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid #e8edf3;
+  }
+
+  .preview-risk-overview > div:nth-child(4) {
+    border-top: 1px solid #e8edf3;
+  }
+
+  .preview-risk-section__header {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .preview-risk-section__toggle {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .preview-risk-section__actions {
+    grid-column: 2;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .preview-risk-section__heading span {
+    white-space: normal;
+  }
+
+  .preview-risk-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .preview-risk-item__actions {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .preview-batch-group__summary {
+    display: grid;
+  }
+
+  .preview-batch-group__status {
+    justify-self: start;
+  }
 }
 
 .extension-page--settings .extension-page__inner > * + * {

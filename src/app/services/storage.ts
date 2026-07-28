@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxNestingLevel: 2,
   maxTopLevelFolders: 8,
   maxSubfoldersPerFolder: 4,
-  unclassifiedHandling: "collect",
+  unclassifiedHandling: "preserveSourcePath",
   enableHistory: false,
   sendFullUrl: false,
   customPrompt: DEFAULT_CLASSIFY_PROMPT,

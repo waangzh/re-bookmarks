@@ -86,7 +86,7 @@ function collectFolderPaths(
   return folders;
 }
 
-function fallbackResult(id: string, reason = `未能可靠分类，已放入${UNCLASSIFIED_FOLDER_NAME}`): ClassificationResult {
+function fallbackResult(id: string, reason = "未能可靠分类"): ClassificationResult {
   return {
     id,
     category: UNCLASSIFIED_FOLDER_NAME,
@@ -100,7 +100,7 @@ function fallbackResult(id: string, reason = `未能可靠分类，已放入${UN
 function classificationFailureReason(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (error instanceof SyntaxError || /JSON|Expected|Unexpected|unterminated|parse/i.test(message)) {
-    return `AI 返回格式不完整，已暂放${UNCLASSIFIED_FOLDER_NAME}`;
+    return "AI 返回格式不完整，无法可靠分类";
   }
   return message || "AI 鍒嗙被澶辫触";
 }
@@ -220,12 +220,11 @@ function buildMovePlan(
         settings.allowNestedFolders,
         settings.maxNestingLevel
       );
-  const keptInSourceFolder = shouldUseUnclassifiedPath &&
-    settings.unclassifiedHandling === "preserveSourcePath" &&
-    bookmark.path.length > 0;
+  const keepInPlace = shouldUseUnclassifiedPath &&
+    settings.unclassifiedHandling === "preserveSourcePath";
   const lowConfidenceReason = classification.confidence < 0.55
-    ? keptInSourceFolder
-      ? "置信度低于 55%，已保留在原文件夹"
+    ? keepInPlace
+      ? "置信度低于 55%，已保持原位置"
       : `置信度低于 55%，已暂放${UNCLASSIFIED_FOLDER_NAME}`
     : undefined;
 
@@ -239,6 +238,7 @@ function buildMovePlan(
     confidence: classification.confidence,
     reason: appendReason(classification.reason, lowConfidenceReason, duplicateReason),
     source: classification.source,
+    keepInPlace,
   };
 }
 
@@ -629,6 +629,7 @@ export async function executeMovePlans(
   const affectedFolderIds = new Set<string>();
 
   for (const plan of plans) {
+    if (plan.keepInPlace) continue;
     try {
       const parentId = await ensureFolderPath(
         plan.toFolderPath,
@@ -685,7 +686,7 @@ export async function executeMovePlans(
     kind: options.reportKind ?? "organize",
     createdAt: Date.now(),
     movedCount,
-    folderCount: uniqueFolderCount(plans),
+    folderCount: uniqueFolderCount(plans.filter((plan) => !plan.keepInPlace)),
     removedFolders,
     failedItems,
     movePlan: plans,

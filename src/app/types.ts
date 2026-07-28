@@ -62,6 +62,7 @@ export type MovePlan = {
   confidence: number;
   reason?: string;
   source?: ClassificationResult["source"];
+  keepInPlace?: boolean;
 };
 
 export type TokenUsage = {
