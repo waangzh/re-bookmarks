@@ -123,7 +123,7 @@ export function Popup() {
         <Link to="/habits" className="bookmark-popup__action bookmark-popup__action--secondary">
           <div className="bookmark-popup__action-main">
             <Sparkles className="bookmark-popup__action-icon" />
-            <span>分类习惯预设</span>
+            <span>分类偏好</span>
           </div>
           <span className="bookmark-popup__arrow">→</span>
         </Link>

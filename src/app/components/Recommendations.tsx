@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2 } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2, Sparkles } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { parseFolderPath } from "../services/bookmarks";
+import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
 
 type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
@@ -56,6 +57,7 @@ export function Recommendations() {
   const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
   const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [error, setError] = useState("");
+  const [learningNotice, setLearningNotice] = useState("");
 
   useEffect(() => {
     void loadRecommendations();
@@ -96,9 +98,17 @@ export function Recommendations() {
     setError("");
     try {
       await updateRecommendationFolderPath(recommendation.id, folderPath);
+      const notice = await recordHabitFeedback({
+        type: "category_override",
+        bookmarkTitle: recommendation.bookmarkTitle,
+        bookmarkUrl: recommendation.bookmarkUrl,
+        suggestedFolderPath: recommendation.suggestedFolderPath,
+        chosenFolderPath: folderPath,
+      }).catch(() => null);
       await loadRecommendations();
       setEditingRecommendationId(null);
       setRecommendationPathDraft("");
+      setLearningNotice(notice ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存推荐目标失败");
     } finally {
@@ -121,12 +131,19 @@ export function Recommendations() {
     }
   };
 
-  const handleReject = async (id: string) => {
-    setBusyId(id);
+  const handleReject = async (recommendation: PendingRecommendation) => {
+    setBusyId(recommendation.id);
     setError("");
     try {
-      await removeRecommendation(id);
+      await removeRecommendation(recommendation.id);
+      const notice = await recordHabitFeedback({
+        type: "folder_rejected",
+        bookmarkTitle: recommendation.bookmarkTitle,
+        bookmarkUrl: recommendation.bookmarkUrl,
+        suggestedFolderPath: recommendation.suggestedFolderPath,
+      }).catch(() => null);
       await loadRecommendations();
+      setLearningNotice(notice ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "忽略推荐失败");
     } finally {
@@ -164,8 +181,15 @@ export function Recommendations() {
     try {
       for (const recommendation of sortedRecommendations) {
         await removeRecommendation(recommendation.id);
+        await recordHabitFeedback({
+          type: "folder_rejected",
+          bookmarkTitle: recommendation.bookmarkTitle,
+          bookmarkUrl: recommendation.bookmarkUrl,
+          suggestedFolderPath: recommendation.suggestedFolderPath,
+        }).catch(() => null);
       }
       await loadRecommendations();
+      setLearningNotice(`已记住 ${sortedRecommendations.length} 次拒绝，后续会减少类似推荐`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "蹇界暐鎺ㄨ崘澶辫触");
       await loadRecommendations();
@@ -206,6 +230,12 @@ export function Recommendations() {
         {error && (
           <div className="extension-notice extension-notice--amber">
             <p>{error}</p>
+          </div>
+        )}
+        {learningNotice && (
+          <div className="habit-learning-toast" role="status">
+            <Sparkles className="w-4 h-4" />
+            <p>{learningNotice}</p>
           </div>
         )}
 
@@ -348,7 +378,7 @@ export function Recommendations() {
                           接受
                         </button>
                         <button
-                          onClick={() => void handleReject(rec.id)}
+                          onClick={() => void handleReject(rec)}
                           disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
                           className="extension-page__wide-secondary"
                         >

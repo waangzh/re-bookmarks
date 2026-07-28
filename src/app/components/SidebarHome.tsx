@@ -395,7 +395,7 @@ export function SidebarHome() {
         </Link>
         <Link to="/habits" className="sidebar-entry-row">
           <Sparkles className="w-4 h-4" />
-          <span>分类习惯预设</span>
+          <span>分类偏好</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
       </nav>

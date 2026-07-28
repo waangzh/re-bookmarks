@@ -40,6 +40,7 @@ import { clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPla
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
+import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
@@ -1015,7 +1016,14 @@ export function Preview() {
         }),
       ]);
 
-      setCacheMessage("已更新预览计划，确认整理前不会移动书签");
+      const learningNotice = await recordHabitFeedback({
+        type: "category_override",
+        bookmarkTitle: sourcePlan.bookmarkTitle,
+        bookmarkUrl: sourcePlan.bookmarkUrl,
+        suggestedFolderPath: sourcePlan.toFolderPath,
+        chosenFolderPath: targetPath,
+      }).catch(() => null);
+      setCacheMessage(learningNotice ?? "已更新预览计划，确认整理前不会移动书签");
     } catch (err) {
       setPlans(previousPlans);
       setCacheMessage("");

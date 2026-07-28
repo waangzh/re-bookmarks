@@ -1,6 +1,6 @@
 import type { FolderHabitExportV1, FolderHabitProfile, FolderHabitSample } from "../types";
 import { analyzeFolderHabitsWithAI } from "./aiProvider";
-import { getAllBookmarks } from "./bookmarks";
+import { getAllBookmarkFolders, getAllBookmarks } from "./bookmarks";
 import { getDomain, sanitizeUrl } from "./rules";
 import {
   clearPreviewPlan,
@@ -12,9 +12,106 @@ import {
 const ROOT_FOLDER_NAMES = new Set(["收藏夹栏", "书签栏", "其他收藏夹", "移动设备书签", "Bookmarks Bar", "Other Bookmarks", "Mobile Bookmarks"]);
 
 const FOLDER_HABIT_EXPORT_VERSION = 1;
+const PURPOSE_CATEGORY_PATTERN = /工具|稍后|待读|阅读|学习|工作|参考|灵感|收藏|课程|视频|购物|开发|research|read|later|work|learn|tool|reference|inspiration/i;
+
+type HabitFeedback =
+  | {
+      type: "category_override";
+      bookmarkTitle?: string;
+      bookmarkUrl?: string;
+      suggestedFolderPath: string[];
+      chosenFolderPath: string[];
+    }
+  | {
+      type: "folder_rejected";
+      bookmarkTitle?: string;
+      bookmarkUrl?: string;
+      suggestedFolderPath: string[];
+    };
 
 function folderKey(path: string[]) {
   return path.join(" / ");
+}
+
+function emptyLearning(): NonNullable<FolderHabitProfile["learning"]> {
+  return {
+    correctionCount: 0,
+    rejectionCount: 0,
+    depthVotes: { levelOne: 0, nested: 0 },
+    styleVotes: { topic: 0, purpose: 0 },
+    categoryCorrections: [],
+    domainPreferences: [],
+    rejectedFolderPaths: [],
+    recentEvents: [],
+  };
+}
+
+function cleanPath(path: string[]) {
+  return path.map((item) => item.trim()).filter(Boolean).slice(0, 3);
+}
+
+function samePath(left: string[], right: string[]) {
+  return folderKey(cleanPath(left)) === folderKey(cleanPath(right));
+}
+
+function upsertPathSignal<T extends { folderPath: string[]; count: number; updatedAt: number }>(
+  items: T[],
+  folderPath: string[],
+  now: number,
+  extra: Omit<T, "folderPath" | "count" | "updatedAt">
+) {
+  const key = folderKey(folderPath);
+  const existing = items.find((item) => folderKey(item.folderPath) === key);
+  const next = items.filter((item) => folderKey(item.folderPath) !== key);
+  next.unshift({
+    ...extra,
+    folderPath,
+    count: (existing?.count ?? 0) + 1,
+    updatedAt: now,
+  } as T);
+  return next.sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt);
+}
+
+function upsertRejectedSignal(
+  items: NonNullable<FolderHabitProfile["learning"]>["rejectedFolderPaths"],
+  folderPath: string[],
+  domain: string | undefined,
+  isNewFolder: boolean,
+  now: number
+) {
+  const key = `${domain ?? "*"}|${folderKey(folderPath)}`;
+  const existing = items.find((item) => `${item.domain ?? "*"}|${folderKey(item.folderPath)}` === key);
+  return [{
+    folderPath,
+    domain,
+    isNewFolder,
+    count: (existing?.count ?? 0) + 1,
+    updatedAt: now,
+  }, ...items.filter((item) => `${item.domain ?? "*"}|${folderKey(item.folderPath)}` !== key)]
+    .sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt)
+    .slice(0, 16);
+}
+
+function upsertCategoryCorrection(
+  items: NonNullable<FolderHabitProfile["learning"]>["categoryCorrections"],
+  fromFolderPath: string[],
+  toFolderPath: string[],
+  now: number
+) {
+  const key = `${folderKey(fromFolderPath)}→${folderKey(toFolderPath)}`;
+  const existing = items.find((item) =>
+    `${folderKey(item.fromFolderPath)}→${folderKey(item.toFolderPath)}` === key
+  );
+  return [{
+    fromFolderPath,
+    toFolderPath,
+    count: (existing?.count ?? 0) + 1,
+    updatedAt: now,
+  }, ...items.filter((item) =>
+    `${folderKey(item.fromFolderPath)}→${folderKey(item.toFolderPath)}` !== key
+  )]
+    .sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt)
+    .slice(0, 20);
 }
 
 function uniqueStrings(items: string[]) {
@@ -50,7 +147,69 @@ function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-function parseImportProfile(value: unknown): Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint"> {
+function asCount(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function parseImportedLearning(value: unknown): FolderHabitProfile["learning"] {
+  if (!isRecord(value)) return undefined;
+  const depthVotes = isRecord(value.depthVotes) ? value.depthVotes : {};
+  const styleVotes = isRecord(value.styleVotes) ? value.styleVotes : {};
+  const categoryCorrections = Array.isArray(value.categoryCorrections)
+    ? value.categoryCorrections.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        return [{
+          fromFolderPath: asStringArray(item.fromFolderPath),
+          toFolderPath: asStringArray(item.toFolderPath),
+          count: asCount(item.count),
+          updatedAt: asCount(item.updatedAt),
+        }];
+      })
+    : [];
+  const domainPreferences = Array.isArray(value.domainPreferences)
+    ? value.domainPreferences.flatMap((item) => {
+        if (!isRecord(item) || typeof item.domain !== "string") return [];
+        return [{
+          domain: item.domain,
+          folderPath: asStringArray(item.folderPath),
+          count: asCount(item.count),
+          updatedAt: asCount(item.updatedAt),
+        }];
+      })
+    : [];
+  const rejectedFolderPaths = Array.isArray(value.rejectedFolderPaths)
+    ? value.rejectedFolderPaths.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        return [{
+          folderPath: asStringArray(item.folderPath),
+          domain: typeof item.domain === "string" ? item.domain : undefined,
+          isNewFolder: item.isNewFolder === true,
+          count: asCount(item.count),
+          updatedAt: asCount(item.updatedAt),
+        }];
+      })
+    : [];
+
+  return {
+    correctionCount: asCount(value.correctionCount),
+    rejectionCount: asCount(value.rejectionCount),
+    lastLearnedAt: asCount(value.lastLearnedAt) || undefined,
+    depthVotes: {
+      levelOne: asCount(depthVotes.levelOne),
+      nested: asCount(depthVotes.nested),
+    },
+    styleVotes: {
+      topic: asCount(styleVotes.topic),
+      purpose: asCount(styleVotes.purpose),
+    },
+    categoryCorrections,
+    domainPreferences,
+    rejectedFolderPaths,
+    recentEvents: [],
+  };
+}
+
+function parseImportProfile(value: unknown): Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint" | "learning"> {
   if (!isRecord(value)) throw new Error("导入文件缺少 profile 对象");
 
   const folderRules = Array.isArray(value.folderRules)
@@ -69,6 +228,7 @@ function parseImportProfile(value: unknown): Pick<FolderHabitProfile, "summary" 
     folderRules,
     avoidRules: asStringArray(value.avoidRules),
     promptHint: typeof value.promptHint === "string" ? value.promptHint : "",
+    learning: parseImportedLearning(value.learning),
   };
 }
 
@@ -76,7 +236,10 @@ function hasImportContent(profile: FolderHabitProfile) {
   return Boolean(
     profile.preferredTopLevelFolders.length ||
     profile.folderRules.length ||
-    profile.avoidRules.length
+    profile.avoidRules.length ||
+    Boolean(profile.learning?.categoryCorrections.length) ||
+    Boolean(profile.learning?.domainPreferences.length) ||
+    Boolean(profile.learning?.rejectedFolderPaths.length)
   );
 }
 
@@ -103,6 +266,36 @@ export function cleanFolderHabitProfile(profile: FolderHabitProfile): FolderHabi
     avoidRules: uniqueStrings(profile.avoidRules ?? []).slice(0, 10),
     promptHint: profile.promptHint?.trim() ?? "",
     analysisWarning: profile.analysisWarning?.trim() || undefined,
+    learning: profile.learning
+      ? {
+          ...emptyLearning(),
+          ...profile.learning,
+          depthVotes: { ...emptyLearning().depthVotes, ...profile.learning.depthVotes },
+          styleVotes: { ...emptyLearning().styleVotes, ...profile.learning.styleVotes },
+          categoryCorrections: (profile.learning.categoryCorrections ?? [])
+            .map((item) => ({
+              ...item,
+              fromFolderPath: cleanPath(item.fromFolderPath),
+              toFolderPath: cleanPath(item.toFolderPath),
+            }))
+            .filter((item) => item.fromFolderPath.length && item.toFolderPath.length)
+            .slice(0, 20),
+          domainPreferences: (profile.learning.domainPreferences ?? [])
+            .map((item) => ({ ...item, domain: item.domain.trim().toLowerCase(), folderPath: cleanPath(item.folderPath) }))
+            .filter((item) => item.domain && item.folderPath.length)
+            .slice(0, 24),
+          rejectedFolderPaths: (profile.learning.rejectedFolderPaths ?? [])
+            .map((item) => ({
+              ...item,
+              domain: item.domain?.trim().toLowerCase() || undefined,
+              isNewFolder: item.isNewFolder === true,
+              folderPath: cleanPath(item.folderPath),
+            }))
+            .filter((item) => item.folderPath.length)
+            .slice(0, 16),
+          recentEvents: (profile.learning.recentEvents ?? []).slice(0, 30),
+        }
+      : undefined,
   };
 }
 
@@ -117,6 +310,7 @@ export function exportFolderHabitProfile(profile: FolderHabitProfile): string {
       folderRules: cleaned.folderRules,
       avoidRules: cleaned.avoidRules,
       promptHint: cleaned.promptHint,
+      learning: cleaned.learning,
     },
   };
   return JSON.stringify(payload, null, 2);
@@ -248,7 +442,11 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
 }
 
 export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> {
-  const [settings, samples] = await Promise.all([getSettings(), collectFolderHabitSamples()]);
+  const [settings, samples, storedProfile] = await Promise.all([
+    getSettings(),
+    collectFolderHabitSamples(),
+    getFolderHabitProfile(),
+  ]);
   const fallback = buildFallbackProfile(samples);
   let analyzed = fallback;
   let analysisSource: FolderHabitProfile["analysisSource"] = "fallback";
@@ -273,6 +471,7 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
     ...analyzed,
     analysisSource,
     analysisWarning,
+    learning: storedProfile?.learning,
   });
 
   await saveFolderHabitProfile(profile);
@@ -288,6 +487,105 @@ export async function saveEditedFolderHabitProfile(profile: FolderHabitProfile):
   await saveFolderHabitProfile(next);
   await clearPreviewPlan();
   return next;
+}
+
+export async function recordHabitFeedback(feedback: HabitFeedback): Promise<string | null> {
+  const suggestedFolderPath = cleanPath(feedback.suggestedFolderPath);
+  const chosenFolderPath = feedback.type === "category_override" ? cleanPath(feedback.chosenFolderPath) : undefined;
+  if (!suggestedFolderPath.length || (chosenFolderPath && samePath(suggestedFolderPath, chosenFolderPath))) return null;
+
+  const now = Date.now();
+  const stored = await getFolderHabitProfile();
+  const profile = cleanFolderHabitProfile(stored ?? {
+    id: `habit-${now}`,
+    createdAt: now,
+    folderCount: 0,
+    bookmarkCount: 0,
+    summary: "",
+    preferredTopLevelFolders: [],
+    folderRules: [],
+    avoidRules: [],
+    promptHint: "",
+  });
+  const learning = {
+    ...emptyLearning(),
+    ...profile.learning,
+    depthVotes: { ...emptyLearning().depthVotes, ...profile.learning?.depthVotes },
+    styleVotes: { ...emptyLearning().styleVotes, ...profile.learning?.styleVotes },
+    categoryCorrections: [...(profile.learning?.categoryCorrections ?? [])],
+    domainPreferences: [...(profile.learning?.domainPreferences ?? [])],
+    rejectedFolderPaths: [...(profile.learning?.rejectedFolderPaths ?? [])],
+    recentEvents: [...(profile.learning?.recentEvents ?? [])],
+  };
+  const domain = feedback.bookmarkUrl ? getDomain(feedback.bookmarkUrl).toLowerCase() : "";
+
+  if (feedback.type === "category_override" && chosenFolderPath) {
+    learning.correctionCount += 1;
+    learning.categoryCorrections = upsertCategoryCorrection(
+      learning.categoryCorrections,
+      suggestedFolderPath,
+      chosenFolderPath,
+      now
+    );
+    if (chosenFolderPath.length > 1) learning.depthVotes.nested += 1;
+    else learning.depthVotes.levelOne += 1;
+
+    if (PURPOSE_CATEGORY_PATTERN.test(chosenFolderPath.join(" "))) learning.styleVotes.purpose += 1;
+    else learning.styleVotes.topic += 1;
+
+    if (domain) {
+      const otherDomainPaths = learning.domainPreferences.filter((item) => item.domain !== domain);
+      const sameDomainPaths = learning.domainPreferences.filter((item) => item.domain === domain);
+      learning.domainPreferences = [
+        ...upsertPathSignal(sameDomainPaths, chosenFolderPath, now, { domain }),
+        ...otherDomainPaths,
+      ]
+        .sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt)
+        .slice(0, 24);
+    }
+
+    const first = chosenFolderPath[0];
+    profile.preferredTopLevelFolders = [first, ...profile.preferredTopLevelFolders.filter((item) => item !== first)].slice(0, 16);
+  } else {
+    learning.rejectionCount += 1;
+    const existingFolders = await getAllBookmarkFolders().catch(() => []);
+    const isNewFolder = !existingFolders.some((folder) => samePath(stripRootFolderNames(folder.path), suggestedFolderPath));
+    learning.rejectedFolderPaths = upsertRejectedSignal(
+      learning.rejectedFolderPaths,
+      suggestedFolderPath,
+      isNewFolder ? undefined : domain || undefined,
+      isNewFolder,
+      now,
+    );
+  }
+
+  learning.lastLearnedAt = now;
+  learning.recentEvents = [{
+    id: `habit-event-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    type: feedback.type,
+    createdAt: now,
+    bookmarkTitle: feedback.bookmarkTitle,
+    domain: domain || undefined,
+    suggestedFolderPath,
+    chosenFolderPath,
+  }, ...learning.recentEvents].slice(0, 30);
+
+  const next = cleanFolderHabitProfile({
+    ...profile,
+    learning,
+  });
+  await saveFolderHabitProfile(next);
+
+  if (feedback.type === "folder_rejected") {
+    const rejected = learning.rejectedFolderPaths.find((item) =>
+      folderKey(item.folderPath) === folderKey(suggestedFolderPath) &&
+      (item.isNewFolder || item.domain === domain)
+    );
+    return rejected?.isNewFolder
+      ? `已记住：减少新建“${suggestedFolderPath.join(" / ")}”`
+      : `已记住：减少把 ${domain || "类似书签"} 归入“${suggestedFolderPath.join(" / ")}”`;
+  }
+  return `已记住：${domain ? `${domain} 的书签` : "类似书签"}优先归入“${chosenFolderPath?.join(" / ")}”`;
 }
 
 export { getFolderHabitProfile };

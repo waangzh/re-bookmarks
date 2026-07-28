@@ -297,12 +297,53 @@ export type FolderHabitProfile = {
   promptHint: string;
   analysisSource?: "ai" | "fallback";
   analysisWarning?: string;
+  learning?: {
+    correctionCount: number;
+    rejectionCount: number;
+    lastLearnedAt?: number;
+    depthVotes: {
+      levelOne: number;
+      nested: number;
+    };
+    styleVotes: {
+      topic: number;
+      purpose: number;
+    };
+    categoryCorrections: Array<{
+      fromFolderPath: string[];
+      toFolderPath: string[];
+      count: number;
+      updatedAt: number;
+    }>;
+    domainPreferences: Array<{
+      domain: string;
+      folderPath: string[];
+      count: number;
+      updatedAt: number;
+    }>;
+    rejectedFolderPaths: Array<{
+      folderPath: string[];
+      domain?: string;
+      isNewFolder?: boolean;
+      count: number;
+      updatedAt: number;
+    }>;
+    recentEvents: Array<{
+      id: string;
+      type: "category_override" | "folder_rejected";
+      createdAt: number;
+      bookmarkTitle?: string;
+      domain?: string;
+      suggestedFolderPath: string[];
+      chosenFolderPath?: string[];
+    }>;
+  };
 };
 
 export type FolderHabitExportV1 = {
   version: 1;
   exportedAt: number;
-  profile: Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint">;
+  profile: Pick<FolderHabitProfile, "summary" | "preferredTopLevelFolders" | "folderRules" | "avoidRules" | "promptHint" | "learning">;
 };
 
 export type FrequentBookmark = {

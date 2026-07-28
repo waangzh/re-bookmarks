@@ -215,7 +215,7 @@ export function HabitPresets() {
     try {
       const next = await saveEditedFolderHabitProfile(profile);
       setProfile(next);
-      setMessage("分类习惯预设已保存");
+      setMessage("分类偏好调整已保存");
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "保存失败");
@@ -258,7 +258,20 @@ export function HabitPresets() {
 
   const isBusy = status === "loading" || status === "analyzing" || status === "saving";
   const current = profile ?? emptyProfile();
-  const lastUpdatedText = current.createdAt ? new Date(current.createdAt).toLocaleString() : "未生成";
+  const learning = current.learning;
+  const learnedCount = (learning?.correctionCount ?? 0) + (learning?.rejectionCount ?? 0);
+  const lastUpdatedAt = learning?.lastLearnedAt ?? current.createdAt;
+  const lastUpdatedText = lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString() : "尚未学习";
+  const depthPreference = !learning || learning.depthVotes.levelOne + learning.depthVotes.nested < 2
+    ? "继续观察"
+    : learning.depthVotes.nested > learning.depthVotes.levelOne
+      ? "偏好二级结构"
+      : "偏好一级结构";
+  const stylePreference = !learning || learning.styleVotes.topic + learning.styleVotes.purpose < 2
+    ? "继续观察"
+    : learning.styleVotes.purpose > learning.styleVotes.topic
+      ? "偏好用途分类"
+      : "偏好主题分类";
   const folderRuleGroups = current.folderRules.reduce<Array<{ title: string; indexes: number[] }>>((groups, rule, index) => {
     const title = getFolderRuleGroupTitle(rule.folderPath);
     const existing = groups.find((group) => group.title === title);
@@ -325,8 +338,8 @@ export function HabitPresets() {
               <ArrowLeft className="extension-page__back-icon" />
             </Link>
             <div>
-              <h1 className="extension-page__title">分类习惯预设</h1>
-              <p className="extension-page__subtitle">查看 AI 学到的分类偏好，并手动微调</p>
+              <h1 className="extension-page__title">分类偏好</h1>
+              <p className="extension-page__subtitle">查看和管理 ReMarks 学到的分类偏好</p>
             </div>
           </div>
         </div>
@@ -334,11 +347,11 @@ export function HabitPresets() {
         <div className="extension-button-row habit-presets-actions">
           <button onClick={handleAnalyze} disabled={isBusy} className="extension-page__wide-secondary extension-page__wide-secondary--blue">
             <Sparkles className="w-4 h-4" />
-            {status === "analyzing" ? "分析中" : "重新分析"}
+            {status === "analyzing" ? "分析中" : "更新书签画像"}
           </button>
           <button onClick={handleSave} disabled={isBusy} className="extension-page__wide-primary">
             <Save className="w-4 h-4" />
-            {status === "saving" ? "保存中" : "保存预设"}
+            {status === "saving" ? "保存中" : "保存调整"}
           </button>
           <button type="button" onClick={handleExport} disabled={isBusy} className="extension-page__wide-secondary">
             <Download className="w-4 h-4" />
@@ -359,7 +372,7 @@ export function HabitPresets() {
 
         <div className="extension-summary-panel habit-presets-help habit-info-callout">
           <Info className="w-4 h-4" />
-          <p>重新分析会把现有文件夹路径、书签标题、域名和去除 query/hash 的 URL 样例发送给已配置的 AI Provider；不会发送浏览历史。</p>
+          <p>无需维护 Prompt。你修改分类或拒绝建议时，ReMarks 会在本地记录反馈并用于后续分类；“更新书签画像”才会把脱敏样例发送给已配置的 AI Provider。</p>
         </div>
 
         {message && (
@@ -368,12 +381,121 @@ export function HabitPresets() {
           </div>
         )}
 
+        <section className="extension-section habit-card habit-learning-card">
+          <div className="habit-section-heading habit-section-heading--with-action">
+            <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
+            <div>
+              <h2 className="extension-section__title">自动学习</h2>
+              <p>来自你实际修改和拒绝建议的行为反馈</p>
+            </div>
+            <span className="habit-learning-badge">后台生效</span>
+          </div>
+          <div className="habit-learning-signal-grid">
+            <div><strong>{learnedCount}</strong><span>次行为反馈</span></div>
+            <div><strong>{depthPreference}</strong><span>目录层级</span></div>
+            <div><strong>{stylePreference}</strong><span>分类方式</span></div>
+          </div>
+
+          {(learning?.categoryCorrections.length ?? 0) > 0 && (
+            <div className="habit-learned-list">
+              <p className="habit-learned-list__title">分类修正</p>
+              {learning?.categoryCorrections.slice(0, 8).map((item, index) => (
+                <div
+                  key={`${pathToText(item.fromFolderPath)}-${pathToText(item.toFolderPath)}`}
+                  className="habit-learned-row"
+                >
+                  <div>
+                    <strong>{pathToText(item.fromFolderPath)} → {pathToText(item.toFolderPath)}</strong>
+                    <span>已按这个方向调整 {item.count} 次</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`删除 ${pathToText(item.fromFolderPath)} 到 ${pathToText(item.toFolderPath)} 的修正`}
+                    onClick={() => updateProfile((value) => ({
+                      ...value,
+                      learning: value.learning
+                        ? {
+                            ...value.learning,
+                            categoryCorrections: value.learning.categoryCorrections.filter((_, itemIndex) => itemIndex !== index),
+                          }
+                        : undefined,
+                    }))}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {(learning?.domainPreferences.length ?? 0) > 0 ? (
+            <div className="habit-learned-list">
+              <p className="habit-learned-list__title">域名归档偏好</p>
+              {learning?.domainPreferences.slice(0, 8).map((item, index) => (
+                <div key={`${item.domain}-${pathToText(item.folderPath)}`} className="habit-learned-row">
+                  <div>
+                    <strong>{item.domain}</strong>
+                    <span>优先归入 {pathToText(item.folderPath)} · {item.count} 次</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`删除 ${item.domain} 的学习偏好`}
+                    onClick={() => updateProfile((value) => ({
+                      ...value,
+                      learning: value.learning
+                        ? {
+                            ...value.learning,
+                            domainPreferences: value.learning.domainPreferences.filter((_, itemIndex) => itemIndex !== index),
+                          }
+                        : undefined,
+                    }))}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : learnedCount === 0 ? (
+            <p className="habit-empty-text">还没有行为反馈。下一次调整 AI 建议后，这里会自动出现学到的偏好。</p>
+          ) : null}
+
+          {(learning?.rejectedFolderPaths.length ?? 0) > 0 && (
+            <div className="habit-learned-list">
+              <p className="habit-learned-list__title">减少推荐的目录</p>
+              <div className="habit-learned-chips">
+                {learning?.rejectedFolderPaths.slice(0, 8).map((item, index) => (
+                  <span key={`${pathToText(item.folderPath)}-${index}`}>
+                    {item.isNewFolder
+                      ? `不新建 ${pathToText(item.folderPath)}`
+                      : `${item.domain ?? "类似来源"} → 不归入 ${pathToText(item.folderPath)}`}
+                    <button
+                      type="button"
+                      aria-label={`恢复推荐 ${pathToText(item.folderPath)}`}
+                      onClick={() => updateProfile((value) => ({
+                        ...value,
+                        learning: value.learning
+                          ? {
+                              ...value.learning,
+                              rejectedFolderPaths: value.learning.rejectedFolderPaths.filter((_, itemIndex) => itemIndex !== index),
+                            }
+                          : undefined,
+                      }))}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
         <section className="extension-section habit-card habit-overview-card">
           <div className="habit-section-heading">
             <span className="habit-section-heading__icon"><GraduationCap className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">学习概览</h2>
-              <p>当前分类画像的样本规模与更新时间</p>
+              <p>现有书签结构提供的基础画像</p>
             </div>
           </div>
           <div className="habit-metrics-grid">
@@ -394,7 +516,7 @@ export function HabitPresets() {
             </div>
           </div>
           <div className="extension-field habit-summary-field">
-            <label>总结</label>
+            <label>整体偏好摘要（可选微调）</label>
             <AutoResizeTextarea
               value={current.summary}
               onChange={(event) => updateProfile((item) => ({ ...item, summary: event.target.value }))}
@@ -642,21 +764,22 @@ export function HabitPresets() {
           </div>
         </section>
 
-        <section className="extension-section habit-card">
-          <div className="habit-section-heading habit-section-heading--with-action">
+        <details className="extension-section habit-card habit-advanced-details">
+          <summary>
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
-            <div>
-              <h2 className="extension-section__title">给 AI 的预设提示</h2>
-              <p>传递给分类模型的整体指导原则</p>
-            </div>
-          </div>
+            <span>
+              <strong>高级：整体分类提示</strong>
+              <small>自动学习已经会生成约束，通常不需要编辑</small>
+            </span>
+            <ChevronRight className="w-4 h-4 habit-advanced-details__chevron" />
+          </summary>
           <AutoResizeTextarea
             value={current.promptHint}
             onChange={(event) => updateProfile((item) => ({ ...item, promptHint: event.target.value }))}
-            placeholder="请参考以上文件夹规则，按主题、用途和来源分层分类，保持命名简洁、粒度适中。"
+            placeholder="可选：补充自动学习无法表达的特殊分类原则。"
             className="habit-prompt-textarea"
           />
-        </section>
+        </details>
       </div>
     </div>
   );

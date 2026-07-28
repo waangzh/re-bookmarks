@@ -41,6 +41,7 @@ import {
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
 import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { recordHabitFeedback } from "../services/habits";
 import {
   getIgnoredManualTaskBookmarkIds,
   getLinkHealthReport,
@@ -694,8 +695,15 @@ export function ManageBookmarks() {
         setMessage("");
         try {
           await moveBookmark(bookmark.id, targetFolder.id);
+          const learningNotice = await recordHabitFeedback({
+            type: "category_override",
+            bookmarkTitle: bookmark.title,
+            bookmarkUrl: bookmark.url,
+            suggestedFolderPath: bookmark.path,
+            chosenFolderPath: targetFolder.path,
+          }).catch(() => null);
           await loadManagedBookmarks();
-          setMessage(`已移动到 ${targetFolder.path.join(" / ") || targetFolder.title}`);
+          setMessage(learningNotice ?? `已移动到 ${targetFolder.path.join(" / ") || targetFolder.title}`);
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "移动失败");
         } finally {
@@ -964,12 +972,23 @@ export function ManageBookmarks() {
     setBusy(true);
     setMessage("");
     try {
+      const originalBookmark = bookmarks.find((bookmark) => bookmark.id === editingId);
       await updateBookmark(editingId, editForm.title, editForm.url);
       const folderPath = parseFolderPath(editForm.path, settings.maxNestingLevel);
       const parentId = await ensureFolderPath(folderPath, settings.maxNestingLevel);
       await moveBookmark(editingId, parentId);
+      const learningNotice = originalBookmark
+        ? await recordHabitFeedback({
+            type: "category_override",
+            bookmarkTitle: editForm.title,
+            bookmarkUrl: editForm.url,
+            suggestedFolderPath: originalBookmark.path,
+            chosenFolderPath: folderPath,
+          }).catch(() => null)
+        : null;
       await loadManagedBookmarks();
       setEditingId(null);
+      setMessage(learningNotice ?? "书签修改已保存");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -994,10 +1013,17 @@ export function ManageBookmarks() {
     setMessage("");
     try {
       await updateRecommendationFolderPath(recommendation.id, folderPath);
+      const learningNotice = await recordHabitFeedback({
+        type: "category_override",
+        bookmarkTitle: recommendation.bookmarkTitle,
+        bookmarkUrl: recommendation.bookmarkUrl,
+        suggestedFolderPath: recommendation.suggestedFolderPath,
+        chosenFolderPath: folderPath,
+      }).catch(() => null);
       await loadManagedBookmarks();
       setEditingRecommendationId(null);
       setRecommendationPathDraft("");
-      setMessage(`已更新推荐目标：${folderPath.join(" / ")}`);
+      setMessage(learningNotice ?? `已更新推荐目标：${folderPath.join(" / ")}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存推荐目标失败");
     } finally {
@@ -1021,13 +1047,19 @@ export function ManageBookmarks() {
     }
   };
 
-  const handleRejectRecommendation = async (id: string) => {
-    setBusyRecommendationId(id);
+  const handleRejectRecommendation = async (recommendation: PendingRecommendation) => {
+    setBusyRecommendationId(recommendation.id);
     setMessage("");
     try {
-      await removeRecommendation(id);
+      await removeRecommendation(recommendation.id);
+      const learningNotice = await recordHabitFeedback({
+        type: "folder_rejected",
+        bookmarkTitle: recommendation.bookmarkTitle,
+        bookmarkUrl: recommendation.bookmarkUrl,
+        suggestedFolderPath: recommendation.suggestedFolderPath,
+      }).catch(() => null);
       await loadManagedBookmarks();
-      setMessage("已忽略这条 AI 建议");
+      setMessage(learningNotice ?? "已忽略这条 AI 建议");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "忽略推荐失败");
     } finally {
@@ -1100,6 +1132,12 @@ export function ManageBookmarks() {
       for (const recommendation of filteredPendingRecommendations) {
         try {
           await removeRecommendation(recommendation.id);
+          await recordHabitFeedback({
+            type: "folder_rejected",
+            bookmarkTitle: recommendation.bookmarkTitle,
+            bookmarkUrl: recommendation.bookmarkUrl,
+            suggestedFolderPath: recommendation.suggestedFolderPath,
+          }).catch(() => null);
         } catch {
           failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
         }
@@ -1109,7 +1147,7 @@ export function ManageBookmarks() {
       setMessage(
         failed.length > 0
           ? `部分建议忽略失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
-          : `已忽略 ${filteredPendingRecommendations.length} 条 AI 建议`
+          : `已记住 ${filteredPendingRecommendations.length} 次拒绝，后续会减少类似推荐`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "一键忽略失败");
@@ -1390,7 +1428,7 @@ export function ManageBookmarks() {
               </button>
               <button
                 type="button"
-                onClick={() => void handleRejectRecommendation(recommendation.id)}
+                onClick={() => void handleRejectRecommendation(recommendation)}
                 disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
                 className="extension-icon-action"
                 aria-label="Ignore recommendation"

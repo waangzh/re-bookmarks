@@ -729,6 +729,18 @@ function buildHabitInstruction(profile: FolderHabitProfile) {
     return `${index + 1}. ${path}：${pattern}`;
   });
   const avoidRules = (profile.avoidRules ?? []).slice(0, 8).map((rule, index) => `${index + 1}. ${rule}`);
+  const learning = profile.learning;
+  const learnedCorrections = (learning?.categoryCorrections ?? []).slice(0, 10).map(
+    (item) => `${item.fromFolderPath.join(" / ")} → ${item.toFolderPath.join(" / ")}（用户调整 ${item.count} 次）`
+  );
+  const learnedDomains = (learning?.domainPreferences ?? []).slice(0, 12).map(
+    (item) => `${item.domain} → ${item.folderPath.join(" / ")}（用户确认 ${item.count} 次）`
+  );
+  const rejectedPaths = (learning?.rejectedFolderPaths ?? []).slice(0, 8).map(
+    (item) => item.isNewFolder
+      ? `不要新建 ${item.folderPath.join(" / ")}（用户拒绝 ${item.count} 次）`
+      : `${item.domain ?? "类似来源"} 不要归入 ${item.folderPath.join(" / ")}（用户拒绝 ${item.count} 次）`
+  );
   const parts = ["\n用户已有分类习惯："];
 
   if (profile.promptHint) parts.push(profile.promptHint);
@@ -737,6 +749,19 @@ function buildHabitInstruction(profile: FolderHabitProfile) {
     parts.push(`可复用文件夹规则：${folderRules.join("；")}。分类时优先匹配这些路径体现的主题和粒度。`);
   }
   if (avoidRules.length) parts.push(`避免规则：${avoidRules.join("；")}。`);
+  if (learnedCorrections.length) parts.push(`用户对 AI 分类的实际修正：${learnedCorrections.join("；")}。遇到相似分类时优先采用修正后的路径。`);
+  if (learnedDomains.length) parts.push(`用户实际修改形成的域名偏好：${learnedDomains.join("；")}。这些反馈优先级高于通用推断。`);
+  if (rejectedPaths.length) parts.push(`用户曾拒绝这些分类方式：${rejectedPaths.join("；")}。除非有很强的新证据，否则遵守这些反馈。`);
+  if (learning) {
+    const depthVotes = learning.depthVotes.levelOne + learning.depthVotes.nested;
+    if (depthVotes >= 2) {
+      parts.push(learning.depthVotes.nested > learning.depthVotes.levelOne ? "用户更偏好二级目录结构。" : "用户更偏好一级目录结构。");
+    }
+    const styleVotes = learning.styleVotes.topic + learning.styleVotes.purpose;
+    if (styleVotes >= 2) {
+      parts.push(learning.styleVotes.purpose > learning.styleVotes.topic ? "用户更偏好按用途分类。" : "用户更偏好按主题分类。");
+    }
+  }
   parts.push("如果书签明显匹配已有文件夹规则，优先返回该规则路径；无法匹配时再创建克制的新分类或归入待整理。");
 
   return parts.join(" ");
