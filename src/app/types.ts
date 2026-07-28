@@ -194,6 +194,7 @@ export type AIProviderConfig = {
 export type Settings = {
   provider: AIProviderConfig;
   providerConfigs: Partial<Record<AIProviderType, AIProviderConfig>>;
+  onboardingCompleted: boolean;
   allowNestedFolders: boolean;
   maxNestingLevel: number;
   maxTopLevelFolders: number;

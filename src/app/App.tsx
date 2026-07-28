@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { HashRouter, Routes, Route, useLocation } from "react-router";
 import { Popup } from "./components/Popup";
 import { SidebarHome } from "./components/SidebarHome";
@@ -10,6 +11,8 @@ import { ManageBookmarks } from "./components/ManageBookmarks";
 import { HabitPresets } from "./components/HabitPresets";
 import { Backups } from "./components/Backups";
 import { ImportBookmarks } from "./components/ImportBookmarks";
+import { Onboarding } from "./components/Onboarding";
+import { useAppStore } from "./store/useAppStore";
 
 type AppProps = {
   defaultView?: "popup" | "options" | "sidebar";
@@ -17,9 +20,22 @@ type AppProps = {
 
 function AppRoutes({ defaultView = "popup" }: AppProps) {
   const location = useLocation();
+  const { settings, loadSettings } = useAppStore();
   const isPopupHome = defaultView === "popup" && location.pathname === "/";
   const isPopupWindow = defaultView === "popup";
   const isSidebarWindow = defaultView === "sidebar";
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  const home = settings.onboardingCompleted
+    ? defaultView === "options"
+      ? <Options />
+      : defaultView === "sidebar"
+        ? <SidebarHome />
+        : <Popup />
+    : <Onboarding defaultView={defaultView} />;
 
   return (
     <div
@@ -34,9 +50,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
       <Routes>
         <Route
           path="/"
-          element={
-            defaultView === "options" ? <Options /> : defaultView === "sidebar" ? <SidebarHome /> : <Popup />
-          }
+          element={home}
         />
         <Route path="/options" element={<Options />} />
         <Route path="/preview" element={<Preview />} />

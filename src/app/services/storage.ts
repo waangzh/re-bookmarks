@@ -48,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enabled: false,
   },
   providerConfigs: {},
+  onboardingCompleted: false,
   allowNestedFolders: true,
   maxNestingLevel: 2,
   maxTopLevelFolders: 8,
@@ -78,6 +79,7 @@ function mergeSettings(settings?: Partial<Settings>): Settings {
   return {
     ...DEFAULT_SETTINGS,
     ...settings,
+    onboardingCompleted: settings?.onboardingCompleted ?? Boolean(settings?.provider?.apiKey),
     provider,
     providerConfigs,
   };

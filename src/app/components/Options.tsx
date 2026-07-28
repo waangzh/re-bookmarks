@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   AlertCircle,
   ArrowLeft,
@@ -9,7 +9,6 @@ import {
   FlaskConical,
   FolderTree,
   KeyRound,
-  MessageSquareText,
   RotateCcw,
   ShieldCheck,
   SlidersHorizontal,
@@ -23,6 +22,7 @@ import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../
 import { useAppStore } from "../store/useAppStore";
 
 export function Options() {
+  const navigate = useNavigate();
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
@@ -128,7 +128,7 @@ export function Options() {
     if (!granted) setMessage("未授予浏览历史权限，常访问书签已保持关闭");
   };
 
-  const handleSave = async () => {
+  const persistDraft = async () => {
     const nextDraft = {
       ...draft,
       providerConfigs: {
@@ -139,7 +139,17 @@ export function Options() {
     setDraft(nextDraft);
     await saveSettings(nextDraft);
     await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
+    return nextDraft;
+  };
+
+  const handleSave = async () => {
+    await persistDraft();
     setMessage("设置已保存");
+  };
+
+  const handleStartOrganize = async () => {
+    await persistDraft();
+    navigate("/preview");
   };
 
   return (
@@ -157,74 +167,125 @@ export function Options() {
           </div>
         </div>
 
-        <section className="extension-section settings-section settings-section--provider">
-          <details className="settings-disclosure" open>
+        <section className="extension-section settings-section settings-section--provider settings-simple">
+          <div className="settings-simple__header">
+            <span className="settings-disclosure__icon settings-disclosure__icon--ai">
+              <Sparkles aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="extension-section__title">连接 AI 服务</h2>
+              <p>ReMarks 使用 AI 判断书签内容并生成整理建议。</p>
+            </div>
+            <span className={`provider-overview__state${testStatus === "success" ? " is-ready" : ""}`}>
+              {testStatus === "success" ? "连接可用" : "尚未测试"}
+            </span>
+          </div>
+
+          <div className="extension-form provider-form settings-simple__form">
+            <div className="extension-field">
+              <label>AI 服务</label>
+              <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)} className="extension-control">
+                {AI_PROVIDER_OPTIONS.map((provider) => (
+                  <option key={provider.type} value={provider.type}>{provider.label}</option>
+                ))}
+              </select>
+              <p>模型、Endpoint 和请求参数将使用推荐值。</p>
+            </div>
+
+            <div className="extension-field">
+              <div className="extension-field__label-with-icon">
+                <KeyRound aria-hidden="true" />
+                <label>API Key</label>
+                <span>仅保存在本地</span>
+              </div>
+              <input
+                type="password"
+                value={draft.provider.apiKey}
+                onChange={(event) => updateProviderConfig("apiKey", event.target.value)}
+                placeholder="输入服务商提供的 API Key"
+                autoComplete="off"
+                className="extension-control"
+              />
+            </div>
+
+            <div className="settings-simple__actions">
+              <button onClick={handleTestConnection} disabled={testStatus === "testing"} className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button">
+                <FlaskConical aria-hidden="true" />
+                {testStatus === "testing" ? "正在连接..." : "测试连接"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleStartOrganize()}
+                disabled={testStatus !== "success"}
+                className="extension-page__wide-primary"
+              >
+                <Sparkles aria-hidden="true" />
+                开始整理
+              </button>
+            </div>
+
+            {testStatus === "success" && (
+              <div className="extension-status extension-status--success">
+                <Check aria-hidden="true" />
+                <span>
+                  <strong>连接成功</strong>
+                  <small>{providerProfile.label} 已返回有效响应，可以开始生成整理建议。</small>
+                </span>
+              </div>
+            )}
+
+            {testStatus === "error" && (
+              <div className="extension-status extension-status--error">
+                <AlertCircle aria-hidden="true" />
+                <span>
+                  <strong>连接失败</strong>
+                  <small>{message || "请检查 API Key；技术参数可在高级设置中调整。"}</small>
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="extension-section settings-section settings-section--expert">
+          <details className="settings-disclosure">
             <summary className="settings-disclosure__summary">
               <span className="settings-disclosure__intro">
-                <span className="settings-disclosure__icon settings-disclosure__icon--ai">
-                  <Sparkles aria-hidden="true" />
+                <span className="settings-disclosure__icon settings-disclosure__icon--expert">
+                  <SlidersHorizontal aria-hidden="true" />
                 </span>
                 <span>
-                  <h2 className="extension-section__title">AI Provider 配置</h2>
-                  <span className="settings-disclosure__hint">连接模型服务并微调请求参数</span>
+                  <h2 className="extension-section__title">高级设置</h2>
+                  <span className="settings-disclosure__hint">自定义 Provider、模型与请求参数</span>
                 </span>
               </span>
+              <span className="settings-expert__badge">专家模式</span>
               <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
             </summary>
             <div className="settings-disclosure__body">
-              <div className="provider-overview">
-                <span className="provider-overview__mark" aria-hidden="true">
-                  <Bot />
-                </span>
-                <span className="provider-overview__copy">
-                  <strong>{providerProfile.label}</strong>
-                  <small>OpenAI-compatible</small>
-                </span>
-                <span className={`provider-overview__state${testStatus === "success" ? " is-ready" : ""}`}>
-                  {testStatus === "success" ? "连接可用" : "等待测试"}
-                </span>
+              <div className="settings-expert__notice">
+                <Bot aria-hidden="true" />
+                <span>仅在使用代理服务、自定义模型或调试兼容性时修改。默认推荐值适合大多数用户。</span>
               </div>
-
               <div className="extension-form provider-form">
                 <div className="provider-form__grid">
                   <div className="extension-field">
                     <label>Provider</label>
                     <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)} className="extension-control">
                       {AI_PROVIDER_OPTIONS.map((provider) => (
-                        <option key={provider.type} value={provider.type}>
-                          {provider.label}
-                        </option>
+                        <option key={provider.type} value={provider.type}>{provider.label}</option>
                       ))}
                     </select>
                   </div>
-
                   <div className="extension-field">
                     <label>模型</label>
                     <input
                       type="text"
                       value={draft.provider.model}
                       onChange={(event) => updateProviderConfig("model", event.target.value)}
-                      placeholder="gpt-4o-mini"
+                      placeholder={providerProfile.model}
                       className="extension-control"
                     />
                   </div>
-                </div>
-
-                <div className="extension-field">
-                  <div className="extension-field__label-with-icon">
-                    <KeyRound aria-hidden="true" />
-                    <label>API Key</label>
-                    <span>仅保存在本地</span>
-                  </div>
-                  <input
-                    type="password"
-                    value={draft.provider.apiKey}
-                    onChange={(event) => updateProviderConfig("apiKey", event.target.value)}
-                    placeholder="sk-..."
-                    autoComplete="off"
-                    className="extension-control"
-                  />
-                  <p>每个 Provider 独立保存在本地，不会写入报告、备份或调试信息。</p>
                 </div>
 
                 <div className="extension-field">
@@ -233,105 +294,102 @@ export function Options() {
                     type="url"
                     value={draft.provider.endpoint ?? ""}
                     onChange={(event) => updateProviderConfig("endpoint", event.target.value)}
-                    placeholder="https://api.openai.com/v1"
+                    placeholder={providerProfile.endpoint}
                     className="extension-control"
                   />
                 </div>
 
-                <details className="provider-advanced">
-                  <summary>
-                    <span>
-                      <SlidersHorizontal aria-hidden="true" />
-                      高级请求参数
-                    </span>
-                    <span className="provider-advanced__summary-value">
-                      temperature {effectiveTemperature ?? "关闭"}
-                    </span>
-                  </summary>
-                  <div className="provider-advanced__body">
-                    <div className="provider-form__grid">
-                      <div className="extension-field">
-                        <label htmlFor="provider-temperature">Temperature</label>
-                        <input
-                          id="provider-temperature"
-                          type="number"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                          value={effectiveTemperature ?? ""}
-                          disabled={!providerProfile.supportsTemperature}
-                          onChange={(event) => updateProviderConfig(
-                            "temperature",
-                            event.target.value === "" ? undefined : Number(event.target.value)
-                          )}
-                          placeholder="不发送"
-                          className="extension-control"
-                        />
-                        <p>
-                          {draft.provider.type === "kimi"
-                            ? "Kimi 当前模型要求为 1，已自动适配。"
-                            : providerProfile.supportsTemperature
-                              ? "范围 0–2；留空时使用 Provider 默认值。"
-                              : "当前 Provider 默认不发送此参数。"}
-                        </p>
-                      </div>
-
-                      <div className="extension-field">
-                        <label htmlFor="provider-max-tokens">Max tokens</label>
-                        <input
-                          id="provider-max-tokens"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={draft.provider.maxTokens ?? ""}
-                          onChange={(event) => updateProviderConfig(
-                            "maxTokens",
-                            event.target.value === "" ? undefined : Number(event.target.value)
-                          )}
-                          placeholder="按任务自动"
-                          className="extension-control"
-                        />
-                        <p>留空时按测试、分类或习惯分析任务自动设置。</p>
-                      </div>
-
-                      <div className="extension-field">
-                        <label htmlFor="provider-token-param">Token 参数名</label>
-                        <select
-                          id="provider-token-param"
-                          value={draft.provider.tokenParam ?? "auto"}
-                          onChange={(event) => updateProviderConfig(
-                            "tokenParam",
-                            event.target.value as AIProviderConfig["tokenParam"]
-                          )}
-                          className="extension-control"
-                        >
-                          <option value="auto">自动（{providerProfile.tokenParam}）</option>
-                          <option value="max_tokens">max_tokens</option>
-                          <option value="max_completion_tokens">max_completion_tokens</option>
-                        </select>
-                      </div>
-
-                      <div className="extension-field">
-                        <label htmlFor="provider-json-mode">JSON mode</label>
-                        <select
-                          id="provider-json-mode"
-                          value={draft.provider.jsonMode ?? "auto"}
-                          disabled={!providerProfile.supportsJsonMode}
-                          onChange={(event) => updateProviderConfig(
-                            "jsonMode",
-                            event.target.value as AIProviderConfig["jsonMode"]
-                          )}
-                          className="extension-control"
-                        >
-                          <option value="auto">按任务自动</option>
-                          <option value="on">始终开启</option>
-                          <option value="off">始终关闭</option>
-                        </select>
-                        <p>{providerProfile.supportsJsonMode ? "分类任务默认开启。" : "该 Provider 使用提示词约束 JSON。"}</p>
-                      </div>
-                    </div>
+                <div className="provider-form__grid">
+                  <div className="extension-field">
+                    <label htmlFor="provider-temperature">Temperature</label>
+                    <input
+                      id="provider-temperature"
+                      type="number"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={effectiveTemperature ?? ""}
+                      disabled={!providerProfile.supportsTemperature}
+                      onChange={(event) => updateProviderConfig(
+                        "temperature",
+                        event.target.value === "" ? undefined : Number(event.target.value)
+                      )}
+                      placeholder="不发送"
+                      className="extension-control"
+                    />
                   </div>
-                </details>
+                  <div className="extension-field">
+                    <label htmlFor="provider-max-tokens">Max tokens</label>
+                    <input
+                      id="provider-max-tokens"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={draft.provider.maxTokens ?? ""}
+                      onChange={(event) => updateProviderConfig(
+                        "maxTokens",
+                        event.target.value === "" ? undefined : Number(event.target.value)
+                      )}
+                      placeholder="按任务自动"
+                      className="extension-control"
+                    />
+                  </div>
+                  <div className="extension-field">
+                    <label htmlFor="provider-token-param">Token 参数</label>
+                    <select
+                      id="provider-token-param"
+                      value={draft.provider.tokenParam ?? "auto"}
+                      onChange={(event) => updateProviderConfig(
+                        "tokenParam",
+                        event.target.value as AIProviderConfig["tokenParam"]
+                      )}
+                      className="extension-control"
+                    >
+                      <option value="auto">自动（{providerProfile.tokenParam}）</option>
+                      <option value="max_tokens">max_tokens</option>
+                      <option value="max_completion_tokens">max_completion_tokens</option>
+                    </select>
+                  </div>
+                  <div className="extension-field">
+                    <label htmlFor="provider-json-mode">JSON mode</label>
+                    <select
+                      id="provider-json-mode"
+                      value={draft.provider.jsonMode ?? "auto"}
+                      disabled={!providerProfile.supportsJsonMode}
+                      onChange={(event) => updateProviderConfig(
+                        "jsonMode",
+                        event.target.value as AIProviderConfig["jsonMode"]
+                      )}
+                      className="extension-control"
+                    >
+                      <option value="auto">按任务自动</option>
+                      <option value="on">始终开启</option>
+                      <option value="off">始终关闭</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="extension-field">
+                  <div className="extension-field__label-row">
+                    <label>自定义 Prompt</label>
+                    <button
+                      type="button"
+                      className="extension-text-button"
+                      onClick={() => setDraft({ ...draft, customPrompt: DEFAULT_CLASSIFY_PROMPT })}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      恢复默认
+                    </button>
+                  </div>
+                  <textarea
+                    value={draft.customPrompt ?? DEFAULT_CLASSIFY_PROMPT}
+                    onChange={(event) => setDraft({ ...draft, customPrompt: event.target.value })}
+                    placeholder={DEFAULT_CLASSIFY_PROMPT}
+                    rows={8}
+                    className="extension-control extension-textarea"
+                  />
+                  <p>请保留输出 schema 中的 id、categoryPath、confidence 和 reason。</p>
+                </div>
 
                 <div className="extension-summary-panel provider-summary">
                   <p>{providerProfile.endpointHint}</p>
@@ -342,31 +400,6 @@ export function Options() {
                     <span>{effectiveTemperature === undefined ? "无 temperature" : `temperature ${effectiveTemperature}`}</span>
                   </div>
                 </div>
-
-                <button onClick={handleTestConnection} disabled={testStatus === "testing"} className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button">
-                  <FlaskConical aria-hidden="true" />
-                  {testStatus === "testing" ? "正在连接..." : "测试连接"}
-                </button>
-
-                {testStatus === "success" && (
-                  <div className="extension-status extension-status--success">
-                    <Check aria-hidden="true" />
-                    <span>
-                      <strong>连接成功</strong>
-                      <small>{providerProfile.label} 已返回有效响应，可以保存设置。</small>
-                    </span>
-                  </div>
-                )}
-
-                {testStatus === "error" && (
-                  <div className="extension-status extension-status--error">
-                    <AlertCircle aria-hidden="true" />
-                    <span>
-                      <strong>连接失败</strong>
-                      <small>{message || "请检查 API Key、模型和 Endpoint。"}</small>
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           </details>
@@ -467,48 +500,6 @@ export function Options() {
                 </label>
               </div>
             </div>
-            </div>
-          </details>
-        </section>
-
-        <section className="extension-section settings-section">
-          <details className="settings-disclosure">
-            <summary className="settings-disclosure__summary">
-              <span className="settings-disclosure__intro">
-                <span className="settings-disclosure__icon">
-                  <MessageSquareText aria-hidden="true" />
-                </span>
-                <span>
-                  <h2 className="extension-section__title">AI 分类提示词</h2>
-                  <span className="settings-disclosure__hint">自定义 AI 分类行为偏好</span>
-                </span>
-              </span>
-              <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
-            </summary>
-            <div className="settings-disclosure__body">
-              <div className="extension-form">
-                <div className="extension-field">
-                  <div className="extension-field__label-row">
-                    <label>自定义提示词</label>
-                    <button
-                      type="button"
-                      className="extension-text-button"
-                      onClick={() => setDraft({ ...draft, customPrompt: DEFAULT_CLASSIFY_PROMPT })}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      恢复默认
-                    </button>
-                  </div>
-                  <textarea
-                    value={draft.customPrompt ?? DEFAULT_CLASSIFY_PROMPT}
-                    onChange={(event) => setDraft({ ...draft, customPrompt: event.target.value })}
-                    placeholder={DEFAULT_CLASSIFY_PROMPT}
-                    rows={8}
-                    className="extension-control extension-textarea"
-                  />
-                  <p>修改后会影响下次整理的 AI 分类行为。建议保留分类格式要求部分。</p>
-                </div>
-              </div>
             </div>
           </details>
         </section>
