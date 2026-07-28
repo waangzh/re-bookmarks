@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Link, useNavigate } from "react-router";
 import {
   ArrowLeft,
@@ -8,6 +16,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  Cpu,
   Globe2,
   RefreshCw,
   Zap,
@@ -18,6 +27,7 @@ import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
+import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
@@ -235,7 +245,7 @@ function getProgressPercent(progress: PreviewTaskProgress | undefined) {
 
 export function Preview() {
   const navigate = useNavigate();
-  const { loadAll } = useAppStore();
+  const { loadAll, loadSettings, settings } = useAppStore();
   const [phase, setPhase] = useState<PreviewPhase>("selection");
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -254,6 +264,13 @@ export function Preview() {
   const [taskProgress, setTaskProgress] = useState<PreviewTaskProgress | undefined>();
   const [now, setNow] = useState(Date.now());
   const [organizeMode, setOrganizeMode] = useState<OrganizeMode>("quick");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [availableModels, setAvailableModels] = useState<AIModelOption[]>([]);
+  const [modelListStatus, setModelListStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [modelListError, setModelListError] = useState("");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [isModelFiltering, setIsModelFiltering] = useState(false);
+  const [highlightedModelIndex, setHighlightedModelIndex] = useState(0);
   const [expandedPreviewFolders, setExpandedPreviewFolders] = useState<Set<string>>(new Set());
   const [expandedSelectionFolders, setExpandedSelectionFolders] = useState<Set<string>>(
     () => new Set(["__root__"])
@@ -262,6 +279,103 @@ export function Preview() {
   const previewFolderLookupRef = useRef<Map<string, PreviewFolderNode>>(new Map());
   const activeDropFolderRef = useRef<PreviewFolderNode | null>(null);
   const suppressNextPreviewClickRef = useRef(false);
+  const modelPickerRef = useRef<HTMLDivElement | null>(null);
+  const providerProfile = AI_PROVIDER_PROFILES[settings.provider.type];
+  const displayedModels = useMemo(() => {
+    if (!isModelFiltering) return availableModels;
+    const query = selectedModel.trim().toLocaleLowerCase();
+    if (!query) return availableModels;
+    return availableModels.filter((model) => model.id.toLocaleLowerCase().includes(query));
+  }, [availableModels, isModelFiltering, selectedModel]);
+
+  const openModelMenu = (filtering = false) => {
+    if (!availableModels.length) return;
+    const models = filtering
+      ? availableModels.filter((model) => model.id.toLocaleLowerCase().includes(selectedModel.trim().toLocaleLowerCase()))
+      : availableModels;
+    const selectedIndex = models.findIndex((model) => model.id === selectedModel);
+    setIsModelFiltering(filtering);
+    setHighlightedModelIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setModelMenuOpen(true);
+  };
+
+  const chooseModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    setIsModelFiltering(false);
+    setModelMenuOpen(false);
+  };
+
+  const handleModelKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!modelMenuOpen) {
+        openModelMenu(false);
+        return;
+      }
+      if (!displayedModels.length) return;
+      const offset = event.key === "ArrowDown" ? 1 : -1;
+      setHighlightedModelIndex((current) =>
+        (current + offset + displayedModels.length) % displayedModels.length
+      );
+      return;
+    }
+    if (event.key === "Enter" && modelMenuOpen && displayedModels[highlightedModelIndex]) {
+      event.preventDefault();
+      chooseModel(displayedModels[highlightedModelIndex].id);
+      return;
+    }
+    if (event.key === "Escape") {
+      setModelMenuOpen(false);
+    }
+  };
+
+  const refreshAvailableModels = async () => {
+    if (!settings.provider.apiKey) {
+      setModelListStatus("error");
+      setModelListError("请先在设置页配置 API Key，之后即可查询可用模型");
+      return;
+    }
+
+    setModelListStatus("loading");
+    setModelListError("");
+    try {
+      const models = await listAIModels(settings.provider);
+      setAvailableModels(models);
+      setModelListStatus("success");
+      if (!models.length) setModelListError("服务商未返回可用模型，可继续手动输入模型名");
+    } catch (err) {
+      setAvailableModels([]);
+      setModelListStatus("error");
+      setModelListError(err instanceof Error ? err.message : "模型列表查询失败，可继续手动输入模型名");
+    }
+  };
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    setSelectedModel(settings.provider.model);
+    setAvailableModels([]);
+    setModelMenuOpen(false);
+    setModelListError("");
+    if (!settings.provider.apiKey) {
+      setModelListStatus("idle");
+      return;
+    }
+    void refreshAvailableModels();
+  }, [settings.provider.type, settings.provider.apiKey, settings.provider.endpoint, settings.provider.model]);
+
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!modelPickerRef.current?.contains(event.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [modelMenuOpen]);
 
   const loadSelectableBookmarks = async () => {
     const bookmarks = await getAllBookmarks();
@@ -276,6 +390,7 @@ export function Preview() {
     setPlans(task.movePlan);
     setTokenUsage(task.tokenUsage);
     setOrganizeMode(task.organizeMode ?? "quick");
+    if (task.model) setSelectedModel(task.model);
     setProcessingBookmarkCount(0);
     setTaskProgress(undefined);
     setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
@@ -292,6 +407,7 @@ export function Preview() {
     setProcessingBookmarkCount(task.bookmarkCount);
     setTaskProgress(task.progress);
     setOrganizeMode(task.organizeMode ?? "quick");
+    if (task.model) setSelectedModel(task.model);
     setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
     setPhase("preview");
     setLoading(true);
@@ -327,6 +443,7 @@ export function Preview() {
           setPlans(cached.movePlan);
           setTokenUsage(cached.tokenUsage);
           setOrganizeMode(cached.organizeMode ?? "quick");
+          if (cached.model) setSelectedModel(cached.model);
           setProcessingBookmarkCount(0);
           setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
           setPhase("preview");
@@ -485,6 +602,11 @@ export function Preview() {
       setError(deepSelectionLimitMessage);
       return;
     }
+    const model = selectedModel.trim();
+    if (settings.provider.apiKey && !model) {
+      setError("请选择或输入本次整理使用的模型");
+      return;
+    }
     setPhase("preview");
     setLoading(true);
     setError("");
@@ -494,7 +616,7 @@ export function Preview() {
     try {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
       setProcessingBookmarkCount(bookmarksToClassify.length);
-      const task = await startPreviewTask(bookmarksToClassify, organizeMode);
+      const task = await startPreviewTask(bookmarksToClassify, organizeMode, model || undefined);
       if (task?.status === "completed" && restoreCompletedTask(task)) return;
       if (task?.status === "failed") {
         throw new Error(task.error ?? "生成分类失败");
@@ -1020,6 +1142,123 @@ export function Preview() {
                 </span>
               </button>
             </div>
+
+            <section
+              className={`organize-model-picker${modelMenuOpen ? " is-open" : ""}`}
+              aria-labelledby="organize-model-title"
+            >
+              <div className="organize-model-picker__header">
+                <div className="organize-model-picker__title">
+                  <Cpu className="w-4 h-4" />
+                  <span>
+                    <strong id="organize-model-title">本次整理模型</strong>
+                    <small>{providerProfile.label}</small>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="organize-model-picker__refresh"
+                  onClick={() => void refreshAvailableModels()}
+                  disabled={!settings.provider.apiKey || modelListStatus === "loading"}
+                  aria-label="刷新可用模型"
+                >
+                  <RefreshCw className={modelListStatus === "loading" ? "organize-model-picker__spin" : ""} />
+                  <span>{modelListStatus === "loading" ? "查询中" : "刷新模型"}</span>
+                </button>
+              </div>
+
+              <div className="organize-model-picker__control" ref={modelPickerRef}>
+                <input
+                  className="extension-control organize-model-picker__input"
+                  value={selectedModel}
+                  onClick={() => openModelMenu(false)}
+                  onChange={(event) => {
+                    setSelectedModel(event.target.value);
+                    setIsModelFiltering(true);
+                    setHighlightedModelIndex(0);
+                    if (availableModels.length) setModelMenuOpen(true);
+                  }}
+                  onKeyDown={handleModelKeyDown}
+                  placeholder="选择或输入模型名称"
+                  autoComplete="off"
+                  role="combobox"
+                  aria-expanded={modelMenuOpen}
+                  aria-controls="remarks-available-models"
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    modelMenuOpen && displayedModels[highlightedModelIndex]
+                      ? `remarks-model-${highlightedModelIndex}`
+                      : undefined
+                  }
+                  aria-describedby="organize-model-help"
+                />
+                <button
+                  type="button"
+                  className={`organize-model-picker__toggle ${modelMenuOpen ? "is-open" : ""}`}
+                  onClick={() => {
+                    if (modelMenuOpen) {
+                      setModelMenuOpen(false);
+                    } else {
+                      openModelMenu(false);
+                    }
+                  }}
+                  disabled={!availableModels.length}
+                  aria-label={modelMenuOpen ? "收起模型列表" : "展开模型列表"}
+                  tabIndex={-1}
+                >
+                  <ChevronDown />
+                </button>
+
+                {modelMenuOpen && (
+                  <ul id="remarks-available-models" className="organize-model-picker__menu" role="listbox">
+                    {displayedModels.length ? displayedModels.map((model, index) => {
+                      const isSelected = model.id === selectedModel;
+                      const isHighlighted = index === highlightedModelIndex;
+                      return (
+                        <li
+                          id={`remarks-model-${index}`}
+                          key={model.id}
+                          className={`organize-model-picker__option${isSelected ? " is-selected" : ""}${isHighlighted ? " is-highlighted" : ""}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          onMouseEnter={() => setHighlightedModelIndex(index)}
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            chooseModel(model.id);
+                          }}
+                        >
+                          <span>{model.id}</span>
+                          <Check />
+                        </li>
+                      );
+                    }) : (
+                      <li className="organize-model-picker__empty">
+                        未找到匹配模型，可直接使用当前输入值
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+
+              <p
+                id="organize-model-help"
+                className={modelListStatus === "error" ? "organize-model-picker__help is-error" : "organize-model-picker__help"}
+              >
+                {!settings.provider.apiKey ? (
+                  <>
+                    尚未配置 API Key，<Link to="/options">前往设置</Link>后可查询模型。
+                  </>
+                ) : modelListStatus === "loading" ? (
+                  "正在从服务商查询可用模型…"
+                ) : modelListStatus === "success" && availableModels.length ? (
+                  `已查询到 ${availableModels.length} 个模型，也可以手动输入其他兼容模型。`
+                ) : modelListError ? (
+                  `${modelListError}；仍可手动输入模型名。`
+                ) : (
+                  "本次选择仅用于当前整理，不会修改设置页的默认模型。"
+                )}
+              </p>
+            </section>
 
             {isDeepSelectionTooLarge && (
               <div className="extension-notice extension-notice--amber">

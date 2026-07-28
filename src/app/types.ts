@@ -237,6 +237,7 @@ export type PreviewPlanCache = {
   createdAt: number;
   bookmarkCount: number;
   organizeMode?: OrganizeMode;
+  model?: string;
   movePlan: MovePlan[];
   tokenUsage?: TokenUsage;
 };
@@ -267,6 +268,7 @@ export type PreviewTaskCache = {
   bookmarkCount: number;
   selectedBookmarkIds: string[];
   organizeMode?: OrganizeMode;
+  model?: string;
   movePlan?: MovePlan[];
   tokenUsage?: TokenUsage;
   error?: string;

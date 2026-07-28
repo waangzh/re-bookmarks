@@ -3190,6 +3190,233 @@ input {
   color: #2563eb;
 }
 
+.organize-model-picker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 11px;
+  overflow: visible;
+  border: 1px solid #dbe5f1;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f8fbff 0%, #ffffff 72%);
+}
+
+.organize-model-picker.is-open {
+  z-index: 40;
+}
+
+.organize-model-picker__header,
+.organize-model-picker__title,
+.organize-model-picker__refresh {
+  display: flex;
+  align-items: center;
+}
+
+.organize-model-picker__header {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.organize-model-picker__title {
+  min-width: 0;
+  gap: 8px;
+  color: #2563eb;
+}
+
+.organize-model-picker__title > span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.organize-model-picker__title strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.organize-model-picker__title small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.organize-model-picker__refresh {
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.organize-model-picker__refresh:hover:not(:disabled) {
+  background: #eaf2ff;
+}
+
+.organize-model-picker__refresh:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.organize-model-picker__refresh svg {
+  width: 13px;
+  height: 13px;
+}
+
+.organize-model-picker__spin {
+  animation: bookmark-task-spin 900ms linear infinite;
+}
+
+.organize-model-picker__control {
+  position: relative;
+  min-width: 0;
+}
+
+.organize-model-picker__input {
+  min-height: 36px;
+  padding-right: 38px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+}
+
+.organize-model-picker__toggle {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.organize-model-picker__toggle:hover:not(:disabled),
+.organize-model-picker__toggle.is-open {
+  background: #eef4ff;
+  color: #2563eb;
+}
+
+.organize-model-picker__toggle:disabled {
+  color: #cbd5e1;
+  cursor: default;
+}
+
+.organize-model-picker__toggle svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 160ms ease;
+}
+
+.organize-model-picker__toggle.is-open svg {
+  transform: rotate(180deg);
+}
+
+.organize-model-picker__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: 100%;
+  max-height: 208px;
+  margin: 0;
+  padding: 5px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid #d7e1ef;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14), 0 3px 10px rgba(15, 23, 42, 0.07);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.organize-model-picker__option {
+  display: grid;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.organize-model-picker__option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.organize-model-picker__option svg {
+  width: 15px;
+  height: 15px;
+  color: transparent;
+}
+
+.organize-model-picker__option.is-highlighted {
+  background: #f1f6ff;
+  color: #1e3a5f;
+}
+
+.organize-model-picker__option.is-selected {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.organize-model-picker__option.is-selected svg {
+  color: #2563eb;
+}
+
+.organize-model-picker__empty {
+  padding: 11px 10px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.organize-model-picker__help {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.organize-model-picker__help.is-error {
+  color: #b45309;
+}
+
+.organize-model-picker__help a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.organize-model-picker__help a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 380px) {
   .organize-mode-picker {
     grid-template-columns: 1fr;

@@ -21,6 +21,7 @@ type PreviewTaskMessage =
       taskId: string;
       bookmarks: BookmarkNode[];
       organizeMode?: OrganizeMode;
+      model?: string;
     }
   | {
       type: typeof PREVIEW_TASK_MESSAGE;
@@ -40,7 +41,7 @@ function hasRuntimeMessaging() {
   return typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage);
 }
 
-function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode): PreviewTaskCache {
+function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode, model?: string): PreviewTaskCache {
   const now = Date.now();
   return {
     id: `preview-task-${now}`,
@@ -50,6 +51,7 @@ function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode
     bookmarkCount: bookmarks.length,
     selectedBookmarkIds: bookmarks.map((bookmark) => bookmark.id),
     organizeMode,
+    model,
     progress: {
       phase: "queued",
       completedBatches: 0,
@@ -118,11 +120,13 @@ async function completePreviewTask(
   bookmarks: BookmarkNode[],
   taskId: string,
   organizeMode: OrganizeMode,
+  model?: string,
   signal?: AbortSignal
 ) {
   try {
     const previewResult = await generateMovePlanPreviewForBookmarks(bookmarks, organizeMode, {
       signal,
+      model,
       progressStartedAt: Date.now(),
       onProgress: async (progress) => {
         const currentTask = await getRawPreviewTask();
@@ -152,6 +156,7 @@ async function completePreviewTask(
         createdAt: Date.now(),
         bookmarkCount: previewResult.movePlans.length,
         organizeMode,
+        model,
         movePlan: previewResult.movePlans,
         tokenUsage: previewResult.tokenUsage,
       }),
@@ -177,7 +182,7 @@ export async function launchPreviewTask(bookmarks: BookmarkNode[]) {
   const task = createRunningTask(bookmarks, "quick");
   await savePreviewTask(task);
   const controller = createTaskController(task.id);
-  void completePreviewTask(bookmarks, task.id, "quick", controller.signal);
+  void completePreviewTask(bookmarks, task.id, "quick", undefined, controller.signal);
   return task;
 }
 
@@ -197,13 +202,13 @@ function sendPreviewTaskMessage(message: PreviewTaskMessage) {
   });
 }
 
-export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode = "quick") {
-  const task = createRunningTask(bookmarks, organizeMode);
+export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode = "quick", model?: string) {
+  const task = createRunningTask(bookmarks, organizeMode, model);
   await savePreviewTask(task);
 
   if (!hasRuntimeMessaging()) {
     const controller = createTaskController(task.id);
-    void completePreviewTask(bookmarks, task.id, organizeMode, controller.signal);
+    void completePreviewTask(bookmarks, task.id, organizeMode, model, controller.signal);
     return task;
   }
 
@@ -214,11 +219,12 @@ export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: 
       taskId: task.id,
       bookmarks,
       organizeMode,
+      model,
     },
     () => {
       if (chrome.runtime.lastError) {
         const controller = createTaskController(task.id);
-        void completePreviewTask(bookmarks, task.id, organizeMode, controller.signal);
+        void completePreviewTask(bookmarks, task.id, organizeMode, model, controller.signal);
       }
     }
   );
@@ -256,7 +262,13 @@ export function isPreviewTaskMessage(message: unknown): message is PreviewTaskMe
 export async function handlePreviewTaskMessage(message: PreviewTaskMessage) {
   if (message.action === "run") {
     const controller = createTaskController(message.taskId);
-    await completePreviewTask(message.bookmarks, message.taskId, message.organizeMode ?? "quick", controller.signal);
+    await completePreviewTask(
+      message.bookmarks,
+      message.taskId,
+      message.organizeMode ?? "quick",
+      message.model,
+      controller.signal
+    );
     return getPreviewTask();
   }
   if (message.action === "clear") {

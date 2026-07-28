@@ -29,7 +29,13 @@ export type CategoryScheme = {
 type TokenParam = "max_tokens" | "max_completion_tokens";
 const CLASSIFICATION_REQUEST_TIMEOUT_MS = 90 * 1000;
 const CONNECTION_TEST_TIMEOUT_MS = 15 * 1000;
+const MODEL_LIST_TIMEOUT_MS = 15 * 1000;
 const HABIT_ANALYSIS_TIMEOUT_MS = 120 * 1000;
+
+export type AIModelOption = {
+  id: string;
+  ownedBy?: string;
+};
 
 export type AIProviderProfile = {
   type: AIProviderType;
@@ -620,6 +626,66 @@ export async function testAIConnection(config: AIProviderConfig) {
     CONNECTION_TEST_TIMEOUT_MS
   );
   return completion.content.trim().length > 0;
+}
+
+export async function listAIModels(config: AIProviderConfig): Promise<AIModelOption[]> {
+  if (!config.apiKey) throw new Error("请先配置 API Key 后再查询模型");
+
+  const profile = profileFor(config.type);
+  const endpoint = endpointFor(config);
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), MODEL_LIST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${endpoint}/models`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(providerStatusMessage(profile, response.status, detail));
+    }
+
+    const payload = (await response.json()) as unknown;
+    const records = Array.isArray(payload)
+      ? payload
+      : payload && typeof payload === "object"
+        ? ((payload as { data?: unknown; models?: unknown }).data ??
+          (payload as { models?: unknown }).models)
+        : undefined;
+
+    if (!Array.isArray(records)) {
+      throw new Error(`${profile.label} 返回的模型列表格式不受支持`);
+    }
+
+    const models = records.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as { id?: unknown; name?: unknown; owned_by?: unknown; ownedBy?: unknown };
+      const idValue = typeof value.id === "string" ? value.id : value.name;
+      if (typeof idValue !== "string" || !idValue.trim()) return [];
+      const ownedByValue = value.owned_by ?? value.ownedBy;
+      return [{
+        id: idValue.trim(),
+        ownedBy: typeof ownedByValue === "string" ? ownedByValue : undefined,
+      }];
+    });
+
+    return Array.from(new Map(models.map((model) => [model.id, model])).values())
+      .sort((a, b) => a.id.localeCompare(b.id));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`${profile.label} 模型列表查询超时，请稍后重试`);
+    }
+    if (error instanceof Error) throw error;
+    throw new Error(`${profile.label} 模型列表查询失败`);
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
 }
 
 function summarizeRulePatternForPrompt(pattern: string) {

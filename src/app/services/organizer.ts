@@ -377,12 +377,15 @@ export async function generateMovePlansForBookmarks(
 export async function generateMovePlanPreviewForBookmarks(
   urlBookmarks: Awaited<ReturnType<typeof getAllBookmarks>>,
   organizeMode: OrganizeMode = "quick",
-  options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number } = {}
+  options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number; model?: string } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
   const [settings, habitProfile] = await Promise.all([
     getSettings(),
     getFolderHabitProfile(),
   ]);
+  const provider = options.model?.trim()
+    ? { ...settings.provider, model: options.model.trim() }
+    : settings.provider;
   const results = new Map<string, ClassificationResult>();
   const failureReasons = new Map<string, string>();
   const tokenUsage = createTokenUsage();
@@ -402,7 +405,7 @@ export async function generateMovePlanPreviewForBookmarks(
     });
   };
 
-  if (urlBookmarks.length && settings.provider.apiKey) {
+  if (urlBookmarks.length && provider.apiKey) {
     // 阶段一：采样首次分类，建立统一分类体系
     const sampleSize = Math.min(30, urlBookmarks.length);
     const sample = urlBookmarks.slice(0, sampleSize);
@@ -419,7 +422,7 @@ export async function generateMovePlanPreviewForBookmarks(
       throwIfAborted(options.signal);
       try {
         const requestedIds = new Set(batch.map((b) => b.id));
-        const aiResults = await classifyWithAI(settings.provider, aiBookmarks, {
+        const aiResults = await classifyWithAI(provider, aiBookmarks, {
           allowNestedFolders: settings.allowNestedFolders,
           maxTopLevelFolders: settings.maxTopLevelFolders,
           maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
@@ -473,7 +476,7 @@ export async function generateMovePlanPreviewForBookmarks(
     }
   }
 
-  if (!settings.provider.apiKey) processedBookmarks = urlBookmarks.length;
+  if (!provider.apiKey) processedBookmarks = urlBookmarks.length;
   await reportProgress("generating_preview");
   compactClassificationResults(results, settings, habitProfile);
 
