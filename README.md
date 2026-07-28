@@ -1,208 +1,244 @@
+<div align="center">
+
 # ReMarks
 
-> 一个由 AI 辅助分类、预览、移动和撤销整理浏览器书签的 Chrome/Edge 扩展。
+**AI 辅助的 Chrome / Edge 书签整理扩展**
 
-<img src="pic/remarks.png" alt="ReMarks 首页概览" width="450">
+先预览，再确认；整理前自动备份，把书签的最终决定权留给你。
 
-## 📝 项目简介
+[![Version](https://img.shields.io/badge/version-1.7.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases)
+![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
+![Chrome / Edge](https://img.shields.io/badge/Chrome%20%7C%20Edge-supported-0ea5e9)
+![React](https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 
-ReMarks 面向书签长期堆积、手动整理成本高、分类结构难以维护的浏览器用户。它会读取浏览器书签树，结合本地规则与 OpenAI-compatible AI 服务生成分类建议，并在用户确认后才真正移动书签。
+[核心能力](#-核心能力) · [安装](#-安装与体验) · [使用流程](#-使用流程) · [隐私与权限](#-隐私与权限) · [本地开发](#-本地开发) · [路线图](#-路线图)
 
-项目强调“用户确认优先”和“隐私最小化”：
+<img src="pic/remarks.png" alt="ReMarks 产品概览" width="760">
 
-- AI 只提供分类建议，不会静默移动、删除或批量改写书签。
-- 整理前会保存书签备份，支持撤销最近一次整理。
-- URL 默认去除 query/hash 后再发送给 AI，除非用户主动开启完整 URL。
-- 浏览历史只用于本地计算常访问书签，不会发送给 AI，并且 `history` 是可选权限。
+</div>
 
-适用场景：
+## 为什么是 ReMarks
 
-- 书签数量较多，希望快速梳理分类结构。
-- 想在移动书签前逐条预览 AI 建议。
-- 需要在 Chrome/Edge 中通过 popup、设置页或网页悬浮窗访问整理工具。
-- 希望在新增书签时得到轻量分类推荐。
+书签越多，整理成本越高；直接把批量移动交给 AI，又很难放心。
 
-## 🖼️ 项目演示
+ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，结合本地规则、已有分类习惯与 OpenAI-compatible AI 服务生成建议；你可以先检查目标文件夹、置信度和原因，手动调整预览结果，确认后才会真正移动书签。
+
+| 可控整理 | 安全回退 | 隐私最小化 |
+| --- | --- | --- |
+| AI 只生成建议，不会静默批量移动 | 整理、导入和批量删除前自动备份 | URL 默认移除 query/hash 后再发给 AI |
+| 预览中可拖动书签调整目标分类 | 支持撤销或重新应用最近一次整理 | 浏览历史仅本地统计，且权限默认不开启 |
+| 删除、恢复等敏感操作需要再次确认 | 最多保留 5 份近期备份并支持安全恢复 | API Key 仅保存在 `chrome.storage.local` |
+
+## 🖼️ 界面预览
 
 | 首页 | 整理报告 |
 | --- | --- |
-| <img src="pic/index1.png" alt="ReMarks 首页概览" width="260"> | <img src="pic/report1.png" alt="整理报告" width="260"> |
+| <img src="pic/index1.png" alt="ReMarks 首页" width="300"> | <img src="pic/report1.png" alt="ReMarks 整理报告" width="300"> |
 
 | 分类习惯预设 | 失效链接检测 |
 | --- | --- |
-| <img src="pic/sum1.png" alt="分类习惯预设" width="260"> | <img src="pic/fail1.png" alt="失效链接检测" width="260"> |
+| <img src="pic/sum1.png" alt="ReMarks 分类习惯预设" width="300"> | <img src="pic/fail1.png" alt="ReMarks 失效链接检测" width="300"> |
 
-## 📌 当前进度
+## ✨ 核心能力
 
-项目当前已完成浏览器扩展的主要闭环：书签读取、AI 分类、分类习惯预设、整理前预览、确认后移动、整理报告、最近一次撤销、新增书签推荐、常访问书签、书签管理、未分类/重复/失效链接任务入口、popup 与 side panel 首页，以及构建产物生成。
+### AI 辅助整理
 
-仍需继续完善的部分：
+- 读取并按文件夹选择浏览器书签，支持快速整理与深度整理。
+- 结合书签标题、域名、现有路径和可获取的网页元数据生成分类建议。
+- 支持 OpenAI、DeepSeek、智谱 GLM、Kimi、Gemini、MiniMax、通义千问、豆包及自定义 OpenAI-compatible 端点。
+- 每个 Provider 独立保存配置；整理前可查询、选择或手动输入本次使用的模型。
+- 可限制一级分类数量、嵌套层级与子分类数量，并通过分类习惯预设保持命名和粒度一致。
 
-- 常访问书签目前是本地访问频次统计，不会自动生成移动方案，也不会把历史记录发送给 AI。
-- 目前没有单元测试、lint 或独立 typecheck 脚本，验证主要依赖 `npm run build` 和浏览器手动加载。
-- 撤销能力只针对最近一次整理，不是完整历史版本管理。
+### 预览、确认与报告
 
-## ✨ 核心功能
+- 按目标文件夹展示移动计划、置信度、分类原因和 token 用量。
+- 可在预览中长按拖动书签，手动修正 AI 建议；确认前不会改动书签。
+- 确认后复用或创建目标文件夹，逐条移动并记录失败项。
+- 保留最近 5 次整理报告；最新一次整理可撤销，也可在不重新调用 AI 的情况下重新应用。
 
-- [x] 书签树读取与选择：读取当前浏览器书签结构，支持按文件夹勾选要整理的书签。
-- [x] AI 智能分类：通过 OpenAI-compatible HTTP API 获取分类路径、置信度、原因和 token 用量。
-- [x] 整理前预览：按目标文件夹分组展示移动计划，确认前不会修改任何书签。
-- [x] 确认后执行移动：复用或创建目标文件夹，逐条移动书签，并记录失败项。
-- [x] 整理前备份与撤销：每次整理前保存备份，支持撤销最近一次整理。
-- [x] 新增书签推荐：监听新增书签，生成待处理分类推荐，并支持接受、忽略和批量处理。
-- [x] 常访问书签统计：可选启用 `history` 权限，仅在本地统计已收藏 URL 的访问频次。
-- [x] 书签任务入口：首页展示未分类、重复链接和失效链接数量，并可跳转到对应任务视图。
-- [x] 失效链接检测：手动检测 http/https 书签，401、403、429 视为可到达，避免误删可访问资源。
-- [x] 分类习惯预设：分析现有文件夹结构，提炼常用一级分类、文件夹规则、适用内容特征和给 AI 的预设提示，并支持保存和手动编辑。
-- [x] 书签管理：支持搜索、新增、编辑、删除和拖拽移动书签。
-- [x] 多入口体验：支持浏览器 popup、side panel、options 页面和网页悬浮 iframe。
+### 日常书签维护
 
-## 🛠️ 技术栈
+- 新增书签后生成待处理推荐，可编辑目标分类、接受、忽略或批量处理。
+- 聚合待手动归档、重复链接和失效链接任务。
+- 重复检测区分精确重复、忽略 query/hash 后的同路径疑似重复和标题相似疑似重复。
+- 失效检测区分明确失效、可疑和暂时无法确认；401、403、429 不会被直接判定为失效。
+- 支持搜索、新增、编辑、删除、拖拽移动书签，以及批量清理重复或失效项。
+- 可选读取最近 90 天浏览历史，仅在本地统计已收藏 URL 的访问频次。
 
-- 浏览器扩展：Manifest V3
-- 前端框架：React 18 + TypeScript
-- 构建工具：Vite
-- 样式方案：Tailwind CSS v4 + 项目全局 CSS
-- 状态管理：Zustand
-- 路由：React Router
-- UI 与图标：Radix UI、lucide-react
-- 浏览器 API：`chrome.bookmarks`、`chrome.storage`、`chrome.permissions`、可选 `chrome.history`
-- AI 接口：OpenAI-compatible HTTP API
-- Provider 预设：OpenAI、DeepSeek、智谱 GLM、Kimi、Gemini、MiniMax、通义千问、豆包、自定义端点
-- 包管理：pnpm
+### 导入与备份
 
-## 🚀 快速开始
+- 导入浏览器导出的 Netscape bookmarks HTML 文件，先预览，再写入新的导入文件夹。
+- 自动跳过重复和无效条目，并保留原始目录层级。
+- 整理、导入、恢复、重复删除和失效删除前创建保护点。
+- 支持手动备份、查看近期备份和安全恢复；恢复前会再次备份当前状态。
+- 安全恢复不会删除备份之后新增的书签。
 
-### 环境要求
+## 🚀 安装与体验
+
+### 从 Release 安装
+
+1. 前往 [Releases](https://github.com/waangzh/re-bookmarks/releases) 下载最新的 `re-bookmarks-v*.zip`。
+2. 解压压缩包。
+3. 打开 `chrome://extensions` 或 `edge://extensions`。
+4. 开启“开发者模式”，点击“加载已解压的扩展程序”。
+5. 选择解压后包含 `manifest.json` 的文件夹。
+
+> 仓库源码版本可能领先于最近一次 Release；需要体验最新功能时请从源码构建。
+
+### 从源码构建
+
+环境要求：
 
 - Node.js 18+
-- pnpm
-- Chrome 或 Edge 浏览器
-
-### 安装依赖
+- pnpm 10.25.0
+- Chrome 或 Edge
 
 ```bash
+git clone https://github.com/waangzh/re-bookmarks.git
+cd re-bookmarks
 pnpm install
-```
-
-### 开发构建
-
-```bash
-# 监听模式，代码变化后自动重新构建扩展产物
-npm run dev
-```
-
-### 生产构建
-
-```bash
 npm run build
 ```
 
-构建产物会输出到 `dist/`，并通过 `scripts/copy-manifest.cjs` 生成可加载的 `dist/manifest.json`。
+构建完成后，在扩展管理页加载项目中的 `dist/` 文件夹。
 
-### 加载扩展
+## 📖 使用流程
 
-1. 打开 Chrome/Edge 扩展管理页：`chrome://extensions` 或 `edge://extensions`。
-2. 开启“开发者模式”。
-3. 点击“加载已解压的扩展程序”。
-4. 选择项目根目录下的 `dist/` 文件夹。
+1. **配置 AI Provider**：打开设置页，选择服务商，填写 API Key、模型和 Endpoint，并测试连接。API Key 不会写入仓库、报告或备份。
 
-### 配置 AI 服务
+2. **选择书签与整理模式**：从侧边栏进入智能整理，选择书签或文件夹。快速整理优先速度；深度整理会等待更多网页元数据。
 
-ReMarks 不使用 `.env` 文件保存 API Key。API Key 会通过设置页写入 `chrome.storage.local`。
+3. **选择本次模型**：使用 Provider 返回的模型列表，或手动输入兼容模型。本次选择不会覆盖设置页的默认模型。
 
-1. 点击浏览器工具栏中的 ReMarks 图标。
-2. 进入“设置”页面。
-3. 选择 AI 提供商，或填写自定义 OpenAI-compatible endpoint。
-4. 填写 API Key 和模型名称。
-5. 点击“测试连接”确认配置可用。
+4. **检查并调整预览**：查看目标文件夹、置信度与原因；如有需要，可把书签拖到其他预览文件夹。
 
-## 📖 使用示例
+5. **确认执行**：ReMarks 先保存完整书签备份，再逐条执行移动。单项失败不会中断整批任务。
 
-### 整理现有书签
-
-1. 打开 ReMarks popup。
-2. 点击“开始智能整理”。
-3. 在预览页勾选需要整理的书签或文件夹。
-4. 等待 AI 生成分类建议。
-5. 查看目标文件夹、置信度和分类原因。
-6. 确认无误后点击“确认整理”。
-7. 如需恢复，可在整理报告中撤销最近一次整理。
-
-示例预览结果：
+6. **查看报告或恢复**：在报告中查看移动结果和失败项；可撤销或重新应用最近一次整理，也可从备份页安全恢复。
 
 ```text
-React 官方文档
-目标分类：开发 / 前端框架
-置信度：0.95
-原因：React 是前端开发框架相关站点
+扫描书签 → 本地规则与习惯预设 → URL 脱敏 / 网页元数据
+        → AI 分类建议 → 整理预览 → 用户调整并确认
+        → 创建备份 → 执行移动 → 报告 / 撤销 / 重新应用
 ```
 
-### 处理新增书签推荐
+## 🔐 隐私与权限
 
-安装并配置扩展后，新增书签会进入待处理推荐列表。用户可以逐条接受推荐、忽略推荐，也可以批量处理所有待整理的新书签。接受推荐后，扩展会将该书签移动到建议文件夹。
+### 会发送给 AI 的数据
 
-### 清理未分类、重复和失效链接
+分类请求可能包含书签标题、域名、现有文件夹路径、URL，以及深度整理时获取到的页面标题、描述等元数据。
 
-首页会汇总未分类书签、重复链接和疑似失效链接。未分类与重复链接可以直接进入任务视图处理；失效链接需要用户手动点击检测，仅检测 http/https 书签，并把 401、403、429 这类需要权限或限流的响应视为可到达。删除书签前仍需要用户在确认弹窗中再次确认。
+- 默认情况下，URL 会移除 query 和 hash。
+- 只有主动开启“发送完整 URL”后，才会发送完整 URL。
+- 浏览历史不会进入 AI 请求。
+- 实际数据还会受所选 AI Provider 的隐私政策约束，请使用你信任的服务。
 
-### 查看常访问书签
+### 浏览器权限说明
 
-在设置中启用常访问书签后，扩展会请求可选 `history` 权限，并只在本地统计已收藏 URL 的访问频次。目前该页面主要用于查看常访问的已收藏网页，不会把历史记录发送给 AI，也不会自动移动书签。
+| 权限 | 用途 |
+| --- | --- |
+| `bookmarks` | 读取书签树，以及在确认后创建文件夹、移动、编辑、删除或恢复书签 |
+| `storage` | 在本地保存设置、推荐、预览任务、报告和备份 |
+| `activeTab` | 在侧边栏显示当前网页是否已收藏及相关书签 |
+| `favicon` | 显示书签网站图标 |
+| `sidePanel` | 点击扩展图标时打开 ReMarks 侧边栏 |
+| `<all_urls>` | 请求自定义 AI 端点、读取网页元数据和执行失效链接检测 |
+| `history`（可选） | 用户主动开启后，仅在本地统计常访问的已收藏网页 |
 
-### 维护分类习惯预设
+`history` 保持为 optional permission：未开启常访问书签时不会请求，拒绝授权也不影响核心整理功能。
 
-“分类习惯预设”页面会根据现有书签文件夹结构分析用户的分类命名、粒度和偏好。页面包含学习概览、常用一级分类、文件夹规则、避免规则和给 AI 的预设提示。
+## ⚙️ AI Provider
 
-文件夹规则中的“适用内容特征”会总结该文件夹主要适合放置什么主题、什么类型的网页，并可附少量“标题（链接）”格式的参考。用户可以手动编辑这些规则并保存，后续智能分类会参考这些预设，让新分类更贴近已有文件夹命名和粒度。
+内置 Provider 预设会自动处理常见 Endpoint、temperature、token 参数名与 JSON mode 差异，也可以使用自定义 OpenAI-compatible 服务。
 
-### 管理本地书签
+| Provider | 配置项 |
+| --- | --- |
+| OpenAI / DeepSeek / 智谱 GLM / Kimi | API Key、模型、Endpoint 与高级参数 |
+| Gemini / MiniMax / 通义千问 / 豆包 | 对应兼容端点、模型与 Provider 参数适配 |
+| Custom | 自定义 OpenAI-compatible Endpoint、模型及请求参数 |
 
-“管理书签”页面支持搜索、添加、编辑、删除和拖拽移动书签。删除书签属于直接浏览器书签操作，使用前需要在确认弹窗中再次确认。
+如果未配置 API Key，浏览、管理、导入、备份等本地功能仍可使用，但无法生成 AI 分类建议。
 
-## 🎯 项目亮点
+## 🛠️ 本地开发
 
-- 用户主权：AI 只生成建议，所有书签移动都必须由用户明确确认。
-- 隐私优先：默认发送脱敏 URL，浏览历史不发送给 AI，敏感权限按需申请。
-- 可撤销整理：整理前保存完整书签树备份，降低误操作成本。
-- 分类可控：支持嵌套层级、分类数量、完整 URL 开关、自定义 prompt 和分类习惯预设。
-- 任务集中：首页聚合当前网页、最近访问、未分类、重复和失效链接，减少在多个页面之间来回查找。
-- 多场景入口：popup 和 side panel 适合快速整理，options 适合完整设置，悬浮窗适合网页内轻量操作。
+```bash
+# 监听源码变化并持续重建
+npm run dev
 
-## 📁 项目结构
+# 生产构建，同时生成可加载的 dist/manifest.json
+npm run build
+```
+
+监听构建不会自动刷新浏览器中的扩展，代码变化后需要在扩展管理页点击“重新加载”。
+
+项目当前没有独立的 lint、typecheck 或单元测试脚本；代码变更至少应通过 `npm run build`，涉及界面时还应手动检查 360px 紧凑布局、侧边栏和设置页。
+
+### 技术栈
+
+- Manifest V3
+- React 18 + TypeScript
+- Vite 6 + Tailwind CSS v4
+- Zustand + React Router
+- Radix UI + lucide-react
+- `chrome.bookmarks`、`chrome.storage`、`chrome.permissions`、可选 `chrome.history`
+
+### 项目结构
 
 ```text
 src/
   app/
-    components/    页面组件：Popup、Options、Preview、Report、Recommendations 等
-    services/      业务逻辑：bookmarks、organizer、aiProvider、storage、history 等
+    components/    页面组件：整理、报告、推荐、备份、导入、书签管理等
+    services/      书签、AI、规则、整理、备份、历史和存储等业务逻辑
     store/         Zustand 全局状态
     types.ts       跨模块业务类型
-    App.tsx        HashRouter 路由入口
+    App.tsx        popup、side panel 与 options 共用路由
   background/      Manifest V3 service worker
-  content/         网页注入脚本与悬浮窗宿主
-  popup/           popup 入口
-  sidebar/         side panel 入口
-  options/         options 页面入口
+  popup/           360px 紧凑页面入口
+  sidebar/         浏览器侧边栏入口
+  options/         设置页入口
   styles/          Tailwind 入口与全局样式
-scripts/           构建后处理和图标生成脚本
-public/icons/      扩展图标资源
+scripts/           Manifest 后处理与图标生成脚本
+public/icons/      扩展图标
 manifest.json      开发态扩展清单
 ```
 
-## 🔮 未来计划
+## 📌 当前状态与限制
 
-- [ ] 完善不同 AI Provider 的参数差异和错误提示。
-- [ ] 增强书签重复检测与清理建议。
-- [ ] 支持导入/导出分类规则。
-- [ ] 增加定期整理提醒。
+- 当前源码版本为 `1.7.0`，核心的“建议 → 预览 → 备份 → 确认执行 → 报告/恢复”闭环已可用。
+- AI 结果可能不准确，尤其是标题含糊或页面元数据不可访问时；请始终检查预览。
+- 深度整理单次最多建议选择 100 个书签；快速整理建议单次不超过 300 个，较大书签库应按文件夹分批处理。
+- 撤销与重新应用只针对最新一次整理；历史报告仅用于查看。备份页另保留最近 5 个保护点，可用于安全恢复。
+- 失效链接检测受网络、登录状态、反爬和限流影响，“可疑”或“暂时无法确认”不等于链接已经失效。
+- 数据主要保存在 `chrome.storage.local`；卸载扩展或清空扩展存储前，请先确认不再需要本地报告和备份。
 
-## 🤝 贡献指南
+## 🔮 路线图
 
-欢迎提出 Issue 和 Pull Request。
+近期版本已经补齐 Provider 参数兼容、整理模型选择、书签 HTML 导入、备份恢复、重复/失效批量清理和手动归档忽略。
+
+下一阶段计划：
+
+- [ ] 持续完善不同 AI Provider 的模型发现、参数差异和错误提示。
+- [ ] 支持分类习惯与规则的导入、导出。
+- [ ] 增加可选的定期整理提醒。
+- [ ] 补充关键 service 的自动化测试与独立类型检查。
+
+路线图不代表固定发布时间，欢迎在 [Issues](https://github.com/waangzh/re-bookmarks/issues) 中讨论优先级。
+
+## 🤝 参与贡献
+
+欢迎提交 [Issue](https://github.com/waangzh/re-bookmarks/issues) 或 [Pull Request](https://github.com/waangzh/re-bookmarks/pulls)。
+
+提交代码前请：
+
+1. 从 `master` 创建功能分支。
+2. 保持修改范围聚焦，不提交 `dist/`、`.env*`、日志或真实 API Key。
+3. 运行 `npm run build`。
+4. 涉及书签移动、删除、权限或隐私边界时，在 PR 中说明手动验证场景。
 
 ## ❤ 感谢
-感谢真诚 、友善 、团结 、专业的[LINUX DO](https://linux.do/latest)
+
+感谢真诚、友善、团结、专业的 [LINUX DO](https://linux.do/latest) 社区。
 
 ## 📄 许可证
 
