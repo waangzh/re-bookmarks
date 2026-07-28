@@ -45,6 +45,7 @@ export type AIProviderProfile = {
   tokenParam: TokenParam;
   supportsJsonMode: boolean;
   supportsTemperature: boolean;
+  defaultTemperature?: number;
   endpointHint: string;
   modelHint: string;
   limitations: string[];
@@ -73,6 +74,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: true,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "DeepSeek endpoint 会自动兼容是否包含 /v1。",
     modelHint: "使用 deepseek-chat/deepseek-reasoner 或兼容模型名。",
     limitations: ["支持 temperature", "支持 JSON mode"],
@@ -86,6 +88,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: true,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "智谱 GLM 使用 /api/paas/v4 OpenAI-compatible 接口。",
     modelHint: "填写 GLM OpenAI-compatible 模型名。",
     limitations: ["支持 temperature", "支持 JSON mode"],
@@ -99,9 +102,10 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: false,
     supportsTemperature: true,
+    defaultTemperature: 1,
     endpointHint: "Kimi 使用 Moonshot /v1 OpenAI-compatible 接口。",
-    modelHint: "填写 kimi 系列模型名。",
-    limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
+    modelHint: "填写 kimi 系列模型名；当前模型默认使用 temperature 1。",
+    limitations: ["temperature 默认 1", "不强制 JSON mode，依赖 prompt 约束输出 JSON"],
     statusMessages: {},
   },
   gemini: {
@@ -112,6 +116,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: false,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "Gemini 使用 Google OpenAI compatibility endpoint。",
     modelHint: "填写 Gemini OpenAI-compatible 模型名。",
     limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
@@ -125,6 +130,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_completion_tokens",
     supportsJsonMode: false,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "MiniMax 使用 /v1 OpenAI-compatible 接口。",
     modelHint: "填写 MiniMax OpenAI-compatible 模型名。",
     limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
@@ -138,6 +144,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: true,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "通义千问使用 DashScope compatible-mode endpoint。",
     modelHint: "填写 qwen 系列兼容模式模型名。",
     limitations: ["支持 temperature", "支持 JSON mode"],
@@ -151,6 +158,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_tokens",
     supportsJsonMode: false,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "豆包使用火山方舟 OpenAI-compatible endpoint。",
     modelHint: "填写方舟 endpoint 可访问的模型或接入点名称。",
     limitations: ["不强制 JSON mode，依赖 prompt 约束输出 JSON"],
@@ -164,6 +172,7 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     tokenParam: "max_completion_tokens",
     supportsJsonMode: true,
     supportsTemperature: true,
+    defaultTemperature: 0.1,
     endpointHint: "自定义 Provider 需兼容 /chat/completions。",
     modelHint: "填写目标服务支持的模型名。",
     limitations: ["按 OpenAI-compatible 响应解析 choices[0].message.content"],
@@ -539,22 +548,36 @@ async function chatCompletion(
     messages,
     stream: false,
   };
-  if (profile.supportsTemperature) {
-    body.temperature = 0.1;
+  const temperature = config.temperature ?? profile.defaultTemperature;
+  if (profile.supportsTemperature && temperature !== undefined) {
+    body.temperature = temperature;
   }
-  body[profile.tokenParam] = maxTokens;
+  const tokenParam = config.tokenParam && config.tokenParam !== "auto"
+    ? config.tokenParam
+    : profile.tokenParam;
+  const configuredMaxTokens = Number.isFinite(config.maxTokens) && (config.maxTokens ?? 0) > 0
+    ? Math.round(config.maxTokens as number)
+    : maxTokens;
+  body[tokenParam] = configuredMaxTokens;
 
-  if (jsonMode && profile.supportsJsonMode) {
+  const wantsJsonMode = config.jsonMode === "on"
+    ? true
+    : config.jsonMode === "off"
+      ? false
+      : jsonMode;
+  const usesJsonMode = wantsJsonMode && profile.supportsJsonMode;
+  if (usesJsonMode) {
     body.response_format = { type: "json_object" };
   }
 
   debugAI("request", {
     endpoint,
     model: config.model,
-    jsonMode: jsonMode && profile.supportsJsonMode,
-    maxTokens,
+    jsonMode: usesJsonMode,
+    maxTokens: configuredMaxTokens,
+    temperature,
     provider: config.type,
-    tokenParam: profile.tokenParam,
+    tokenParam,
     messageCount: messages.length,
   });
 

@@ -183,12 +183,17 @@ export type AIProviderConfig = {
   apiKey: string;
   model: string;
   endpoint?: string;
+  temperature?: number;
+  maxTokens?: number;
+  tokenParam?: "auto" | "max_tokens" | "max_completion_tokens";
+  jsonMode?: "auto" | "on" | "off";
   enabled?: boolean;
   testedAt?: number;
 };
 
 export type Settings = {
   provider: AIProviderConfig;
+  providerConfigs: Partial<Record<AIProviderType, AIProviderConfig>>;
   allowNestedFolders: boolean;
   maxNestingLevel: number;
   maxTopLevelFolders: number;

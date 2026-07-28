@@ -47,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
     endpoint: "https://api.deepseek.com",
     enabled: false,
   },
+  providerConfigs: {},
   allowNestedFolders: true,
   maxNestingLevel: 2,
   maxTopLevelFolders: 8,
@@ -62,13 +63,23 @@ function hasChromeStorage() {
 }
 
 function mergeSettings(settings?: Partial<Settings>): Settings {
+  const provider = {
+    ...DEFAULT_SETTINGS.provider,
+    ...settings?.provider,
+  };
+  const providerConfigs = {
+    ...settings?.providerConfigs,
+    [provider.type]: {
+      ...settings?.providerConfigs?.[provider.type],
+      ...provider,
+    },
+  };
+
   return {
     ...DEFAULT_SETTINGS,
     ...settings,
-    provider: {
-      ...DEFAULT_SETTINGS.provider,
-      ...settings?.provider,
-    },
+    provider,
+    providerConfigs,
   };
 }
 
