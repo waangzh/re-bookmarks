@@ -245,20 +245,20 @@ export function SidebarHome() {
           </span>
         </div>
         <div className="sidebar-stat-card__side">
-          <span>
+          <Link to="/manage?task=unsorted" aria-label="查看未分类书签">
             <span className="sidebar-stat-card__side-label">
               <i className="sidebar-dot sidebar-dot--amber" />
               未分类
             </span>
             <strong>{stats.unsortedTaskCount ?? "..."}</strong>
-          </span>
-          <span>
+          </Link>
+          <Link to="/manage?task=duplicate" aria-label="查看疑似重复书签">
             <span className="sidebar-stat-card__side-label">
               <i className="sidebar-dot sidebar-dot--red" />
               重复疑似
             </span>
             <strong>{stats.duplicateCount}</strong>
-          </span>
+          </Link>
         </div>
       </section>
 
