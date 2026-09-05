@@ -748,7 +748,7 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
     removedFolders,
     failedItems,
     movePlan,
-    privacySummary: ["已按最近一次备份尝试恢复原位置"],
+    privacySummary: ["已按最近一次备份尝试移回原文件夹；不会恢复文件夹内的原有排序"],
     undone: true,
   };
 

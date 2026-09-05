@@ -1886,7 +1886,7 @@ export function Preview() {
             <CollapsibleSection title="整理说明" hint="备份、撤销和文件夹复用规则">
               <ul className="extension-copy-list">
                 <li>· 整理前会自动备份当前书签结构</li>
-                <li>· 支持撤销最近一次整理操作</li>
+                <li>· 支持将最近一次整理的书签移回原文件夹（不恢复原排序）</li>
                 <li>· 已存在的文件夹会复用，不会重复创建</li>
               </ul>
             </CollapsibleSection>

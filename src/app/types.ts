@@ -226,7 +226,7 @@ export type BookmarkRestoreReport = {
 
 export type OrganizeReport = {
   id: string;
-  kind?: "organize" | "undo" | "reapply";
+  kind?: "organize" | "recommendation" | "undo" | "reapply";
   createdAt: number;
   movedCount: number;
   folderCount: number;

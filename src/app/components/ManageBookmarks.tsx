@@ -40,7 +40,7 @@ import {
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
-import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
 import {
   getIgnoredManualTaskBookmarkIds,
@@ -254,7 +254,7 @@ function getDuplicateGroupKindLabel(group: DuplicateBookmarkGroup) {
 }
 
 export function ManageBookmarks() {
-  const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, settings } = useAppStore();
+  const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, loadReports, settings } = useAppStore();
   const [searchParams] = useSearchParams();
   const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
@@ -1035,11 +1035,15 @@ export function ManageBookmarks() {
     setBusyRecommendationId(recommendation.id);
     setMessage("");
     try {
-      await acceptRecommendation(recommendation);
-      await loadManagedBookmarks();
+      const report = await acceptRecommendation(recommendation);
+      await Promise.all([loadManagedBookmarks(), loadReports()]);
       setEditingRecommendationId(null);
       setRecommendationPathDraft("");
-      setMessage(`已移动到 ${recommendation.suggestedFolderPath.join(" / ")}`);
+      setMessage(
+        report.failedItems.length > 0
+          ? `推荐移动失败：${report.failedItems[0].reason}；详情已写入整理报告`
+          : `已移动到 ${recommendation.suggestedFolderPath.join(" / ")}，操作前备份和整理报告已保存`
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "接受推荐失败");
     } finally {
@@ -1099,22 +1103,14 @@ export function ManageBookmarks() {
   const handleAcceptVisibleRecommendations = async () => {
     setBulkRecommendationAction("accept");
     setMessage("");
-    const failed: string[] = [];
 
     try {
-      for (const recommendation of filteredPendingRecommendations) {
-        try {
-          await acceptRecommendation(recommendation);
-        } catch {
-          failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
-        }
-      }
-
-      await loadManagedBookmarks();
+      const report = await acceptRecommendations(filteredPendingRecommendations);
+      await Promise.all([loadManagedBookmarks(), loadReports()]);
       setMessage(
-        failed.length > 0
-          ? `部分建议接受失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
-          : `已接受 ${filteredPendingRecommendations.length} 条 AI 建议`
+        report.failedItems.length > 0
+          ? `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败；详情已写入整理报告`
+          : `已接受 ${filteredPendingRecommendations.length} 条 AI 建议，操作前备份和整理报告已保存`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "一键接受失败");
@@ -1466,7 +1462,7 @@ export function ManageBookmarks() {
             <div className="bookmark-unsorted-section__head">
               <div>
                 <h3>待确认 AI 推荐</h3>
-                <p>接受后会移动到建议文件夹；忽略只移除这条推荐，不删除书签。</p>
+                <p>接受前会自动备份，移动结果会写入整理报告；忽略只移除推荐，不删除书签。</p>
               </div>
               <div className="bookmark-unsorted-section__tools">
                 <span>{filteredPendingRecommendations.length}</span>

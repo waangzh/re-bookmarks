@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2, Sparkles } from "lucide-react";
 import type { PendingRecommendation } from "../types";
-import { acceptRecommendation, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
@@ -50,13 +50,14 @@ function ExpandableReason({ reason }: { reason: string }) {
 }
 
 export function Recommendations() {
-  const { pendingRecommendations, loadRecommendations, loadBookmarks, settings } = useAppStore();
+  const { pendingRecommendations, loadRecommendations, loadBookmarks, loadReports, settings } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<"accept" | "reject" | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("created-desc");
   const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
   const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [error, setError] = useState("");
+  const [operationNotice, setOperationNotice] = useState("");
   const [learningNotice, setLearningNotice] = useState("");
 
   useEffect(() => {
@@ -119,11 +120,17 @@ export function Recommendations() {
   const handleAccept = async (recommendation: PendingRecommendation) => {
     setBusyId(recommendation.id);
     setError("");
+    setOperationNotice("");
     try {
-      await acceptRecommendation(recommendation);
-      await Promise.all([loadRecommendations(), loadBookmarks()]);
+      const report = await acceptRecommendation(recommendation);
+      await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
       setEditingRecommendationId(null);
       setRecommendationPathDraft("");
+      if (report.failedItems.length > 0) {
+        setError(`推荐移动失败：${report.failedItems[0].reason}。操作结果已记录到整理报告。`);
+      } else {
+        setOperationNotice("推荐已接受；操作前备份和整理报告已保存，可尝试移回原文件夹（不恢复原排序）。");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "接受推荐失败");
     } finally {
@@ -154,21 +161,21 @@ export function Recommendations() {
   const handleAcceptAll = async () => {
     setBulkAction("accept");
     setError("");
-    const failed: string[] = [];
+    setOperationNotice("");
 
     try {
-      for (const recommendation of sortedRecommendations) {
-        try {
-          await acceptRecommendation(recommendation);
-        } catch {
-          failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
-        }
+      const report = await acceptRecommendations(sortedRecommendations);
+      await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
+      if (report.failedItems.length > 0) {
+        const failedTitles = report.failedItems.slice(0, 3).map((item) => item.bookmarkTitle);
+        setError(
+          `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败：${failedTitles.join("、")}${report.failedItems.length > 3 ? " 等" : ""}。详情已写入整理报告。`
+        );
+      } else {
+        setOperationNotice(`已接受 ${sortedRecommendations.length} 条推荐；操作前备份和整理报告已保存，可尝试移回原文件夹（不恢复原排序）。`);
       }
-
-      await Promise.all([loadRecommendations(), loadBookmarks()]);
-      if (failed.length > 0) {
-        setError(`部分推荐接受失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`);
-      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "一键接受失败");
     } finally {
       setBulkAction(null);
     }
@@ -232,6 +239,11 @@ export function Recommendations() {
             <p>{error}</p>
           </div>
         )}
+        {operationNotice && (
+          <div className="extension-notice extension-notice--blue" role="status">
+            <p>{operationNotice} <Link to="/report">查看整理报告</Link></p>
+          </div>
+        )}
         {learningNotice && (
           <div className="habit-learning-toast" role="status">
             <Sparkles className="w-4 h-4" />
@@ -248,7 +260,7 @@ export function Recommendations() {
         ) : (
           <>
             <div className="extension-notice extension-notice--amber">
-              <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受推荐后将移动到建议文件夹。</p>
+              <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受前会自动备份，移动结果会写入整理报告。</p>
             </div>
 
             <div className="recommendation-toolbar">

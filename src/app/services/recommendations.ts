@@ -1,11 +1,6 @@
-import type { PendingRecommendation } from "../types";
-import {
-  ensureFolderPath,
-  getBookmark,
-  moveBookmark,
-  normalizeFolderPath,
-  sortFoldersAndAncestorsChildrenFoldersFirst,
-} from "./bookmarks";
+import type { MovePlan, OrganizeReport, PendingRecommendation } from "../types";
+import { getBookmark, normalizeFolderPath } from "./bookmarks";
+import { executeMovePlans } from "./organizer";
 import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
 
 function hasChromeAction() {
@@ -104,18 +99,60 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
   return next;
 }
 
-export async function acceptRecommendation(recommendation: PendingRecommendation) {
-  if (hasChromeBookmarks() && !(await bookmarkExists(recommendation.bookmarkId))) {
-    await removeRecommendation(recommendation.id);
-    throw new Error("书签已不存在，已移除这条建议");
+async function removeCompletedRecommendations(ids: Set<string>) {
+  if (ids.size === 0) return getPendingRecommendations();
+
+  const recommendations = await getPendingRecommendations();
+  const next = recommendations.filter((recommendation) => !ids.has(recommendation.id));
+  await savePendingRecommendations(next);
+  await updateRecommendationBadge();
+  return next;
+}
+
+export async function acceptRecommendations(
+  recommendations: PendingRecommendation[]
+): Promise<OrganizeReport> {
+  if (recommendations.length === 0) {
+    throw new Error("没有可接受的推荐");
   }
 
-  const settings = await getSettings();
-  const parentId = await ensureFolderPath(recommendation.suggestedFolderPath, settings.maxNestingLevel);
-  const bookmark = await getBookmark(recommendation.bookmarkId);
-  await moveBookmark(recommendation.bookmarkId, parentId);
-  await sortFoldersAndAncestorsChildrenFoldersFirst(
-    [parentId, bookmark?.parentId].filter((folderId): folderId is string => Boolean(folderId))
+  const bookmarks = await Promise.all(
+    recommendations.map((recommendation) => getBookmark(recommendation.bookmarkId))
   );
-  return removeRecommendation(recommendation.id);
+  const missingRecommendationIds = new Set<string>();
+  const plans: MovePlan[] = recommendations.map((recommendation, index) => {
+    const bookmark = bookmarks[index];
+    if (hasChromeBookmarks() && !bookmark?.url) {
+      missingRecommendationIds.add(recommendation.id);
+    }
+
+    return {
+      bookmarkId: recommendation.bookmarkId,
+      bookmarkTitle: bookmark?.title ?? recommendation.bookmarkTitle,
+      bookmarkUrl: bookmark?.url ?? recommendation.bookmarkUrl,
+      fromParentId: bookmark?.parentId ?? "1",
+      fromIndex: bookmark?.index,
+      toFolderPath: recommendation.suggestedFolderPath,
+      confidence: recommendation.confidence,
+      reason: recommendation.reason,
+    };
+  });
+
+  const report = await executeMovePlans(plans, undefined, { reportKind: "recommendation" });
+  const failedBookmarkIds = new Set(report.failedItems.map((item) => item.bookmarkId));
+  const completedRecommendationIds = new Set(
+    recommendations
+      .filter(
+        (recommendation) =>
+          missingRecommendationIds.has(recommendation.id) ||
+          !failedBookmarkIds.has(recommendation.bookmarkId)
+      )
+      .map((recommendation) => recommendation.id)
+  );
+  await removeCompletedRecommendations(completedRecommendationIds);
+  return report;
+}
+
+export function acceptRecommendation(recommendation: PendingRecommendation) {
+  return acceptRecommendations([recommendation]);
 }

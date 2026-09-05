@@ -56,8 +56,8 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "撤销",
       title: "撤销完成",
-      subtitle: "已按最近一次备份尝试恢复书签位置",
-      movedLabel: "已恢复",
+      subtitle: "已按最近一次备份尝试移回原文件夹；未恢复原有排序",
+      movedLabel: "已移回",
     };
   }
 
@@ -67,6 +67,16 @@ function getReportKindMeta(report: OrganizeReport) {
       label: "重新应用",
       title: "重新应用完成",
       subtitle: "已按最近一次分类结果重新移动书签",
+      movedLabel: "已移动",
+    };
+  }
+
+  if (kind === "recommendation") {
+    return {
+      kind,
+      label: "推荐整理",
+      title: "推荐整理完成",
+      subtitle: "操作前备份和逐项移动结果已保存到本地",
       movedLabel: "已移动",
     };
   }
@@ -212,13 +222,13 @@ export function Report() {
 
   const handleUndo = async () => {
     if (!selectedReport || !isLatestReport) return;
-    if (!confirm("确认要撤销最近一次整理吗？书签将恢复到整理前的位置。")) return;
+    if (!confirm("确认要撤销最近一次整理吗？书签将尝试移回整理前的文件夹，但不会恢复文件夹内的原有排序。")) return;
     setBusyAction("undo");
     try {
       await undoLastOrganize();
       setSelectedReportId(null);
       await loadAll();
-      setMessage("已撤销最近一次整理，并清理空的目标文件夹");
+      setMessage("已尝试将书签移回整理前的文件夹；原有排序未恢复，并已清理空的目标文件夹");
     } finally {
       setBusyAction(null);
     }
