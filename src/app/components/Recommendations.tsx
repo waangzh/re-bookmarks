@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2, Sparkles, ThumbsDown } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { parseFolderPath } from "../services/bookmarks";
@@ -52,12 +52,13 @@ function ExpandableReason({ reason }: { reason: string }) {
 export function Recommendations() {
   const { pendingRecommendations, loadRecommendations, loadBookmarks, loadReports, settings } = useAppStore();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [bulkAction, setBulkAction] = useState<"accept" | "reject" | null>(null);
+  const [bulkAction, setBulkAction] = useState<"accept" | "ignore" | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("created-desc");
   const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
   const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [error, setError] = useState("");
   const [operationNotice, setOperationNotice] = useState("");
+  const [dismissNotice, setDismissNotice] = useState("");
   const [learningNotice, setLearningNotice] = useState("");
 
   useEffect(() => {
@@ -86,6 +87,9 @@ export function Recommendations() {
     setEditingRecommendationId(recommendation.id);
     setRecommendationPathDraft(recommendation.suggestedFolderPath.join(" / "));
     setError("");
+    setOperationNotice("");
+    setDismissNotice("");
+    setLearningNotice("");
   };
 
   const handleSavePath = async (recommendation: PendingRecommendation) => {
@@ -121,6 +125,8 @@ export function Recommendations() {
     setBusyId(recommendation.id);
     setError("");
     setOperationNotice("");
+    setDismissNotice("");
+    setLearningNotice("");
     try {
       const report = await acceptRecommendation(recommendation);
       await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
@@ -138,9 +144,28 @@ export function Recommendations() {
     }
   };
 
-  const handleReject = async (recommendation: PendingRecommendation) => {
+  const handleIgnore = async (recommendation: PendingRecommendation) => {
     setBusyId(recommendation.id);
     setError("");
+    setOperationNotice("");
+    setDismissNotice("");
+    setLearningNotice("");
+    try {
+      await removeRecommendation(recommendation.id);
+      await loadRecommendations();
+      setDismissNotice("已忽略这条建议，未记录分类偏好");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "忽略推荐失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRejectCategory = async (recommendation: PendingRecommendation) => {
+    setBusyId(recommendation.id);
+    setError("");
+    setOperationNotice("");
+    setDismissNotice("");
     try {
       await removeRecommendation(recommendation.id);
       const notice = await recordHabitFeedback({
@@ -150,9 +175,9 @@ export function Recommendations() {
         suggestedFolderPath: recommendation.suggestedFolderPath,
       }).catch(() => null);
       await loadRecommendations();
-      setLearningNotice(notice ?? "");
+      setLearningNotice(notice ?? "建议已移除，但未能记录分类偏好");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "忽略推荐失败");
+      setError(err instanceof Error ? err.message : "记录分类反馈失败");
     } finally {
       setBusyId(null);
     }
@@ -162,6 +187,8 @@ export function Recommendations() {
     setBulkAction("accept");
     setError("");
     setOperationNotice("");
+    setDismissNotice("");
+    setLearningNotice("");
 
     try {
       const report = await acceptRecommendations(sortedRecommendations);
@@ -181,24 +208,21 @@ export function Recommendations() {
     }
   };
 
-  const handleRejectAll = async () => {
-    setBulkAction("reject");
+  const handleIgnoreAll = async () => {
+    setBulkAction("ignore");
     setError("");
+    setOperationNotice("");
+    setDismissNotice("");
+    setLearningNotice("");
 
     try {
       for (const recommendation of sortedRecommendations) {
         await removeRecommendation(recommendation.id);
-        await recordHabitFeedback({
-          type: "folder_rejected",
-          bookmarkTitle: recommendation.bookmarkTitle,
-          bookmarkUrl: recommendation.bookmarkUrl,
-          suggestedFolderPath: recommendation.suggestedFolderPath,
-        }).catch(() => null);
       }
       await loadRecommendations();
-      setLearningNotice(`已记住 ${sortedRecommendations.length} 次拒绝，后续会减少类似推荐`);
+      setDismissNotice(`已忽略 ${sortedRecommendations.length} 条建议，未记录分类偏好`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "蹇界暐鎺ㄨ崘澶辫触");
+      setError(err instanceof Error ? err.message : "忽略推荐失败");
       await loadRecommendations();
     } finally {
       setBulkAction(null);
@@ -244,6 +268,11 @@ export function Recommendations() {
             <p>{operationNotice} <Link to="/report">查看整理报告</Link></p>
           </div>
         )}
+        {dismissNotice && (
+          <div className="extension-notice extension-notice--blue" role="status">
+            <p>{dismissNotice}</p>
+          </div>
+        )}
         {learningNotice && (
           <div className="habit-learning-toast" role="status">
             <Sparkles className="w-4 h-4" />
@@ -260,7 +289,7 @@ export function Recommendations() {
         ) : (
           <>
             <div className="extension-notice extension-notice--amber">
-              <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受前会自动备份，移动结果会写入整理报告。</p>
+              <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受前会自动备份；忽略只移除建议，不会记录分类偏好。</p>
             </div>
 
             <div className="recommendation-toolbar">
@@ -276,7 +305,7 @@ export function Recommendations() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleRejectAll()}
+                  onClick={() => void handleIgnoreAll()}
                   disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
                   className="extension-page__wide-secondary"
                 >
@@ -390,7 +419,7 @@ export function Recommendations() {
                           接受
                         </button>
                         <button
-                          onClick={() => void handleReject(rec)}
+                          onClick={() => void handleIgnore(rec)}
                           disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
                           className="extension-page__wide-secondary"
                         >
@@ -400,6 +429,20 @@ export function Recommendations() {
                       </>
                     )}
                   </div>
+                  {editingRecommendationId !== rec.id && (
+                    <div className="recommendation-feedback-row">
+                      <button
+                        type="button"
+                        onClick={() => void handleRejectCategory(rec)}
+                        disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                        className="extension-text-button recommendation-negative-feedback"
+                      >
+                        <ThumbsDown className="w-3 h-3" />
+                        不推荐这个分类
+                      </button>
+                      <span>明确反馈会用于改进后续建议</span>
+                    </div>
+                  )}
                 </section>
               ))}
             </div>

@@ -15,6 +15,7 @@ import {
   Check,
   RefreshCw,
   Sparkles,
+  ThumbsDown,
 } from "lucide-react";
 import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, PendingRecommendation } from "../types";
 import {
@@ -274,7 +275,7 @@ export function ManageBookmarks() {
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
   const [ignoringManualSelection, setIgnoringManualSelection] = useState(false);
-  const [bulkRecommendationAction, setBulkRecommendationAction] = useState<"accept" | "reject" | null>(null);
+  const [bulkRecommendationAction, setBulkRecommendationAction] = useState<"accept" | "ignore" | null>(null);
   const [editingRecommendationId, setEditingRecommendationId] = useState<string | null>(null);
   const [recommendationPathDraft, setRecommendationPathDraft] = useState("");
   const [draggedBookmark, setDraggedBookmark] = useState<BookmarkNode | null>(null);
@@ -1051,7 +1052,21 @@ export function ManageBookmarks() {
     }
   };
 
-  const handleRejectRecommendation = async (recommendation: PendingRecommendation) => {
+  const handleIgnoreRecommendation = async (recommendation: PendingRecommendation) => {
+    setBusyRecommendationId(recommendation.id);
+    setMessage("");
+    try {
+      await removeRecommendation(recommendation.id);
+      await loadManagedBookmarks();
+      setMessage("已忽略这条 AI 建议，未记录分类偏好");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "忽略推荐失败");
+    } finally {
+      setBusyRecommendationId(null);
+    }
+  };
+
+  const handleRejectRecommendationCategory = async (recommendation: PendingRecommendation) => {
     setBusyRecommendationId(recommendation.id);
     setMessage("");
     try {
@@ -1063,9 +1078,9 @@ export function ManageBookmarks() {
         suggestedFolderPath: recommendation.suggestedFolderPath,
       }).catch(() => null);
       await loadManagedBookmarks();
-      setMessage(learningNotice ?? "已忽略这条 AI 建议");
+      setMessage(learningNotice ?? "建议已移除，但未能记录分类偏好");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "忽略推荐失败");
+      setMessage(error instanceof Error ? error.message : "记录分类反馈失败");
     } finally {
       setBusyRecommendationId(null);
     }
@@ -1119,8 +1134,8 @@ export function ManageBookmarks() {
     }
   };
 
-  const handleRejectVisibleRecommendations = async () => {
-    setBulkRecommendationAction("reject");
+  const handleIgnoreVisibleRecommendations = async () => {
+    setBulkRecommendationAction("ignore");
     setMessage("");
     const failed: string[] = [];
 
@@ -1128,12 +1143,6 @@ export function ManageBookmarks() {
       for (const recommendation of filteredPendingRecommendations) {
         try {
           await removeRecommendation(recommendation.id);
-          await recordHabitFeedback({
-            type: "folder_rejected",
-            bookmarkTitle: recommendation.bookmarkTitle,
-            bookmarkUrl: recommendation.bookmarkUrl,
-            suggestedFolderPath: recommendation.suggestedFolderPath,
-          }).catch(() => null);
         } catch {
           failed.push(recommendation.bookmarkTitle || recommendation.bookmarkId);
         }
@@ -1143,7 +1152,7 @@ export function ManageBookmarks() {
       setMessage(
         failed.length > 0
           ? `部分建议忽略失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
-          : `已记住 ${filteredPendingRecommendations.length} 次拒绝，后续会减少类似推荐`
+          : `已忽略 ${filteredPendingRecommendations.length} 条 AI 建议，未记录分类偏好`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "一键忽略失败");
@@ -1371,6 +1380,17 @@ export function ManageBookmarks() {
               </div>
             )}
             {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
+            {!isEditingRecommendation && (
+              <button
+                type="button"
+                onClick={() => void handleRejectRecommendationCategory(recommendation)}
+                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                className="extension-text-button recommendation-negative-feedback bookmark-recommendation-feedback"
+              >
+                <ThumbsDown className="w-3 h-3" />
+                不推荐这个分类
+              </button>
+            )}
           </div>
         </div>
         <div className="bookmark-unsorted-card__actions bookmark-unsorted-card__actions--icons">
@@ -1424,11 +1444,11 @@ export function ManageBookmarks() {
               </button>
               <button
                 type="button"
-                onClick={() => void handleRejectRecommendation(recommendation)}
+                onClick={() => void handleIgnoreRecommendation(recommendation)}
                 disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
                 className="extension-icon-action"
-                aria-label="Ignore recommendation"
-                title="Ignore recommendation"
+                aria-label="忽略建议"
+                title="忽略建议（不记录偏好）"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1462,7 +1482,7 @@ export function ManageBookmarks() {
             <div className="bookmark-unsorted-section__head">
               <div>
                 <h3>待确认 AI 推荐</h3>
-                <p>接受前会自动备份，移动结果会写入整理报告；忽略只移除推荐，不删除书签。</p>
+                <p>接受前会自动备份；忽略只移除推荐且不记录偏好；分类不合适时可明确反馈。</p>
               </div>
               <div className="bookmark-unsorted-section__tools">
                 <span>{filteredPendingRecommendations.length}</span>
@@ -1477,12 +1497,12 @@ export function ManageBookmarks() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleRejectVisibleRecommendations()}
+                  onClick={() => void handleIgnoreVisibleRecommendations()}
                   disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
                   className="extension-page__wide-secondary"
                 >
                   <X className="w-4 h-4" />
-                  {bulkRecommendationAction === "reject" ? "忽略中" : "一键忽略"}
+                  {bulkRecommendationAction === "ignore" ? "忽略中" : "一键忽略"}
                 </button>
               </div>
             </div>

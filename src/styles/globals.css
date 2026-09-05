@@ -3708,6 +3708,33 @@ input {
   max-width: 100%;
 }
 
+.recommendation-feedback-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.recommendation-negative-feedback {
+  color: #9a3412;
+}
+
+.recommendation-negative-feedback:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.bookmark-recommendation-feedback {
+  justify-self: start;
+  margin-top: 2px;
+  margin-left: -6px;
+  padding-inline: 6px;
+}
+
 .extension-meta-row {
   display: flex;
   flex-wrap: wrap;
