@@ -1525,6 +1525,10 @@ input {
   border-left-color: #22a06b;
 }
 
+.preview-risk-section--framework {
+  border-left-color: #7c3aed;
+}
+
 .preview-risk-section--batch {
   border-left-color: #3b82f6;
 }
@@ -1563,6 +1567,11 @@ input {
 .preview-risk-section--auto .preview-risk-section__icon {
   background: #eaf8f1;
   color: #167a50;
+}
+
+.preview-risk-section--framework .preview-risk-section__icon {
+  background: #f3e8ff;
+  color: #7c3aed;
 }
 
 .preview-risk-section--batch .preview-risk-section__icon {
@@ -1785,8 +1794,77 @@ input {
   color: #475569;
 }
 
+.preview-framework-groups,
 .preview-batch-groups {
   border-top: 1px solid #e8edf3;
+}
+
+.preview-framework-group {
+  padding: 11px 13px;
+  background: #ffffff;
+}
+
+.preview-framework-group + .preview-framework-group {
+  border-top: 1px solid #e8edf3;
+}
+
+.preview-framework-group.is-approve {
+  background: #fcfbff;
+}
+
+.preview-framework-group.is-keep {
+  background: #fafbfc;
+}
+
+.preview-framework-group__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-framework-group__title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-framework-group__title > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #7c3aed;
+}
+
+.preview-framework-group__title > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.preview-framework-group__title strong {
+  overflow: hidden;
+  color: #27364a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-framework-group__title span,
+.preview-framework-group__paths,
+.preview-batch-group__samples {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.preview-framework-group__paths,
+.preview-batch-group__samples {
+  overflow: hidden;
+  margin: 7px 0 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preview-batch-group {
@@ -2106,8 +2184,14 @@ input {
     justify-self: start;
   }
 
+  .preview-framework-group__summary,
   .preview-batch-group__summary {
     display: grid;
+  }
+
+  .preview-framework-group__paths,
+  .preview-batch-group__samples {
+    white-space: normal;
   }
 
   .preview-batch-group__status {
@@ -3237,6 +3321,13 @@ input {
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
+}
+
+.extension-confidence--signal {
+  padding: 4px 7px;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .extension-pill {

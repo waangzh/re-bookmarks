@@ -11,6 +11,7 @@ import { Link, useNavigate } from "react-router";
 import {
   ArrowLeft,
   Folder,
+  FolderPlus,
   ExternalLink,
   Check,
   AlertCircle,
@@ -73,8 +74,9 @@ type LongPressSession = {
   timer: number;
 };
 
-type PreviewRiskLevel = "auto" | "batch" | "review" | "keep";
+type PreviewRiskLevel = "auto" | "framework" | "batch" | "review" | "keep";
 type PreviewPlanDecision = "move" | "keep";
+type PreviewFrameworkDecision = "approve" | "keep";
 
 type PreviewRiskItem = {
   plan: MovePlan;
@@ -89,11 +91,19 @@ type PreviewBatchGroup = {
   items: PreviewRiskItem[];
 };
 
+type PreviewFrameworkGroup = {
+  key: string;
+  topLevel: string;
+  targetPathCount: number;
+  items: PreviewRiskItem[];
+};
+
 const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
 const QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT = 300;
 const STALLED_PROGRESS_WARNING_MS = 2 * 60 * 1000;
-const AUTO_ACCEPT_CONFIDENCE = 0.9;
-const DEFAULT_EXPANDED_RISK_GROUPS = ["__batch__", "__review__"];
+const STRONG_MODEL_SIGNAL = 0.9;
+const WEAK_MODEL_SIGNAL = 0.7;
+const DEFAULT_EXPANDED_RISK_GROUPS = ["__framework__", "__batch__", "__review__"];
 
 function pathKey(path: string[]) {
   return path.map((part) => part.trim()).filter(Boolean).join(" / ");
@@ -101,6 +111,63 @@ function pathKey(path: string[]) {
 
 function isSamePath(left: string[], right: string[]) {
   return pathKey(left) === pathKey(right);
+}
+
+function groupRiskItemsByTarget(items: PreviewRiskItem[]) {
+  const groupsByPath = new Map<string, PreviewBatchGroup>();
+  for (const item of items) {
+    const key = pathKey(item.plan.toFolderPath) || "待整理";
+    const group = groupsByPath.get(key) ?? {
+      key,
+      targetPath: item.plan.toFolderPath,
+      items: [],
+    };
+    group.items.push(item);
+    groupsByPath.set(key, group);
+  }
+
+  return [...groupsByPath.values()]
+    .map((group) => ({
+      ...group,
+      items: group.items.sort((left, right) =>
+        right.plan.confidence - left.plan.confidence ||
+        left.plan.bookmarkTitle.localeCompare(right.plan.bookmarkTitle, "zh-CN")
+      ),
+    }))
+    .sort((left, right) => right.items.length - left.items.length || left.key.localeCompare(right.key, "zh-CN"));
+}
+
+function getRepresentativeItems(items: PreviewRiskItem[]) {
+  if (items.length <= 3) return items;
+  const indexes = [0, Math.floor((items.length - 1) / 2), items.length - 1];
+  return indexes.map((index) => items[index]);
+}
+
+function ConfidenceSignal({ plan }: { plan: MovePlan }) {
+  if (plan.source === "manual") {
+    return (
+      <span className="extension-confidence extension-confidence--signal text-blue-600 bg-blue-50">
+        人工调整
+      </span>
+    );
+  }
+
+  const level = plan.confidence >= STRONG_MODEL_SIGNAL
+    ? { label: "较强", className: "text-green-600 bg-green-50" }
+    : plan.confidence >= WEAK_MODEL_SIGNAL
+      ? { label: "一般", className: "text-blue-600 bg-blue-50" }
+      : { label: "较弱", className: "text-amber-600 bg-amber-50" };
+  const detail = `模型自评 ${plan.confidence.toFixed(2)}，仅作相对排序参考，不代表正确率`;
+
+  return (
+    <span
+      className={`extension-confidence extension-confidence--signal ${level.className}`}
+      title={detail}
+      aria-label={`${detail}，信号${level.label}`}
+    >
+      模型信号·{level.label}
+    </span>
+  );
 }
 
 function buildPreviewRiskAnalysis(
@@ -127,6 +194,7 @@ function buildPreviewRiskAnalysis(
   const auto: PreviewRiskItem[] = [];
   const review: PreviewRiskItem[] = [];
   const keep: PreviewRiskItem[] = [];
+  const frameworkCandidates: PreviewRiskItem[] = [];
   const batchCandidates: PreviewRiskItem[] = [];
 
   for (const plan of plans) {
@@ -161,7 +229,7 @@ function buildPreviewRiskAnalysis(
     if (
       plan.source === "manual" ||
       (
-        plan.confidence >= AUTO_ACCEPT_CONFIDENCE &&
+        plan.confidence >= STRONG_MODEL_SIGNAL &&
         targetExists &&
         habitMatches &&
         keepsTopLevel
@@ -174,21 +242,33 @@ function buildPreviewRiskAnalysis(
         reasons: [
           plan.source === "manual"
             ? "已由你手动调整"
-            : "高置信度、复用现有目录且符合已有分类习惯",
+            : "模型信号较强、复用现有目录且符合已有分类习惯",
         ],
       });
       continue;
     }
 
     const reviewReasons = [
-      createsTopLevel ? "将新建一级文件夹" : "",
       crossesTopLevel ? "将跨一级目录移动" : "",
       possibleDuplicate ? "检测到可能重复；本次不会删除" : "",
-      plan.confidence < 0.7 ? "分类依据较弱" : "",
+      plan.confidence < WEAK_MODEL_SIGNAL ? "模型提供的分类依据较弱" : "",
     ].filter(Boolean);
 
     if (reviewReasons.length > 0) {
-      review.push({ plan, level: "review", sourcePath, reasons: reviewReasons });
+      if (createsTopLevel) reviewReasons.unshift("目标属于拟新增一级文件夹");
+      const reviewItem: PreviewRiskItem = { plan, level: "review", sourcePath, reasons: reviewReasons };
+      review.push(reviewItem);
+      if (createsTopLevel) frameworkCandidates.push(reviewItem);
+      continue;
+    }
+
+    if (createsTopLevel) {
+      frameworkCandidates.push({
+        plan,
+        level: "framework",
+        sourcePath,
+        reasons: [`分配到拟新增一级目录“${targetPath[0]}”`],
+      });
       continue;
     }
 
@@ -200,18 +280,6 @@ function buildPreviewRiskAnalysis(
     });
   }
 
-  const batchGroupsByPath = new Map<string, PreviewBatchGroup>();
-  for (const item of batchCandidates) {
-    const key = pathKey(item.plan.toFolderPath) || "待整理";
-    const group = batchGroupsByPath.get(key) ?? {
-      key,
-      targetPath: item.plan.toFolderPath,
-      items: [],
-    };
-    group.items.push(item);
-    batchGroupsByPath.set(key, group);
-  }
-
   const sortByConfidence = (left: PreviewRiskItem, right: PreviewRiskItem) =>
     right.plan.confidence - left.plan.confidence ||
     left.plan.bookmarkTitle.localeCompare(right.plan.bookmarkTitle, "zh-CN");
@@ -219,11 +287,29 @@ function buildPreviewRiskAnalysis(
   auto.sort(sortByConfidence);
   review.sort(sortByConfidence);
   keep.sort(sortByConfidence);
-  const batchGroups = [...batchGroupsByPath.values()]
-    .map((group) => ({ ...group, items: group.items.sort(sortByConfidence) }))
-    .sort((left, right) => right.items.length - left.items.length || left.key.localeCompare(right.key, "zh-CN"));
+  frameworkCandidates.sort(sortByConfidence);
+  const frameworkGroupsByTopLevel = new Map<string, PreviewFrameworkGroup>();
+  for (const item of frameworkCandidates) {
+    const topLevel = item.plan.toFolderPath[0];
+    const key = `framework:${topLevel}`;
+    const group = frameworkGroupsByTopLevel.get(key) ?? {
+      key,
+      topLevel,
+      targetPathCount: 0,
+      items: [],
+    };
+    group.items.push(item);
+    frameworkGroupsByTopLevel.set(key, group);
+  }
+  const frameworkGroups = [...frameworkGroupsByTopLevel.values()]
+    .map((group) => ({
+      ...group,
+      targetPathCount: new Set(group.items.map((item) => pathKey(item.plan.toFolderPath))).size,
+    }))
+    .sort((left, right) => right.items.length - left.items.length || left.topLevel.localeCompare(right.topLevel, "zh-CN"));
+  const batchGroups = groupRiskItemsByTarget(batchCandidates);
 
-  return { auto, batchGroups, review, keep };
+  return { auto, frameworkGroups, batchGroups, review, keep };
 }
 
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
@@ -414,6 +500,7 @@ export function Preview() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
+  const [frameworkDecisions, setFrameworkDecisions] = useState<Record<string, PreviewFrameworkDecision>>({});
   const [expandedRiskGroups, setExpandedRiskGroups] = useState<Set<string>>(
     () => new Set(DEFAULT_EXPANDED_RISK_GROUPS)
   );
@@ -808,6 +895,7 @@ export function Preview() {
     setExpandedPreviewFolders(new Set());
     setExpandedRiskGroups(new Set(DEFAULT_EXPANDED_RISK_GROUPS));
     setPlanDecisions({});
+    setFrameworkDecisions({});
     setSelectedPlan(null);
     setDraggedPlan(null);
     setDragOverFolder(null);
@@ -838,33 +926,56 @@ export function Preview() {
     () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile),
     [plans, allBookmarks, folderHabitProfile]
   );
-  const batchRiskCount = riskAnalysis.batchGroups.reduce((total, group) => total + group.items.length, 0);
+  const approvedFrameworkItems = riskAnalysis.frameworkGroups.flatMap((group) =>
+    frameworkDecisions[group.key] === "approve"
+      ? group.items.filter((item) => item.level === "framework")
+      : []
+  );
+  const assignmentGroups = useMemo(
+    () => groupRiskItemsByTarget([
+      ...riskAnalysis.batchGroups.flatMap((group) => group.items),
+      ...approvedFrameworkItems,
+    ]),
+    [approvedFrameworkItems, riskAnalysis.batchGroups]
+  );
+  const assignmentRiskCount = assignmentGroups.reduce((total, group) => total + group.items.length, 0);
   const actionableRiskItems = useMemo(
     () => [
       ...riskAnalysis.auto,
+      ...riskAnalysis.frameworkGroups.flatMap((group) => group.items.filter((item) => item.level === "framework")),
       ...riskAnalysis.batchGroups.flatMap((group) => group.items),
       ...riskAnalysis.review,
       ...riskAnalysis.keep,
     ],
     [riskAnalysis]
   );
+  const frameworkDecisionByBookmarkId = useMemo(() => {
+    const decisions = new Map<string, PreviewFrameworkDecision>();
+    for (const group of riskAnalysis.frameworkGroups) {
+      const decision = frameworkDecisions[group.key];
+      if (!decision) continue;
+      for (const item of group.items) decisions.set(item.plan.bookmarkId, decision);
+    }
+    return decisions;
+  }, [frameworkDecisions, riskAnalysis.frameworkGroups]);
   const approvedPlans = useMemo(
     () => plans.filter((plan) => planDecisions[plan.bookmarkId] === "move"),
     [plans, planDecisions]
   );
-  const pendingDecisionCount = actionableRiskItems.filter(
-    (item) =>
-      (item.level === "batch" || item.level === "review") &&
-      !planDecisions[item.plan.bookmarkId]
+  const pendingFrameworkCount = riskAnalysis.frameworkGroups.filter(
+    (group) => !frameworkDecisions[group.key]
   ).length;
+  const pendingAssignmentCount = assignmentGroups.reduce(
+    (total, group) => total + group.items.filter((item) => !planDecisions[item.plan.bookmarkId]).length,
+    0
+  );
+  const pendingReviewCount = riskAnalysis.review.filter(
+    (item) => !planDecisions[item.plan.bookmarkId]
+  ).length;
+  const pendingDecisionCount = pendingFrameworkCount + pendingAssignmentCount + pendingReviewCount;
   const keptPlanCount = actionableRiskItems.filter(
     (item) => planDecisions[item.plan.bookmarkId] === "keep"
   ).length;
-  const forceReviewPlanIds = riskAnalysis.review.map((item) => item.plan.bookmarkId);
-  const allForceReviewItemsApproved = forceReviewPlanIds.length > 0 &&
-    forceReviewPlanIds.every((bookmarkId) => planDecisions[bookmarkId] === "move");
-  const allForceReviewItemsIgnored = forceReviewPlanIds.length > 0 &&
-    forceReviewPlanIds.every((bookmarkId) => planDecisions[bookmarkId] === "keep");
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -882,7 +993,8 @@ export function Preview() {
     setPlanDecisions((previous) => {
       const next: Record<string, PreviewPlanDecision> = {};
       for (const item of actionableRiskItems) {
-        if (item.level === "keep") {
+        const frameworkDecision = frameworkDecisionByBookmarkId.get(item.plan.bookmarkId);
+        if (item.level === "keep" || frameworkDecision === "keep") {
           next[item.plan.bookmarkId] = "keep";
         } else if (item.level === "auto") {
           next[item.plan.bookmarkId] = "move";
@@ -892,7 +1004,7 @@ export function Preview() {
       }
       return next;
     });
-  }, [actionableRiskItems]);
+  }, [actionableRiskItems, frameworkDecisionByBookmarkId]);
 
   useEffect(() => {
     previewFolderLookupRef.current = previewFolderLookup;
@@ -1056,7 +1168,7 @@ export function Preview() {
 
   const handleConfirm = async () => {
     if (pendingDecisionCount > 0) {
-      setError(`还有 ${pendingDecisionCount} 个风险项需要确认`);
+      setError(`还有 ${pendingDecisionCount} 个审核决定需要完成`);
       return;
     }
     if (!approvedPlans.length) {
@@ -1085,12 +1197,6 @@ export function Preview() {
       }
       return next;
     });
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return "text-green-600 bg-green-50";
-    if (confidence >= 0.8) return "text-blue-600 bg-blue-50";
-    return "text-amber-600 bg-amber-50";
   };
 
   const BookmarkFavicon = ({
@@ -1278,9 +1384,7 @@ export function Preview() {
           <span className="preview-tree-row__note">{plan.reason}</span>
         )}
       </span>
-      <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
-        {Math.round(plan.confidence * 100)}%
-      </span>
+      <ConfidenceSignal plan={plan} />
     </button>
   );
 
@@ -1288,6 +1392,22 @@ export function Preview() {
     setPlanDecisions((previous) => {
       const next = { ...previous };
       for (const bookmarkId of bookmarkIds) next[bookmarkId] = decision;
+      return next;
+    });
+    setError("");
+  };
+
+  const setFrameworkDecision = (
+    group: PreviewFrameworkGroup,
+    decision: PreviewFrameworkDecision
+  ) => {
+    setFrameworkDecisions((previous) => ({ ...previous, [group.key]: decision }));
+    setPlanDecisions((previous) => {
+      const next = { ...previous };
+      for (const item of group.items) {
+        if (decision === "keep") next[item.plan.bookmarkId] = "keep";
+        else delete next[item.plan.bookmarkId];
+      }
       return next;
     });
     setError("");
@@ -1325,9 +1445,7 @@ export function Preview() {
         <div className="preview-risk-item__body">
           <div className="preview-risk-item__title-line">
             <strong title={plan.bookmarkTitle}>{plan.bookmarkTitle}</strong>
-            <span className={`extension-confidence ${getConfidenceColor(plan.confidence)}`}>
-              {Math.round(plan.confidence * 100)}%
-            </span>
+            <ConfidenceSignal plan={plan} />
           </div>
           <div className="preview-risk-item__route">
             <span title={sourcePath.join(" / ") || "当前根目录"}>
@@ -1362,11 +1480,53 @@ export function Preview() {
     );
   };
 
+  const renderFrameworkGroup = (group: PreviewFrameworkGroup) => {
+    const decision = frameworkDecisions[group.key];
+    const targetPaths = [...new Set(group.items.map((item) => pathKey(item.plan.toFolderPath)))];
+
+    return (
+      <div key={group.key} className={`preview-framework-group${decision ? ` is-${decision}` : ""}`}>
+        <div className="preview-framework-group__summary">
+          <div className="preview-framework-group__title">
+            <FolderPlus aria-hidden="true" />
+            <div>
+              <strong>{group.topLevel}</strong>
+              <span>{group.items.length} 个书签 / {group.targetPathCount} 个目标目录</span>
+            </div>
+          </div>
+          <span className={`preview-batch-group__status${decision ? " is-decided" : ""}`}>
+            {decision === "approve" ? "框架已采用" : decision === "keep" ? "不新建" : "待确认"}
+          </span>
+        </div>
+        <p className="preview-framework-group__paths" title={targetPaths.join("；")}>
+          包含：{targetPaths.slice(0, 3).join("、")}{targetPaths.length > 3 ? ` 等 ${targetPaths.length} 个目录` : ""}
+        </p>
+        <div className="preview-batch-group__actions">
+          <button
+            type="button"
+            className={`preview-risk-action${decision === "approve" ? " preview-risk-action--primary" : ""}`}
+            onClick={() => setFrameworkDecision(group, "approve")}
+          >
+            采用此目录
+          </button>
+          <button
+            type="button"
+            className={`preview-risk-action${decision === "keep" ? " preview-risk-action--ignore" : ""}`}
+            onClick={() => setFrameworkDecision(group, "keep")}
+          >
+            不采用，保持原位
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderBatchRiskGroup = (group: PreviewBatchGroup) => {
     const isExpanded = expandedRiskGroups.has(group.key);
     const bookmarkIds = group.items.map((item) => item.plan.bookmarkId);
     const movedCount = bookmarkIds.filter((id) => planDecisions[id] === "move").length;
     const pendingCount = bookmarkIds.filter((id) => !planDecisions[id]).length;
+    const representativeItems = getRepresentativeItems(group.items);
 
     return (
       <div key={group.key} className="preview-batch-group">
@@ -1379,13 +1539,17 @@ export function Preview() {
             {pendingCount ? `${pendingCount} 个待确认` : movedCount ? `已接受 ${movedCount} 个` : "全部保留"}
           </span>
         </div>
+        <p className="preview-batch-group__samples" title={representativeItems.map((item) => item.plan.bookmarkTitle).join("；")}>
+          代表条目：{representativeItems.map((item) => item.plan.bookmarkTitle).join("、")}
+        </p>
         <div className="preview-batch-group__actions">
           <button
             type="button"
             className="preview-risk-action preview-risk-action--primary"
             onClick={() => setPlanDecision(bookmarkIds, "move")}
+            title="只批准当前同质分组；跨一级目录、重复项和弱依据项仍需逐条审核"
           >
-            接受全部
+            接受这组
           </button>
           <button
             type="button"
@@ -1432,7 +1596,7 @@ export function Preview() {
                   : phase === "selection"
                     ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
                     : pendingDecisionCount
-                      ? `${pendingDecisionCount} 个风险项待确认`
+                      ? `${pendingDecisionCount} 个审核决定待完成`
                       : `已批准移动 ${approvedPlans.length} 个书签`}
               </p>
             </div>
@@ -1665,10 +1829,10 @@ export function Preview() {
             <div className="extension-notice extension-notice--blue">
               <div className="extension-notice__title">
                 <AlertCircle className="extension-notice__icon" />
-                <span>只审核有风险的变更</span>
+                <span>分阶段确认，减少重复审核</span>
               </div>
               <p>
-                当前批准移动 {approvedPlans.length} 个，保持原位 {keptPlanCount} 个，另有 {pendingDecisionCount} 个需要决定。确认前不会修改任何书签。
+                先确认新增目录，再按目录检查分配；跨一级目录等异常仍需逐项决定。当前批准移动 {approvedPlans.length} 个，保持原位 {keptPlanCount} 个，另有 {pendingDecisionCount} 个审核决定。模型信号仅作相对参考，不代表正确率。
               </p>
             </div>
 
@@ -1709,20 +1873,20 @@ export function Preview() {
               <div className="preview-risk-board">
                 <div className="preview-risk-overview" aria-label="整理风险概览">
                   <div>
-                    <span>自动接受</span>
+                    <span>规则复用</span>
                     <strong>{riskAnalysis.auto.length}</strong>
                   </div>
                   <div>
-                    <span>批量确认</span>
-                    <strong>{batchRiskCount}</strong>
+                    <span>新增框架</span>
+                    <strong>{riskAnalysis.frameworkGroups.length}</strong>
                   </div>
                   <div>
-                    <span>强制审核</span>
+                    <span>分组审核</span>
+                    <strong>{assignmentRiskCount}</strong>
+                  </div>
+                  <div>
+                    <span>逐项异常</span>
                     <strong>{riskAnalysis.review.length}</strong>
-                  </div>
-                  <div>
-                    <span>保持原位</span>
-                    <strong>{riskAnalysis.keep.length}</strong>
                   </div>
                 </div>
 
@@ -1730,11 +1894,9 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><ShieldCheck /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>自动接受候选</strong>
+                      <strong>规则复用，无需逐项审核</strong>
                       <span>
-                        {riskAnalysis.auto.length} 个高可信书签，将移动到 {
-                          new Set(riskAnalysis.auto.map((item) => pathKey(item.plan.toFolderPath))).size
-                        } 个现有文件夹
+                        {riskAnalysis.auto.length} 个建议同时满足：复用现有目录、符合已有习惯且未跨一级目录
                       </span>
                     </div>
                     <button
@@ -1762,12 +1924,44 @@ export function Preview() {
                   )}
                 </section>
 
+                <section className="preview-risk-section preview-risk-section--framework">
+                  <div className="preview-risk-section__header">
+                    <div className="preview-risk-section__icon"><FolderPlus /></div>
+                    <div className="preview-risk-section__heading">
+                      <strong>1. 确认分类框架</strong>
+                      <span>
+                        {riskAnalysis.frameworkGroups.length} 个拟新增一级目录；先确认目录是否合理，再审核其中的书签分配
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="preview-risk-section__toggle"
+                      onClick={() => toggleRiskGroup("__framework__")}
+                      aria-expanded={expandedRiskGroups.has("__framework__")}
+                    >
+                      {expandedRiskGroups.has("__framework__") ? "收起" : "展开"}
+                      {expandedRiskGroups.has("__framework__") ? <ChevronDown /> : <ChevronRight />}
+                    </button>
+                  </div>
+                  {expandedRiskGroups.has("__framework__") && (
+                    riskAnalysis.frameworkGroups.length > 0 ? (
+                      <div className="preview-framework-groups">
+                        {riskAnalysis.frameworkGroups.map(renderFrameworkGroup)}
+                      </div>
+                    ) : (
+                      <p className="preview-risk-section__empty">没有拟新增的一级目录，可直接检查书签分配</p>
+                    )
+                  )}
+                </section>
+
                 <section className="preview-risk-section preview-risk-section--batch">
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><Layers3 /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>批量确认</strong>
-                      <span>{batchRiskCount} 个中等风险书签，已按目标主题聚合</span>
+                      <strong>2. 检查书签分配</strong>
+                      <span>
+                        {assignmentRiskCount} 个建议按目标目录分组；每组展示强、典型、弱三个代表条目
+                      </span>
                     </div>
                     <button
                       type="button"
@@ -1780,12 +1974,14 @@ export function Preview() {
                     </button>
                   </div>
                   {expandedRiskGroups.has("__batch__") && (
-                    riskAnalysis.batchGroups.length > 0 ? (
+                    pendingFrameworkCount > 0 ? (
+                      <p className="preview-risk-section__empty">请先确认上方分类框架，再审核书签分配</p>
+                    ) : assignmentGroups.length > 0 ? (
                       <div className="preview-batch-groups">
-                        {riskAnalysis.batchGroups.map(renderBatchRiskGroup)}
+                        {assignmentGroups.map(renderBatchRiskGroup)}
                       </div>
                     ) : (
-                      <p className="preview-risk-section__empty">没有需要批量确认的项目</p>
+                      <p className="preview-risk-section__empty">没有需要分组确认的项目</p>
                     )
                   )}
                 </section>
@@ -1794,28 +1990,10 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><ShieldAlert /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>强制审核</strong>
-                      <span>{riskAnalysis.review.length} 个高风险变更，必须逐项决定</span>
+                      <strong>3. 逐项审核异常</strong>
+                      <span>{riskAnalysis.review.length} 个跨一级目录、疑似重复或弱依据变更；不提供整组批准</span>
                     </div>
                     <div className="preview-risk-section__actions">
-                      <button
-                        type="button"
-                        className="preview-risk-action preview-risk-action--primary"
-                        onClick={() => setPlanDecision(forceReviewPlanIds, "move")}
-                        disabled={forceReviewPlanIds.length === 0 || allForceReviewItemsApproved}
-                        title="批准移动全部强制审核项，仍需最终确认"
-                      >
-                        {allForceReviewItemsApproved ? "已全部移动" : "全部移动"}
-                      </button>
-                      <button
-                        type="button"
-                        className="preview-risk-action preview-risk-action--ignore"
-                        onClick={() => setPlanDecision(forceReviewPlanIds, "keep")}
-                        disabled={forceReviewPlanIds.length === 0 || allForceReviewItemsIgnored}
-                        title="将全部强制审核项设为保留原位"
-                      >
-                        {allForceReviewItemsIgnored ? "已全部忽略" : "忽略全部"}
-                      </button>
                       <button
                         type="button"
                         className="preview-risk-section__toggle"
@@ -1828,12 +2006,14 @@ export function Preview() {
                     </div>
                   </div>
                   {expandedRiskGroups.has("__review__") && (
-                    riskAnalysis.review.length > 0 ? (
+                    pendingFrameworkCount > 0 ? (
+                      <p className="preview-risk-section__empty">请先确认上方分类框架，再逐项审核异常变更</p>
+                    ) : riskAnalysis.review.length > 0 ? (
                       <div className="preview-risk-list">
                         {riskAnalysis.review.map((item) => renderRiskPlanItem(item, { showDecision: true }))}
                       </div>
                     ) : (
-                      <p className="preview-risk-section__empty">没有跨目录、新建一级目录或疑似重复的项目</p>
+                      <p className="preview-risk-section__empty">没有跨一级目录、疑似重复或弱依据项目</p>
                     )
                   )}
                 </section>
@@ -1843,7 +2023,7 @@ export function Preview() {
                     <div className="preview-risk-section__icon"><PauseCircle /></div>
                     <div className="preview-risk-section__heading">
                       <strong>保持原位</strong>
-                      <span>{riskAnalysis.keep.length} 个低可信或无需移动的书签，不会执行移动</span>
+                      <span>{riskAnalysis.keep.length} 个模型信号较弱或无需移动的书签，不会执行移动</span>
                     </div>
                     <button
                       type="button"
@@ -1898,7 +2078,7 @@ export function Preview() {
             >
               <Check className="w-5 h-5" />
               {pendingDecisionCount > 0
-                ? `先处理 ${pendingDecisionCount} 个风险项`
+                ? `完成 ${pendingDecisionCount} 个审核决定`
                 : `确认移动 ${approvedPlans.length} 个书签`}
             </button>
           </>
