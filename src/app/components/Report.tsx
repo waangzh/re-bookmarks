@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   Folder,
   Globe2,
   RotateCcw,
+  Search,
   Trash2,
 } from "lucide-react";
 import type { MovePlan, OrganizeReport } from "../types";
@@ -66,7 +68,7 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "重新应用",
       title: "重新应用完成",
-      subtitle: "已按最近一次分类结果重新移动书签",
+      subtitle: "已按最近一次分类结果重新移动书签；是否更好找需要后续验证",
       movedLabel: "已移动",
     };
   }
@@ -76,7 +78,7 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "推荐整理",
       title: "推荐整理完成",
-      subtitle: "操作前备份和逐项移动结果已保存到本地",
+      subtitle: "操作前备份和逐项移动结果已保存到本地；是否更好找需要后续验证",
       movedLabel: "已移动",
     };
   }
@@ -85,7 +87,7 @@ function getReportKindMeta(report: OrganizeReport) {
     kind,
     label: "整理",
     title: "整理完成",
-    subtitle: "结果已保存到本地报告历史",
+    subtitle: "执行结果已保存到本地；是否更好找需要在后续使用中验证",
     movedLabel: "已移动",
   };
 }
@@ -274,8 +276,8 @@ export function Report() {
             {formatReportTime(report.createdAt)}
           </span>
           <span className="report-history-card__metrics">
-            <span>{report.movedCount} 个</span>
-            <span>{report.folderCount} 个文件夹</span>
+            <span>{report.movedCount} 次移动</span>
+            <span>{report.folderCount} 个目标目录</span>
             <span>{report.failedItems.length} 失败</span>
             {report.tokenUsage && <span>{formatTokenCount(report.tokenUsage.totalTokens)} tokens</span>}
           </span>
@@ -431,7 +433,7 @@ export function Report() {
         )}
 
         <section className="extension-section">
-          <h3 className="extension-section__title">整理统计</h3>
+          <h3 className="extension-section__title">本次执行记录</h3>
           <div className="extension-metrics">
             <div className="extension-metric">
               <FileText className="extension-metric__icon extension-metric__icon--blue" />
@@ -441,13 +443,13 @@ export function Report() {
             <div className="extension-metric">
               <Folder className="extension-metric__icon extension-metric__icon--green" />
               <div className="extension-metric__value">{selectedReport.folderCount}</div>
-              <div className="extension-metric__label">文件夹</div>
+              <div className="extension-metric__label">目标目录</div>
             </div>
             {selectedReport.removedFolders ? (
               <div className="extension-metric">
                 <Trash2 className="extension-metric__icon extension-metric__icon--red" />
                 <div className="extension-metric__value">{selectedReport.removedFolders}</div>
-                <div className="extension-metric__label">已清理</div>
+                <div className="extension-metric__label">清理空目录</div>
               </div>
             ) : null}
             <div className="extension-metric">
@@ -457,6 +459,21 @@ export function Report() {
             </div>
           </div>
         </section>
+
+        {selectedMeta.kind !== "undo" && (
+          <section className="extension-section report-value-check">
+            <div className="report-value-check__copy">
+              <Search aria-hidden="true" />
+              <div>
+                <h3>验证以后是否更好找</h3>
+                <p>移动数量和目录变化只记录本次操作，不代表整理价值。试着找一个之后还会用的书签，再决定是否保留这套结构。</p>
+              </div>
+            </div>
+            <Link to="/manage?search=1" className="report-value-check__action">
+              去搜索书签 <ArrowRight aria-hidden="true" />
+            </Link>
+          </section>
+        )}
 
         <section className="extension-section">
           <h3 className="extension-section__title">目标文件夹</h3>

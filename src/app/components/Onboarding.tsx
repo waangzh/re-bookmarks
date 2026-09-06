@@ -15,10 +15,12 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import type { AIProviderConfig, AIProviderType, MovePlan, PreviewTaskProgress, Settings } from "../types";
+import type { AIProviderConfig, AIProviderType, MovePlan, PreviewTaskProgress, Settings, TokenUsage } from "../types";
 import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
 import { countDuplicateGroups, isUnsortedBookmark } from "../services/bookmarkTasks";
-import { getAllBookmarkFolders } from "../services/bookmarks";
+import { getAllBookmarkFolders, parseFolderPath } from "../services/bookmarks";
+import { recordHabitFeedback } from "../services/habits";
+import { executeMovePlans } from "../services/organizer";
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
 import { clearPreviewPlan } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
@@ -30,6 +32,7 @@ type OnboardingProps = {
 type SampleState = "idle" | "running" | "ready" | "error";
 
 const SAMPLE_SIZE = 20;
+const REVIEWED_SAMPLE_SIZE = 5;
 
 function selectRepresentativeSample<T extends { path: string[] }>(items: T[], limit: number) {
   const sorted = [...items].sort((left, right) =>
@@ -50,6 +53,15 @@ function progressPercent(progress?: PreviewTaskProgress) {
   return 8;
 }
 
+function sameFolderPath(left: string[], right: string[]) {
+  return left.join("/").toLocaleLowerCase() === right.join("/").toLocaleLowerCase();
+}
+
+function confidenceLabel(plan: MovePlan) {
+  if (plan.source === "manual") return "你已修正";
+  return plan.confidence >= 0.85 ? "AI 较有把握" : "建议重点确认";
+}
+
 export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const navigate = useNavigate();
   const { bookmarks, settings, loading, loadAll, saveSettings } = useAppStore();
@@ -59,8 +71,13 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [sampleState, setSampleState] = useState<SampleState>("idle");
   const [samplePlans, setSamplePlans] = useState<MovePlan[]>([]);
+  const [initialSamplePlans, setInitialSamplePlans] = useState<MovePlan[]>([]);
+  const [samplePathDrafts, setSamplePathDrafts] = useState<Record<string, string>>({});
+  const [recordedSampleCorrections, setRecordedSampleCorrections] = useState<Record<string, string>>({});
+  const [sampleTokenUsage, setSampleTokenUsage] = useState<TokenUsage>();
   const [sampleProgress, setSampleProgress] = useState<PreviewTaskProgress>();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [applyingSample, setApplyingSample] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -80,7 +97,13 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
       if (!alive || task?.id !== activeTaskId) return;
       setSampleProgress(task.progress);
       if (task.status === "completed") {
-        setSamplePlans(task.movePlan ?? []);
+        const plans = task.movePlan ?? [];
+        setInitialSamplePlans(plans);
+        setSamplePlans(plans);
+        setSamplePathDrafts(Object.fromEntries(
+          plans.slice(0, REVIEWED_SAMPLE_SIZE).map((plan) => [plan.bookmarkId, plan.toFolderPath.join(" / ")])
+        ));
+        setSampleTokenUsage(task.tokenUsage);
         setSampleState("ready");
         setActiveTaskId(null);
       } else if (task.status === "failed") {
@@ -109,6 +132,11 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const sample = useMemo(() => selectRepresentativeSample(bookmarks, SAMPLE_SIZE), [bookmarks]);
   const sampleSize = sample.length;
   const sampleFolderCount = new Set(samplePlans.map((plan) => plan.toFolderPath.join("/"))).size;
+  const reviewedSamplePlans = samplePlans.slice(0, REVIEWED_SAMPLE_SIZE);
+  const correctedSampleCount = reviewedSamplePlans.filter((plan) => {
+    const initialPlan = initialSamplePlans.find((item) => item.bookmarkId === plan.bookmarkId);
+    return Boolean(initialPlan && !sameFolderPath(initialPlan.toFolderPath, plan.toFolderPath));
+  }).length;
   const currentSampleFolderCount = new Set(
     sample.map((bookmark) => bookmark.path.join("/") || "根目录")
   ).size;
@@ -183,6 +211,10 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     }
     setSampleState("running");
     setSamplePlans([]);
+    setInitialSamplePlans([]);
+    setSamplePathDrafts({});
+    setRecordedSampleCorrections({});
+    setSampleTokenUsage(undefined);
     setSampleProgress(undefined);
     setMessage("");
     try {
@@ -193,6 +225,80 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "小样本生成失败，请重试");
       setSampleState("error");
+    }
+  };
+
+  const handleUpdateSamplePath = (plan: MovePlan) => {
+    const folderPath = parseFolderPath(samplePathDrafts[plan.bookmarkId] ?? "", draft.maxNestingLevel);
+    if (!folderPath.length) {
+      setMessage("请填写目标文件夹");
+      return;
+    }
+    setSamplePlans((current) => current.map((item) => item.bookmarkId === plan.bookmarkId
+      ? {
+          ...item,
+          toFolderPath: folderPath,
+          confidence: 1,
+          reason: `首次引导中手动修正为：${folderPath.join(" / ")}`,
+          source: "manual",
+        }
+      : item));
+    setSamplePathDrafts((current) => ({ ...current, [plan.bookmarkId]: folderPath.join(" / ") }));
+    setMessage("");
+  };
+
+  const saveSampleCorrections = async (plans: MovePlan[]) => {
+    const corrections = plans.flatMap((plan) => {
+      const initialPlan = initialSamplePlans.find((item) => item.bookmarkId === plan.bookmarkId);
+      const correctionKey = plan.toFolderPath.join("/");
+      if (
+        !initialPlan ||
+        sameFolderPath(initialPlan.toFolderPath, plan.toFolderPath) ||
+        recordedSampleCorrections[plan.bookmarkId] === correctionKey
+      ) return [];
+      return [{
+        bookmarkId: plan.bookmarkId,
+        correctionKey,
+        result: recordHabitFeedback({
+          type: "category_override" as const,
+          bookmarkTitle: plan.bookmarkTitle,
+          bookmarkUrl: plan.bookmarkUrl,
+          suggestedFolderPath: initialPlan.toFolderPath,
+          chosenFolderPath: plan.toFolderPath,
+        }).catch(() => null),
+      }];
+    });
+    await Promise.all(corrections.map((item) => item.result));
+    if (corrections.length) {
+      setRecordedSampleCorrections((current) => ({
+        ...current,
+        ...Object.fromEntries(corrections.map((item) => [item.bookmarkId, item.correctionKey])),
+      }));
+    }
+  };
+
+  const handleContinueAfterSample = async () => {
+    await saveSampleCorrections(reviewedSamplePlans);
+    setStep(4);
+  };
+
+  const handleApplyReviewedSample = async () => {
+    if (!reviewedSamplePlans.length) return;
+    setApplyingSample(true);
+    setMessage("");
+    try {
+      await saveSampleCorrections(reviewedSamplePlans);
+      await executeMovePlans(reviewedSamplePlans, sampleTokenUsage);
+      await Promise.all([
+        clearPreviewPlan(),
+        requestClearPreviewTask(),
+        saveSettings({ ...draft, onboardingCompleted: true }),
+      ]);
+      await loadAll();
+      navigate("/report", { replace: true });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "应用小样本失败，请重试");
+      setApplyingSample(false);
     }
   };
 
@@ -281,6 +387,9 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
             {connectionStatus === "error" && (
               <div className="onboarding__status onboarding__status--error"><AlertCircle aria-hidden="true" />{message}</div>
             )}
+            <button className="onboarding__later" type="button" onClick={() => void completeOnboarding("home")}>
+              没有 API Key？先使用本地搜索与重复检查
+            </button>
             <div className="onboarding__nav-row">
               <button type="button" onClick={() => setStep(1)}>返回</button>
               <button type="button" onClick={() => setStep(3)} disabled={connectionStatus !== "success"}>下一步 <ArrowRight aria-hidden="true" /></button>
@@ -292,7 +401,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
           <section className="onboarding__panel">
             <div className="onboarding__eyebrow"><Files aria-hidden="true" /> 第三步 · 生成小样本</div>
             <h1>先试整理 {sampleSize} 个书签</h1>
-            <p className="onboarding__lead">先确认分类风格。此步骤只生成建议，不会实际移动任何书签。</p>
+            <p className="onboarding__lead">先检查并修正几条代表性建议。只有你主动应用后，已检查的书签才会移动。</p>
             {sampleState === "idle" || sampleState === "error" ? (
               <div className="onboarding__sample-empty">
                 <span><Sparkles aria-hidden="true" /></span>
@@ -314,26 +423,51 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                 <div className="onboarding__before-after">
                   <div><span>整理前结构</span><strong>{currentSampleFolderCount}</strong><small>个来源位置</small></div>
                   <ArrowRight aria-hidden="true" />
-                  <div><span>整理后结构</span><strong>{sampleFolderCount}</strong><small>个建议分类</small></div>
+                  <div><span>{correctedSampleCount ? "修正后结构" : "建议结构"}</span><strong>{sampleFolderCount}</strong><small>{correctedSampleCount ? `已修正 ${correctedSampleCount} 条` : "个建议分类"}</small></div>
                 </div>
                 <div className="onboarding__suggestions">
-                  {samplePlans.slice(0, 5).map((plan) => (
-                    <div key={plan.bookmarkId}>
-                      <span>{plan.bookmarkTitle}</span>
+                  {reviewedSamplePlans.map((plan) => (
+                    <div className="onboarding__suggestion" key={plan.bookmarkId}>
+                      <div className="onboarding__suggestion-copy">
+                        <span title={plan.bookmarkTitle}>{plan.bookmarkTitle}</span>
+                        <small title={plan.reason}>{confidenceLabel(plan)} · {plan.reason || "根据标题、网址与现有目录生成"}</small>
+                      </div>
                       <ArrowRight aria-hidden="true" />
-                      <strong>{plan.toFolderPath.join(" / ")}</strong>
+                      <div className="onboarding__suggestion-target">
+                        <input
+                          type="text"
+                          aria-label={`修改“${plan.bookmarkTitle}”的目标文件夹`}
+                          value={samplePathDrafts[plan.bookmarkId] ?? plan.toFolderPath.join(" / ")}
+                          onChange={(event) => setSamplePathDrafts((current) => ({
+                            ...current,
+                            [plan.bookmarkId]: event.target.value,
+                          }))}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") handleUpdateSamplePath(plan);
+                          }}
+                        />
+                        <button type="button" onClick={() => handleUpdateSamplePath(plan)}>更新</button>
+                      </div>
                     </div>
                   ))}
                 </div>
-                <div className="onboarding__safe-note"><ShieldCheck aria-hidden="true" />这里只是预览，书签仍在原处</div>
+                <div className="onboarding__safe-note"><ShieldCheck aria-hidden="true" />只会应用上面已检查的 {reviewedSamplePlans.length} 条；其余样本仅用于观察分类风格</div>
               </>
             )}
-            {sampleState === "error" && (
+            {message && (
               <div className="onboarding__status onboarding__status--error"><AlertCircle aria-hidden="true" />{message}</div>
             )}
-            <div className="onboarding__nav-row">
-              <button type="button" onClick={() => setStep(2)} disabled={sampleState === "running"}>返回</button>
-              <button type="button" onClick={() => setStep(4)} disabled={sampleState !== "ready"}>风格符合预期 <ArrowRight aria-hidden="true" /></button>
+            <div className="onboarding__nav-row onboarding__nav-row--sample">
+              <button type="button" onClick={() => setStep(2)} disabled={sampleState === "running" || applyingSample}>返回</button>
+              <div className="onboarding__sample-actions">
+                <button type="button" onClick={() => void handleContinueAfterSample()} disabled={sampleState !== "ready" || applyingSample}>
+                  继续完整预览 <ArrowRight aria-hidden="true" />
+                </button>
+                <button type="button" onClick={() => void handleApplyReviewedSample()} disabled={sampleState !== "ready" || applyingSample}>
+                  {applyingSample ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                  {applyingSample ? "正在应用" : `应用已检查的 ${reviewedSamplePlans.length} 条`}
+                </button>
+              </div>
             </div>
           </section>
         )}
@@ -342,8 +476,8 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
           <section className="onboarding__panel onboarding__panel--finish">
             <span className="onboarding__finish-mark"><CheckCircle2 aria-hidden="true" /></span>
             <div className="onboarding__eyebrow">第四步 · 完整整理</div>
-            <h1>准备好整理全部书签</h1>
-            <p className="onboarding__lead">下一页会再次展示完整预览。只有你确认后，ReMarks 才会创建备份并移动书签。</p>
+            <h1>继续检查完整整理方案</h1>
+            <p className="onboarding__lead">你已认可或修正代表样本。下一页会重新生成完整预览；只有再次确认后，ReMarks 才会创建备份并移动书签。</p>
             <div className="onboarding__finish-summary">
               <span><BookOpenCheck aria-hidden="true" />可整理书签<strong>{stats.organizable}</strong></span>
               <span><ShieldCheck aria-hidden="true" />确认前不会移动<strong>安全预览</strong></span>
