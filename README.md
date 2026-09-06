@@ -6,7 +6,7 @@
 
 先确认分类框架，再按目录检查分配；整理前自动备份，把书签的最终决定权留给你。
 
-[![Version](https://img.shields.io/badge/version-1.7.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v1.7.0)
+[![Version](https://img.shields.io/badge/version-1.8.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v1.8.0)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
 ![Chrome / Edge](https://img.shields.io/badge/Chrome%20%7C%20Edge-supported-0ea5e9)
 ![React](https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white)
@@ -112,7 +112,7 @@ ReMarks 把“分类习惯”作为贯穿推荐、预览和书签管理的学习
 
 ### 从 Release 安装
 
-> README 以 `master` 当前源码为准；`master` 已包含 `v1.7.0` 标签之后的改动，Release 压缩包的实际功能请以对应版本说明为准。
+> README 以 `master` 当前源码为准；Release 压缩包对应其版本标签中的代码与发布说明。
 
 1. 前往 [最新 Release](https://github.com/waangzh/re-bookmarks/releases/latest) 下载 `re-bookmarks-v*.zip`。
 2. 解压压缩包。
@@ -246,7 +246,7 @@ manifest.json      开发态扩展清单
 
 ## 📌 当前状态与限制
 
-- `package.json` 与 `manifest.json` 当前版本均为 `1.7.0`，但 `master` 已领先 `v1.7.0` 标签；“可修正小样本 → 分阶段预览 → 备份 → 确认执行 → 报告/搜索验证/恢复”闭环已可用。
+- `package.json` 与 `manifest.json` 当前版本均为 `1.8.0`；“可修正小样本 → 分阶段预览 → 备份 → 确认执行 → 报告/搜索验证/恢复”闭环已可用。
 - AI 结果可能不准确，尤其是标题含糊或页面元数据不可访问时；请始终检查预览。
 - 分类偏好当前通过高优先级 Prompt 影响 AI，而不是本地硬路由；模型仍可能不完全遵循，所以学习机制不会替代人工确认。
 - 一级/二级目录和主题/用途倾向基于用户修正次数与目录名称启发式判断，少量反馈只会保留为记录，不会立即形成全局偏好。
