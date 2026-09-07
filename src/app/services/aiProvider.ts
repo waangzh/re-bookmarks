@@ -16,6 +16,7 @@ type ClassificationOptions = {
   habitProfile?: FolderHabitProfile | null;
   customPrompt?: string;
   existingCategories?: string[];
+  existingFolderPaths?: string[][];
   signal?: AbortSignal;
   onTokenUsage?: (usage: TokenUsage) => void;
   onStage?: (stage: Extract<PreviewTaskPhase, "requesting_ai" | "parsing_results">) => void | Promise<void>;
@@ -317,6 +318,19 @@ function normalizeConfidence(value: unknown) {
   return 0;
 }
 
+function normalizeClassificationDecision(value: unknown, categoryPath: string[]) {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["defer", "abstain", "manual_review", "uncertain"].includes(normalized)) return "defer" as const;
+    if (["new_folder", "propose_new_category", "new_category"].includes(normalized)) return "new_folder" as const;
+    if (["existing_folder", "classify", "existing_category"].includes(normalized)) return "existing_folder" as const;
+  }
+
+  return categoryPath.some((part) => ["待整理", "未分类"].includes(part.trim()))
+    ? "defer" as const
+    : "existing_folder" as const;
+}
+
 function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
@@ -387,8 +401,10 @@ function parseLooseResults(jsonText: string): ClassificationResult[] {
     ]);
     const confidenceMatch = block.match(/"(?:confidence|score|probability)"\s*:\s*"?([0-9]+(?:\.[0-9]+)?%?)"?/);
     const confidence = normalizeConfidence(confidenceMatch?.[1]);
+    const decisionMatch = block.match(/"(?:decision|action|classificationDecision)"\s*:\s*"([^"\\]+)"/);
+    const decision = normalizeClassificationDecision(decisionMatch?.[1], categoryPath);
 
-    if (!id || categoryPath.length === 0 || confidence <= 0 || confidence > 1) continue;
+    if (!id || (decision !== "defer" && categoryPath.length === 0) || confidence <= 0 || confidence > 1) continue;
 
     results.push({
       id,
@@ -396,6 +412,7 @@ function parseLooseResults(jsonText: string): ClassificationResult[] {
       categoryPath,
       confidence,
       reason: extractLooseReason(block) || "AI 分类建议",
+      decision,
       source: "ai",
     });
   }
@@ -516,7 +533,11 @@ export function parseResults(content: string): ClassificationResult[] {
         value.category
     );
     const confidence = normalizeConfidence(value.confidence ?? value.score ?? value.probability);
-    if (!id || categoryPath.length === 0 || confidence <= 0 || confidence > 1) return [];
+    const decision = normalizeClassificationDecision(
+      value.decision ?? value.action ?? value.classificationDecision,
+      categoryPath
+    );
+    if (!id || (decision !== "defer" && categoryPath.length === 0) || confidence <= 0 || confidence > 1) return [];
 
     return [
       {
@@ -525,6 +546,7 @@ export function parseResults(content: string): ClassificationResult[] {
         categoryPath,
         confidence,
         reason: typeof value.reason === "string" ? value.reason : "AI 分类建议",
+        decision,
         source: "ai" as const,
       },
     ];
@@ -762,7 +784,7 @@ function buildHabitInstruction(profile: FolderHabitProfile) {
       parts.push(learning.styleVotes.purpose > learning.styleVotes.topic ? "用户更偏好按用途分类。" : "用户更偏好按主题分类。");
     }
   }
-  parts.push("如果书签明显匹配已有文件夹规则，优先返回该规则路径；无法匹配时再创建克制的新分类或归入待整理。");
+  parts.push("如果书签明显匹配已有文件夹规则，优先返回该规则路径；内容明确但现有目录不覆盖时，应提出可复用的新分类；只有内容或用途本身难以判断时才暂缓分类。");
 
   return parts.join(" ");
 }
@@ -776,12 +798,16 @@ export async function classifyWithAI(
 
   const maxTopLevelFolders = options?.maxTopLevelFolders ?? 8;
   const maxSubfoldersPerFolder = options?.allowNestedFolders === false ? 0 : options?.maxSubfoldersPerFolder ?? 4;
-  const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数最多 ${maxTopLevelFolders} 个；每个一级分类下最多 ${maxSubfoldersPerFolder} 个二级分类。不要为单个网站、单篇文章或小众主题创建独立文件夹。无法确定时归入较宽泛的父级分类或"待整理"。`;
+  const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数尽量不超过 ${maxTopLevelFolders} 个；每个一级分类下尽量不超过 ${maxSubfoldersPerFolder} 个二级分类。先判断书签的内容或用途是否明确，再判断现有目录是否合适。内容明确且已有目录合适时 decision="existing_folder"；内容明确但现有目录体系未覆盖时 decision="new_folder"，提出命名通用、可继续容纳同类书签的路径；只有内容或用途本身难以判断、分类证据不足时才 decision="defer"。不要仅因当前只有一条书签就禁止新建目录，也不要用具体网站名或单篇文章名建立目录。`;
   const metadataInstruction = "如果输入包含 metadata，请优先结合 metadata.title、metadata.description、metadata.ogTitle、metadata.ogDescription、metadata.ogSiteName 判断网站类型。metadata.available 为 false 或 metadata 缺失时，继续根据书签标题、域名、路径和 URL 分类；不要仅因为 metadata 不可用就归入待整理。";
 
   const existingCategoriesInstruction = options?.existingCategories?.length
-    ? `\n你必须严格使用以下已有的一级分类名称，不得创建新的一级分类：${options.existingCategories.join("、")}。只有确实无法归入时才使用"待整理"。`
+    ? `\n前面批次已形成这些一级分类：${options.existingCategories.join("、")}。后续批次应优先复用；若出现内容明确且这些分类确实未覆盖的新主题，仍可 decision="new_folder" 新增一个可复用分类，不得因批次顺序而暂缓。`
     : "";
+
+  const existingFolderPathsInstruction = options?.existingFolderPaths?.length
+    ? `\n以下是调用时最新的完整现有文件夹路径清单：${JSON.stringify(options.existingFolderPaths)}。先逐项检查语义相符的路径，避免创建同义或近义目录。若复用其中路径，返回 decision="existing_folder"；若目标完整路径不在清单中，返回 decision="new_folder"。`
+    : "\n当前没有可供复用的用户文件夹路径；内容明确时可提出可复用的新目录。";
 
   const habitInstruction = options?.habitProfile
     ? buildHabitInstruction(options.habitProfile)
@@ -794,7 +820,7 @@ export async function classifyWithAI(
     [
       {
         role: "system",
-        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${metadataInstruction}${existingCategoriesInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"简短中文原因\"}]}。results 中每一项必须对应输入中的一个 id。confidence 必须是 0 到 1 的数字，仅表示你对当前分类依据的相对自评，不得把它表述为经过验证的正确率。`,
+        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${metadataInstruction}${existingCategoriesInstruction}${existingFolderPathsInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"decision\":\"existing_folder|new_folder|defer\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"说明内容依据，以及为何复用、为何新建或为何暂缓\"}]}。results 中每一项必须对应输入中的一个 id。decision=\"defer\" 时 categoryPath 必须为空数组；其他 decision 必须提供路径。confidence 必须是 0 到 1 的数字，仅表示你对书签内容和用途判断的相对自评，不得把它表述为经过验证的正确率。`,
       },
       {
         role: "user",

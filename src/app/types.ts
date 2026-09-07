@@ -43,12 +43,15 @@ export type FolderHabitSample = {
   }>;
 };
 
+export type ClassificationDecision = "existing_folder" | "new_folder" | "defer";
+
 export type ClassificationResult = {
   id: string;
   category: string;
   categoryPath?: string[];
   confidence: number;
   reason?: string;
+  decision: ClassificationDecision;
   source: "rule" | "ai" | "manual";
 };
 
@@ -86,6 +89,8 @@ export type BookmarkBackup = {
   }>;
 };
 
+export type PendingRecommendationKind = "move" | "create_folder" | "manual_review" | "error";
+
 export type PendingRecommendation = {
   id: string;
   bookmarkId: string;
@@ -93,8 +98,11 @@ export type PendingRecommendation = {
   bookmarkUrl?: string;
   createdAt: number;
   suggestedFolderPath: string[];
+  currentFolderPath?: string[];
   confidence: number;
   reason?: string;
+  kind?: PendingRecommendationKind;
+  errorCode?: "missing_api_key" | "invalid_response" | "provider_error";
 };
 
 export type BookmarkImportItemStatus = "ready" | "duplicate" | "invalid";

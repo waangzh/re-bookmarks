@@ -93,6 +93,7 @@ function fallbackResult(id: string, reason = "未能可靠分类"): Classificati
     categoryPath: [UNCLASSIFIED_FOLDER_NAME],
     confidence: 0.5,
     reason,
+    decision: "defer",
     source: "rule" as const,
   };
 }
@@ -179,7 +180,9 @@ function isUnclassifiedFolderName(name?: string) {
 }
 
 function isUnclassifiedResult(classification: ClassificationResult) {
-  return classification.confidence < 0.55 || isUnclassifiedFolderName(classification.categoryPath?.[0]);
+  return classification.decision === "defer" ||
+    classification.confidence < 0.55 ||
+    isUnclassifiedFolderName(classification.categoryPath?.[0]);
 }
 
 function normalizePathForComparison(path: string[]) {
@@ -190,6 +193,10 @@ function isSameFolderPath(left: string[], right: string[]) {
   const safeLeft = normalizePathForComparison(left);
   const safeRight = normalizePathForComparison(right);
   return safeLeft.length === safeRight.length && safeLeft.every((part, index) => part === safeRight[index]);
+}
+
+function folderPathExists(folderPaths: string[][], targetPath: string[]) {
+  return folderPaths.some((path) => isSameFolderPath(path, targetPath));
 }
 
 function buildUnclassifiedPath(
@@ -379,10 +386,12 @@ export async function generateMovePlanPreviewForBookmarks(
   organizeMode: OrganizeMode = "quick",
   options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number; model?: string } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
-  const [settings, habitProfile] = await Promise.all([
+  const [settings, habitProfile, folderTree] = await Promise.all([
     getSettings(),
     getFolderHabitProfile(),
+    getBookmarkTree(),
   ]);
+  const existingFolderPaths = collectFolderPaths(folderTree).map((folder) => folder.path);
   const provider = options.model?.trim()
     ? { ...settings.provider, model: options.model.trim() }
     : settings.provider;
@@ -429,6 +438,7 @@ export async function generateMovePlanPreviewForBookmarks(
           habitProfile,
           customPrompt: settings.customPrompt,
           existingCategories: existingCategoriesForBatch?.length ? existingCategoriesForBatch : undefined,
+          existingFolderPaths,
           signal: options.signal,
           onTokenUsage: (usage) => addTokenUsage(tokenUsage, usage),
           onStage: (stage) => reportProgress(stage, batch.length),
@@ -513,6 +523,7 @@ function privacySummary(settings: Settings) {
     settings.sendFullUrl
       ? "已按设置允许向 AI 发送完整 URL"
       : "默认仅向 AI 发送去除 query/hash 后的 URL",
+    "会向 AI 发送现有文件夹路径名称，用于优先复用目录并避免同义目录",
     "浏览历史不会发送给 AI",
     "API Key 仅保存到 chrome.storage.local",
     "整理前已保存完整书签备份",
@@ -771,11 +782,18 @@ export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
 export async function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {
   if (!bookmark.url) return null;
 
-  const settings = await getSettings();
-  const currentBookmark = await getBookmark(bookmark.id);
+  const [settings, currentBookmark, tree, habitProfile] = await Promise.all([
+    getSettings(),
+    getBookmark(bookmark.id),
+    getBookmarkTree(),
+    getFolderHabitProfile(),
+  ]);
   if (!currentBookmark?.url) return null;
-  const tree = await getBookmarkTree();
-  const currentFolderPath = currentBookmark.parentId ? findFolderPathById(tree, currentBookmark.parentId) ?? [] : [];
+
+  const currentFolderPath = currentBookmark.parentId
+    ? findFolderPathById(tree, currentBookmark.parentId) ?? []
+    : [];
+  const existingFolderPaths = collectFolderPaths(tree).map((folder) => folder.path);
   const bookmarkNode = {
     id: currentBookmark.id,
     parentId: currentBookmark.parentId,
@@ -785,61 +803,104 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     type: "url" as const,
   };
 
-  let classification = fallbackResult(bookmark.id, "新增书签等待 AI 分类");
+  let classification = fallbackResult(bookmark.id, "分类依据不足，需要手动判断");
+  let runtimeError: Pick<PendingRecommendation, "errorCode" | "reason"> | null = null;
 
-  if (settings.provider.apiKey) {
+  if (!settings.provider.apiKey) {
+    runtimeError = {
+      errorCode: "missing_api_key",
+      reason: "未配置 API Key，尚未进行内容分类。请完成 AI 设置后重试。",
+    };
+  } else {
     let aiBookmark: BookmarkForAI | undefined;
     try {
       [aiBookmark] = await prepareBookmarksForAI([bookmarkNode], settings.sendFullUrl, "quick");
-      const [aiResult] = await classifyWithAI(settings.provider, [
-        aiBookmark,
-      ], {
+      const [aiResult] = await classifyWithAI(settings.provider, [aiBookmark], {
         allowNestedFolders: settings.allowNestedFolders,
         maxTopLevelFolders: settings.maxTopLevelFolders,
         maxSubfoldersPerFolder: settings.maxSubfoldersPerFolder,
-        habitProfile: await getFolderHabitProfile(),
+        habitProfile,
         customPrompt: settings.customPrompt,
+        existingFolderPaths,
       });
-      if (aiResult) {
+      if (!aiResult) {
+        runtimeError = {
+          errorCode: "invalid_response",
+          reason: "AI 未返回此书签的有效分类结果，请重试。",
+        };
+      } else {
         aiResult.reason = appendReason(aiResult.reason, metadataReason(aiBookmark));
         classification = aiResult;
       }
     } catch (error) {
-      classification.reason = appendReason(classificationFailureReason(error), metadataReason(aiBookmark), classification.reason);
-      // AI 分类失败时保留待整理建议
+      const reason = classificationFailureReason(error);
+      runtimeError = {
+        errorCode: /格式|JSON|解析/.test(reason) ? "invalid_response" : "provider_error",
+        reason: appendReason(reason, aiBookmark ? metadataReason(aiBookmark) : undefined, "书签已保持原位，可稍后重试"),
+      };
     }
   }
 
   const latestBookmark = await getBookmark(currentBookmark.id);
   if (!latestBookmark?.url) return null;
   const latestTree = await getBookmarkTree();
-  const latestFolderPath = latestBookmark.parentId ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath : currentFolderPath;
-  const suggestedFolderPath = isUnclassifiedResult(classification)
-    ? [UNCLASSIFIED_FOLDER_NAME]
-    : normalizeCategoryPath(
-        classification.categoryPath,
-        settings.allowNestedFolders,
-        settings.maxNestingLevel
-      );
+  const latestFolderPath = latestBookmark.parentId
+    ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath
+    : currentFolderPath;
+  const latestFolderPaths = collectFolderPaths(latestTree).map((folder) => folder.path);
 
-  if (isSameFolderPath(latestFolderPath, suggestedFolderPath)) {
-    const recommendations = await getPendingRecommendations();
-    const nextRecommendations = recommendations.filter((item) => item.bookmarkId !== latestBookmark.id);
-    if (nextRecommendations.length !== recommendations.length) {
-      await savePendingRecommendations(nextRecommendations);
+  let kind: PendingRecommendation["kind"];
+  let suggestedFolderPath: string[] = [];
+  let reason = classification.reason;
+
+  if (runtimeError) {
+    kind = "error";
+    reason = runtimeError.reason;
+  } else if (isUnclassifiedResult(classification)) {
+    kind = "manual_review";
+    reason = appendReason(
+      classification.reason,
+      classification.confidence < 0.55 ? "分类依据置信度低于 55%" : undefined,
+      "内容或用途仍不明确，已保持原位"
+    );
+  } else {
+    suggestedFolderPath = normalizeCategoryPath(
+      classification.categoryPath,
+      settings.allowNestedFolders,
+      settings.maxNestingLevel
+    );
+
+    if (isSameFolderPath(latestFolderPath, suggestedFolderPath)) {
+      const recommendations = await getPendingRecommendations();
+      const nextRecommendations = recommendations.filter((item) => item.bookmarkId !== latestBookmark.id);
+      if (nextRecommendations.length !== recommendations.length) {
+        await savePendingRecommendations(nextRecommendations);
+      }
+      return null;
     }
-    return null;
+
+    const targetExists = folderPathExists(latestFolderPaths, suggestedFolderPath);
+    kind = targetExists ? "move" : "create_folder";
+    if (!targetExists) {
+      reason = appendReason(
+        classification.reason,
+        "内容可判断，但现有目录没有对应路径；接受后将创建该目录再归档"
+      );
+    }
   }
 
   const recommendation: PendingRecommendation = {
-    id: `rec-${Date.now()}-${latestBookmark.id}`,
+    id: "rec-" + Date.now() + "-" + latestBookmark.id,
     bookmarkId: latestBookmark.id,
     bookmarkTitle: latestBookmark.title,
     bookmarkUrl: latestBookmark.url,
     createdAt: Date.now(),
     suggestedFolderPath,
+    currentFolderPath: latestFolderPath,
     confidence: classification.confidence,
-    reason: classification.reason,
+    reason,
+    kind,
+    errorCode: runtimeError?.errorCode,
   };
 
   const recommendations = await getPendingRecommendations();

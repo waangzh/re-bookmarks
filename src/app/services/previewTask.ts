@@ -64,7 +64,7 @@ function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode
   };
 }
 
-function isSameRunningTask(task: PreviewTaskCache | null, taskId: string) {
+function isSameRunningTask(task: PreviewTaskCache | null, taskId: string): task is PreviewTaskCache {
   return task?.id === taskId && task.status === "running";
 }
 

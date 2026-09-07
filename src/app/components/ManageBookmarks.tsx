@@ -41,7 +41,7 @@ import {
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
-import { acceptRecommendation, acceptRecommendations, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
 import {
   getIgnoredManualTaskBookmarkIds,
@@ -485,6 +485,11 @@ export function ManageBookmarks() {
     });
   }, [pendingRecommendations, searchQuery, taskMode]);
 
+  const actionablePendingRecommendations = useMemo(
+    () => filteredPendingRecommendations.filter(isActionableRecommendation),
+    [filteredPendingRecommendations]
+  );
+
   const linkHealthResultById = useMemo(() => {
     const lookup = new Map<string, BookmarkLinkHealthResult>();
     linkHealthReport?.results.forEach((result) => {
@@ -689,13 +694,14 @@ export function ManageBookmarks() {
       resetDrag();
 
       if (!wasActive || !targetFolder?.id || targetFolder.id === bookmark.parentId) return;
+      const targetFolderId = targetFolder.id;
 
       event.preventDefault();
       void (async () => {
         setBusy(true);
         setMessage("");
         try {
-          await moveBookmark(bookmark.id, targetFolder.id);
+          await moveBookmark(bookmark.id, targetFolderId);
           const learningNotice = await recordHabitFeedback({
             type: "category_override",
             bookmarkTitle: bookmark.title,
@@ -1066,6 +1072,21 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleRetryRecommendation = async (recommendation: PendingRecommendation) => {
+    setBusyRecommendationId(recommendation.id);
+    setMessage("");
+    try {
+      await retryRecommendation(recommendation);
+      await loadManagedBookmarks();
+      setMessage("已重新判断该书签；书签位置未改变");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "重新分类失败");
+      await loadManagedBookmarks();
+    } finally {
+      setBusyRecommendationId(null);
+    }
+  };
+
   const handleRejectRecommendationCategory = async (recommendation: PendingRecommendation) => {
     setBusyRecommendationId(recommendation.id);
     setMessage("");
@@ -1120,12 +1141,12 @@ export function ManageBookmarks() {
     setMessage("");
 
     try {
-      const report = await acceptRecommendations(filteredPendingRecommendations);
+      const report = await acceptRecommendations(actionablePendingRecommendations);
       await Promise.all([loadManagedBookmarks(), loadReports()]);
       setMessage(
         report.failedItems.length > 0
           ? `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败；详情已写入整理报告`
-          : `已接受 ${filteredPendingRecommendations.length} 条 AI 建议，操作前备份和整理报告已保存`
+          : `已归档 ${actionablePendingRecommendations.length} 条 AI 建议，操作前备份和整理报告已保存`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "一键接受失败");
@@ -1340,6 +1361,10 @@ export function ManageBookmarks() {
   const renderRecommendationCard = (recommendation: PendingRecommendation) => {
     const isBusy = busyRecommendationId === recommendation.id;
     const isEditingRecommendation = editingRecommendationId === recommendation.id;
+    const kind = getRecommendationKind(recommendation);
+    const isActionable = isActionableRecommendation(recommendation);
+    const isNewFolder = kind === "create_folder";
+    const hasError = kind === "error";
 
     return (
       <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
@@ -1372,15 +1397,20 @@ export function ManageBookmarks() {
                   disabled={isBusy}
                 />
               </label>
-            ) : (
-              <div className="bookmark-unsorted-target">
+            ) : isActionable ? (
+              <div className={["bookmark-unsorted-target", isNewFolder ? "bookmark-unsorted-target--new" : ""].filter(Boolean).join(" ")}>
                 <Folder className="w-4 h-4" />
-                <span>{recommendation.suggestedFolderPath.join(" / ")}</span>
+                <span>{isNewFolder ? "建议新建：" : "建议归档："}{recommendation.suggestedFolderPath.join(" / ")}</span>
                 <b>{Math.round(recommendation.confidence * 100)}%</b>
+              </div>
+            ) : (
+              <div className={["bookmark-unsorted-target", hasError ? "bookmark-unsorted-target--error" : "bookmark-unsorted-target--manual"].join(" ")}>
+                <RefreshCw className="w-4 h-4" />
+                <span>{hasError ? "分类失败，书签保持原位" : "需要手动判断，书签保持原位"}</span>
               </div>
             )}
             {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
-            {!isEditingRecommendation && (
+            {!isEditingRecommendation && isActionable && (
               <button
                 type="button"
                 onClick={() => void handleRejectRecommendationCategory(recommendation)}
@@ -1432,16 +1462,29 @@ export function ManageBookmarks() {
               >
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => void handleAcceptRecommendation(recommendation)}
-                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                className="extension-icon-action extension-icon-action--blue"
-                aria-label="Accept recommendation"
-                title="Accept recommendation"
-              >
-                <Check className="w-4 h-4" />
-              </button>
+              {isActionable ? (
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptRecommendation(recommendation)}
+                  disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                  className="extension-icon-action extension-icon-action--blue"
+                  aria-label={isNewFolder ? "创建目录并归档" : "归档书签"}
+                  title={isNewFolder ? "创建目录并归档" : "归档书签"}
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleRetryRecommendation(recommendation)}
+                  disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
+                  className="extension-icon-action extension-icon-action--blue"
+                  aria-label="重新分类"
+                  title="重新分类"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void handleIgnoreRecommendation(recommendation)}
@@ -1489,11 +1532,11 @@ export function ManageBookmarks() {
                 <button
                   type="button"
                   onClick={() => void handleAcceptVisibleRecommendations()}
-                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
+                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || actionablePendingRecommendations.length === 0}
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
-                  {bulkRecommendationAction === "accept" ? "接受中" : "一键接受"}
+                  {bulkRecommendationAction === "accept" ? "归档中" : "归档可执行项"}
                 </button>
                 <button
                   type="button"

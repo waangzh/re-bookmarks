@@ -1,6 +1,6 @@
 import type { MovePlan, OrganizeReport, PendingRecommendation } from "../types";
-import { getBookmark, normalizeFolderPath } from "./bookmarks";
-import { executeMovePlans } from "./organizer";
+import { getBookmark, getBookmarkTree, isRootFolder, normalizeFolderPath } from "./bookmarks";
+import { createPendingRecommendation, executeMovePlans } from "./organizer";
 import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
 
 function hasChromeAction() {
@@ -9,6 +9,40 @@ function hasChromeAction() {
 
 function hasChromeBookmarks() {
   return typeof chrome !== "undefined" && Boolean(chrome.bookmarks);
+}
+
+export function getRecommendationKind(recommendation: PendingRecommendation) {
+  if (recommendation.kind) return recommendation.kind;
+  const firstFolder = recommendation.suggestedFolderPath[0]?.trim();
+  if (recommendation.confidence < 0.55 || firstFolder === "待整理" || firstFolder === "未分类") {
+    return "manual_review" as const;
+  }
+  return "move" as const;
+}
+
+export function isActionableRecommendation(recommendation: PendingRecommendation) {
+  const kind = getRecommendationKind(recommendation);
+  return (kind === "move" || kind === "create_folder") && recommendation.suggestedFolderPath.length > 0;
+}
+
+function pathKey(path: string[]) {
+  return normalizeFolderPath(path, Math.max(1, path.length)).join("\u0000");
+}
+
+function collectFolderPathKeys(tree: chrome.bookmarks.BookmarkTreeNode[]) {
+  const keys = new Set<string>();
+
+  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
+    for (const node of nodes) {
+      if (node.url) continue;
+      const currentPath = node.title && !isRootFolder(node.id) ? [...path, node.title] : path;
+      if (!isRootFolder(node.id) && currentPath.length > 0) keys.add(pathKey(currentPath));
+      if (node.children) visit(node.children, currentPath);
+    }
+  }
+
+  visit(tree, []);
+  return keys;
 }
 
 async function bookmarkExists(bookmarkId: string) {
@@ -79,7 +113,11 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
     throw new Error("请填写目标文件夹");
   }
 
-  const recommendations = await getPendingRecommendations();
+  const [recommendations, tree] = await Promise.all([
+    getPendingRecommendations(),
+    getBookmarkTree(),
+  ]);
+  const existingPathKeys = collectFolderPathKeys(tree);
   let matched = false;
   const next = recommendations.map((recommendation) => {
     if (recommendation.id !== id) return recommendation;
@@ -87,6 +125,10 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
     return {
       ...recommendation,
       suggestedFolderPath: safeFolderPath,
+      kind: existingPathKeys.has(pathKey(safeFolderPath)) ? "move" as const : "create_folder" as const,
+      errorCode: undefined,
+      reason: "已由用户指定目标目录",
+      confidence: 1,
     };
   });
 
@@ -95,6 +137,18 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
   }
 
   await savePendingRecommendations(next);
+  await updateRecommendationBadge();
+  return next;
+}
+
+export async function retryRecommendation(recommendation: PendingRecommendation) {
+  const bookmark = await getBookmark(recommendation.bookmarkId);
+  if (!bookmark?.url) {
+    await removeRecommendation(recommendation.id);
+    throw new Error("书签已不存在");
+  }
+
+  const next = await createPendingRecommendation(bookmark);
   await updateRecommendationBadge();
   return next;
 }
@@ -112,15 +166,16 @@ async function removeCompletedRecommendations(ids: Set<string>) {
 export async function acceptRecommendations(
   recommendations: PendingRecommendation[]
 ): Promise<OrganizeReport> {
-  if (recommendations.length === 0) {
-    throw new Error("没有可接受的推荐");
+  const actionableRecommendations = recommendations.filter(isActionableRecommendation);
+  if (actionableRecommendations.length === 0) {
+    throw new Error("没有可执行的归档建议；需要判断或分类失败的项目会保持原位");
   }
 
   const bookmarks = await Promise.all(
-    recommendations.map((recommendation) => getBookmark(recommendation.bookmarkId))
+    actionableRecommendations.map((recommendation) => getBookmark(recommendation.bookmarkId))
   );
   const missingRecommendationIds = new Set<string>();
-  const plans: MovePlan[] = recommendations.map((recommendation, index) => {
+  const plans: MovePlan[] = actionableRecommendations.map((recommendation, index) => {
     const bookmark = bookmarks[index];
     if (hasChromeBookmarks() && !bookmark?.url) {
       missingRecommendationIds.add(recommendation.id);
@@ -141,7 +196,7 @@ export async function acceptRecommendations(
   const report = await executeMovePlans(plans, undefined, { reportKind: "recommendation" });
   const failedBookmarkIds = new Set(report.failedItems.map((item) => item.bookmarkId));
   const completedRecommendationIds = new Set(
-    recommendations
+    actionableRecommendations
       .filter(
         (recommendation) =>
           missingRecommendationIds.has(recommendation.id) ||

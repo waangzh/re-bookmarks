@@ -3811,6 +3811,67 @@ input {
   overflow-wrap: anywhere;
 }
 
+.extension-folder-target b {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.extension-folder-target--new {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.recommendation-kind {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.recommendation-kind--create_folder {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.recommendation-kind--manual_review {
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.recommendation-kind--error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.recommendation-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recommendation-state--error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.recommendation-section--error {
+  border-color: #fecaca;
+}
+
 .recommendation-toolbar {
   display: grid;
   gap: 10px;
@@ -5047,6 +5108,23 @@ input {
   padding: 2px 6px;
   font-size: 11px;
   line-height: 1.2;
+}
+
+.bookmark-unsorted-target--new {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.bookmark-unsorted-target--manual {
+  grid-template-columns: 16px minmax(0, 1fr);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.bookmark-unsorted-target--error {
+  grid-template-columns: 16px minmax(0, 1fr);
+  background: #fef2f2;
+  color: #b91c1c;
 }
 .bookmark-recommendation-edit {
   display: grid;

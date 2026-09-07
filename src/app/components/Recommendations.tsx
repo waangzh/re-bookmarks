@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, Globe2, ChevronDown, ChevronRight, Edit2, Sparkles, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert } from "lucide-react";
 import type { PendingRecommendation } from "../types";
-import { acceptRecommendation, acceptRecommendations, removeRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
@@ -83,6 +83,11 @@ export function Recommendations() {
     });
   }, [pendingRecommendations, sortKey]);
 
+  const actionableRecommendations = useMemo(
+    () => sortedRecommendations.filter(isActionableRecommendation),
+    [sortedRecommendations]
+  );
+
   const handleEditStart = (recommendation: PendingRecommendation) => {
     setEditingRecommendationId(recommendation.id);
     setRecommendationPathDraft(recommendation.suggestedFolderPath.join(" / "));
@@ -161,6 +166,23 @@ export function Recommendations() {
     }
   };
 
+  const handleRetry = async (recommendation: PendingRecommendation) => {
+    setBusyId(recommendation.id);
+    setError("");
+    setOperationNotice("");
+    setDismissNotice("");
+    try {
+      await retryRecommendation(recommendation);
+      await loadRecommendations();
+      setOperationNotice("已重新判断该书签；书签位置未改变");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重新分类失败");
+      await loadRecommendations();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleRejectCategory = async (recommendation: PendingRecommendation) => {
     setBusyId(recommendation.id);
     setError("");
@@ -191,7 +213,7 @@ export function Recommendations() {
     setLearningNotice("");
 
     try {
-      const report = await acceptRecommendations(sortedRecommendations);
+      const report = await acceptRecommendations(actionableRecommendations);
       await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
       if (report.failedItems.length > 0) {
         const failedTitles = report.failedItems.slice(0, 3).map((item) => item.bookmarkTitle);
@@ -199,7 +221,7 @@ export function Recommendations() {
           `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败：${failedTitles.join("、")}${report.failedItems.length > 3 ? " 等" : ""}。详情已写入整理报告。`
         );
       } else {
-        setOperationNotice(`已接受 ${sortedRecommendations.length} 条推荐；操作前备份和整理报告已保存，可尝试移回原文件夹（不恢复原排序）。`);
+        setOperationNotice(`已归档 ${actionableRecommendations.length} 条建议；操作前备份和整理报告已保存，可尝试移回原文件夹（不恢复原排序）。`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "一键接受失败");
@@ -227,12 +249,6 @@ export function Recommendations() {
     } finally {
       setBulkAction(null);
     }
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return "text-green-600 bg-green-50";
-    if (confidence >= 0.8) return "text-blue-600 bg-blue-50";
-    return "text-amber-600 bg-amber-50";
   };
 
   const formatTime = (timestamp: number) => {
@@ -297,11 +313,11 @@ export function Recommendations() {
                 <button
                   type="button"
                   onClick={() => void handleAcceptAll()}
-                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
+                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || actionableRecommendations.length === 0}
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
-                  一键接受所有
+                  归档可执行项（{actionableRecommendations.length}）
                 </button>
                 <button
                   type="button"
@@ -326,125 +342,159 @@ export function Recommendations() {
             </div>
 
             <div className="extension-stack">
-              {sortedRecommendations.map((rec) => (
-                <section key={rec.id} className="extension-section">
-                  <div className="extension-list__item extension-list__item--static">
-                    <span className="extension-favicon" aria-hidden="true">
-                      <Globe2 className="extension-favicon__fallback" />
-                      {rec.bookmarkUrl && (
-                        <img
-                          src={getFaviconUrl(rec.bookmarkUrl)}
-                          alt=""
-                          onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                          }}
-                        />
-                      )}
-                    </span>
-                    <div className="extension-list__main">
-                      <div className="extension-list__title-row">
-                        <h3>{rec.bookmarkTitle}</h3>
+              {sortedRecommendations.map((rec) => {
+                const kind = getRecommendationKind(rec);
+                const isActionable = isActionableRecommendation(rec);
+                const isNewFolder = kind === "create_folder";
+                const needsManualReview = kind === "manual_review";
+                const hasError = kind === "error";
+
+                return (
+                  <section key={rec.id} className={["extension-section", hasError ? "recommendation-section--error" : ""].filter(Boolean).join(" ")}>
+                    <div className="extension-list__item extension-list__item--static">
+                      <span className="extension-favicon" aria-hidden="true">
+                        <Globe2 className="extension-favicon__fallback" />
                         {rec.bookmarkUrl && (
-                          <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          <img
+                            src={getFaviconUrl(rec.bookmarkUrl)}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
                         )}
+                      </span>
+                      <div className="extension-list__main">
+                        <div className="extension-list__title-row">
+                          <h3>{rec.bookmarkTitle}</h3>
+                          {rec.bookmarkUrl && (
+                            <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                        {rec.bookmarkUrl && <p className="extension-list__url">{rec.bookmarkUrl}</p>}
+                        <p className="extension-list__meta">{formatTime(rec.createdAt)}</p>
                       </div>
-                      {rec.bookmarkUrl && <p className="extension-list__url">{rec.bookmarkUrl}</p>}
-                      <p className="extension-list__meta">{formatTime(rec.createdAt)}</p>
+                      <span className={["recommendation-kind", "recommendation-kind--" + kind].join(" ")}>
+                        {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : "建议归档"}
+                      </span>
                     </div>
-                    <span className={`extension-confidence ${getConfidenceColor(rec.confidence)}`}>{Math.round(rec.confidence * 100)}%</span>
-                  </div>
 
-                  {editingRecommendationId === rec.id ? (
-                    <label className="bookmark-recommendation-edit bookmark-recommendation-edit--section">
-                      <span>目标文件夹</span>
-                      <input
-                        type="text"
-                        value={recommendationPathDraft}
-                        onChange={(event) => setRecommendationPathDraft(event.target.value)}
-                        className="extension-control"
-                        placeholder="例如：工作 / 文档"
-                        disabled={busyId === rec.id}
-                      />
-                    </label>
-                  ) : (
-                    <div className="extension-folder-target">
-                      <Folder className="w-4 h-4" />
-                      <span>{rec.suggestedFolderPath.join(" / ")}</span>
-                    </div>
-                  )}
-
-                  {rec.reason && <ExpandableReason reason={rec.reason} />}
-
-                  <div className={`extension-button-row ${editingRecommendationId === rec.id ? "" : "extension-button-row--three"}`}>
                     {editingRecommendationId === rec.id ? (
-                      <>
-                        <button
-                          onClick={() => void handleSavePath(rec)}
-                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
-                          className="extension-page__wide-primary"
-                        >
-                          <Check className="w-4 h-4" />
-                          保存
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingRecommendationId(null);
-                            setRecommendationPathDraft("");
-                          }}
-                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
-                          className="extension-page__wide-secondary"
-                        >
-                          <X className="w-4 h-4" />
-                          取消
-                        </button>
-                      </>
+                      <label className="bookmark-recommendation-edit bookmark-recommendation-edit--section">
+                        <span>目标文件夹</span>
+                        <input
+                          type="text"
+                          value={recommendationPathDraft}
+                          onChange={(event) => setRecommendationPathDraft(event.target.value)}
+                          className="extension-control"
+                          placeholder="例如：工作 / 文档"
+                          disabled={busyId === rec.id}
+                        />
+                      </label>
+                    ) : isActionable ? (
+                      <div className={["extension-folder-target", isNewFolder ? "extension-folder-target--new" : ""].filter(Boolean).join(" ")}>
+                        {isNewFolder ? <FolderPlus className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                        <span>{isNewFolder ? "建议新建：" : "建议归档："}{rec.suggestedFolderPath.join(" / ")}</span>
+                        <b>{Math.round(rec.confidence * 100)}%</b>
+                      </div>
                     ) : (
-                      <>
-                        <button
-                          onClick={() => handleEditStart(rec)}
-                          disabled={Boolean(busyId) || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                          className="extension-page__wide-secondary"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                          编辑
-                        </button>
-                        <button
-                          onClick={() => void handleAccept(rec)}
-                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
-                          className="extension-page__wide-primary"
-                        >
-                          <Check className="w-4 h-4" />
-                          接受
-                        </button>
-                        <button
-                          onClick={() => void handleIgnore(rec)}
-                          disabled={busyId === rec.id || Boolean(bulkAction) || (Boolean(editingRecommendationId) && editingRecommendationId !== rec.id)}
-                          className="extension-page__wide-secondary"
-                        >
-                          <X className="w-4 h-4" />
-                          忽略
-                        </button>
-                      </>
+                      <div className={["recommendation-state", hasError ? "recommendation-state--error" : ""].filter(Boolean).join(" ")}>
+                        {hasError ? <TriangleAlert className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                        <span>{hasError ? "分类服务未完成，书签保持原位" : "分类依据不足，书签保持原位"}</span>
+                      </div>
                     )}
-                  </div>
-                  {editingRecommendationId !== rec.id && (
-                    <div className="recommendation-feedback-row">
-                      <button
-                        type="button"
-                        onClick={() => void handleRejectCategory(rec)}
-                        disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                        className="extension-text-button recommendation-negative-feedback"
-                      >
-                        <ThumbsDown className="w-3 h-3" />
-                        不推荐这个分类
-                      </button>
-                      <span>明确反馈会用于改进后续建议</span>
+
+                    {rec.reason && <ExpandableReason reason={rec.reason} />}
+
+                    <div className={editingRecommendationId === rec.id ? "extension-button-row" : "extension-button-row extension-button-row--three"}>
+                      {editingRecommendationId === rec.id ? (
+                        <>
+                          <button
+                            onClick={() => void handleSavePath(rec)}
+                            disabled={busyId === rec.id || Boolean(bulkAction)}
+                            className="extension-page__wide-primary"
+                          >
+                            <Check className="w-4 h-4" />
+                            保存
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingRecommendationId(null);
+                              setRecommendationPathDraft("");
+                            }}
+                            disabled={busyId === rec.id || Boolean(bulkAction)}
+                            className="extension-page__wide-secondary"
+                          >
+                            <X className="w-4 h-4" />
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {hasError && rec.errorCode === "missing_api_key" ? (
+                            <Link to="/options" className="extension-page__wide-secondary">
+                              <Edit2 className="w-4 h-4" />
+                              检查设置
+                            </Link>
+                          ) : (
+                            <button
+                              onClick={() => handleEditStart(rec)}
+                              disabled={Boolean(busyId) || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                              className="extension-page__wide-secondary"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                              {isActionable ? "修改目录" : "指定目录"}
+                            </button>
+                          )}
+                          {isActionable ? (
+                            <button
+                              onClick={() => void handleAccept(rec)}
+                              disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                              className="extension-page__wide-primary"
+                            >
+                              <Check className="w-4 h-4" />
+                              {isNewFolder ? "创建并归档" : "归档"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => void handleRetry(rec)}
+                              disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                              className="extension-page__wide-primary"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                              重试
+                            </button>
+                          )}
+                          <button
+                            onClick={() => void handleIgnore(rec)}
+                            disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                            className="extension-page__wide-secondary"
+                          >
+                            <X className="w-4 h-4" />
+                            暂不处理
+                          </button>
+                        </>
+                      )}
                     </div>
-                  )}
-                </section>
-              ))}
+                    {editingRecommendationId !== rec.id && isActionable && (
+                      <div className="recommendation-feedback-row">
+                        <button
+                          type="button"
+                          onClick={() => void handleRejectCategory(rec)}
+                          disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
+                          className="extension-text-button recommendation-negative-feedback"
+                        >
+                          <ThumbsDown className="w-3 h-3" />
+                          不推荐这个分类
+                        </button>
+                        <span>明确反馈会用于改进后续建议</span>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
             </div>
           </>
         )}
