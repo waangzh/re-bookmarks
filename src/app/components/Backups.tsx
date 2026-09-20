@@ -22,6 +22,7 @@ import {
   getBackupHistory,
   restoreBackup,
 } from "../services/backups";
+import { getBookmarkRootFolderIds, isBookmarkFolder, isRootFolder } from "../services/bookmarks";
 import { BACKUP_HISTORY_LIMIT } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -72,6 +73,8 @@ function buildBackupFolderSummary(backup: BookmarkBackup) {
     return nextSummary;
   };
 
+  const rootFolderIds = getBookmarkRootFolderIds(backup.tree);
+
   function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
     for (const node of nodes) {
       if (node.url) {
@@ -88,10 +91,12 @@ function buildBackupFolderSummary(backup: BookmarkBackup) {
         continue;
       }
 
-      const nextPath = node.id === "0"
+      if (!isBookmarkFolder(node)) continue;
+      const isRoot = isRootFolder(node.id, rootFolderIds);
+      const nextPath = isRoot
         ? []
         : [...path, node.title || "未命名文件夹"];
-      if (nextPath.length > 1) {
+      if (!isRoot && nextPath.length > 1) {
         getSummary(nextPath[0]).folderCount += 1;
       }
       visit(node.children ?? [], nextPath);

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build && node scripts/copy-manifest.cjs",
+    "build:firefox": "vite build --mode firefox && node scripts/copy-manifest.cjs firefox",
+    "build:all": "npm run build && npm run build:firefox",
     "preview": "vite preview"
   },
   "dependencies": {

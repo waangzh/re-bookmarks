@@ -1,8 +1,12 @@
 import type { BookmarkBackup, BookmarkRestoreReport, FailedMove } from "../types";
 import {
-  getBookmark,
+  type BrowserBookmarkNode,
+  getBookmarkRootFolderIds,
   getBookmarkTree,
+  getDefaultBookmarkParentIdFromTree,
+  isBookmarkFolder,
   isRootFolder,
+  isSeparatorNode,
   moveBookmark,
   updateBookmark,
 } from "./bookmarks";
@@ -32,12 +36,27 @@ type BookmarkSnapshot = {
   parentPath: string[];
 };
 
-type BookmarkLookup = {
-  byId: Map<string, chrome.bookmarks.BookmarkTreeNode>;
-  byIdentity: Map<string, chrome.bookmarks.BookmarkTreeNode[]>;
+type SeparatorSnapshot = {
+  id: string;
+  parentId?: string;
+  rootId: string;
+  index?: number;
+  parentPath: string[];
 };
 
-const DEFAULT_ROOT_ID = "1";
+type BookmarkLookup = {
+  byId: Map<string, BrowserBookmarkNode>;
+  byIdentity: Map<string, BrowserBookmarkNode[]>;
+};
+
+type CurrentTree = {
+  tree: BrowserBookmarkNode[];
+  rootFolderIds: Set<string>;
+  foldersById: Map<string, BrowserBookmarkNode>;
+  foldersByPath: Map<string, BrowserBookmarkNode>;
+  separatorsById: Map<string, BrowserBookmarkNode>;
+  bookmarkLookup: BookmarkLookup;
+};
 
 function identityKey(title: string, url: string) {
   return `${url}\u0000${title}`;
@@ -47,31 +66,33 @@ function pathKey(rootId: string, path: string[]) {
   return `${rootId}:${path.join("/")}`;
 }
 
-function createNode(createDetails: chrome.bookmarks.BookmarkCreateArg) {
-  return new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve, reject) => {
+type BookmarkCreateDetails = chrome.bookmarks.BookmarkCreateArg & { type?: "separator" };
+
+function createNode(createDetails: BookmarkCreateDetails) {
+  return new Promise<BrowserBookmarkNode>((resolve, reject) => {
     chrome.bookmarks.create(createDetails, (node) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      resolve(node);
+      resolve(node as BrowserBookmarkNode);
     });
   });
 }
 
 function updateNodeTitle(id: string, title: string) {
-  return new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve, reject) => {
+  return new Promise<BrowserBookmarkNode>((resolve, reject) => {
     chrome.bookmarks.update(id, { title }, (node) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      resolve(node);
+      resolve(node as BrowserBookmarkNode);
     });
   });
 }
 
-async function createNodeBestEffort(createDetails: chrome.bookmarks.BookmarkCreateArg) {
+async function createNodeBestEffort(createDetails: BookmarkCreateDetails) {
   try {
     return await createNode(createDetails);
   } catch (error) {
@@ -90,18 +111,19 @@ async function moveBookmarkBestEffort(id: string, parentId: string, index?: numb
   }
 }
 
-export function getBookmarkTreeStats(tree: chrome.bookmarks.BookmarkTreeNode[]) {
+export function getBookmarkTreeStats(tree: BrowserBookmarkNode[]) {
   let bookmarkCount = 0;
   let folderCount = 0;
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
 
-  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
+  function visit(nodes: BrowserBookmarkNode[]) {
     for (const node of nodes) {
       if (node.url) {
         bookmarkCount += 1;
-      } else if (!isRootFolder(node.id)) {
+      } else if (isBookmarkFolder(node) && !isRootFolder(node.id, rootFolderIds)) {
         folderCount += 1;
       }
-      if (node.children) visit(node.children);
+      if (node.children) visit(node.children as BrowserBookmarkNode[]);
     }
   }
 
@@ -204,11 +226,13 @@ export async function createInvalidDeleteBackup(): Promise<BookmarkBackup> {
   return backup;
 }
 
-function collectSnapshots(tree: chrome.bookmarks.BookmarkTreeNode[]) {
+function collectSnapshots(tree: BrowserBookmarkNode[]) {
   const folders: FolderSnapshot[] = [];
   const bookmarks: BookmarkSnapshot[] = [];
+  const separators: SeparatorSnapshot[] = [];
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
 
-  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[], rootId: string) {
+  function visit(nodes: BrowserBookmarkNode[], path: string[], rootId: string) {
     for (const node of nodes) {
       if (node.url) {
         bookmarks.push({
@@ -223,9 +247,21 @@ function collectSnapshots(tree: chrome.bookmarks.BookmarkTreeNode[]) {
         continue;
       }
 
-      const nextRootId = isRootFolder(node.id) ? node.id : rootId;
-      const nextPath = isRootFolder(node.id) ? [] : [...path, node.title];
-      if (!isRootFolder(node.id)) {
+      if (isSeparatorNode(node)) {
+        separators.push({
+          id: node.id,
+          parentId: node.parentId,
+          rootId,
+          index: node.index,
+          parentPath: path,
+        });
+        continue;
+      }
+
+      const isRoot = isRootFolder(node.id, rootFolderIds);
+      const nextRootId = isRoot ? node.id : rootId;
+      const nextPath = isRoot ? [] : [...path, node.title];
+      if (!isRoot) {
         folders.push({
           id: node.id,
           parentId: node.parentId,
@@ -235,23 +271,25 @@ function collectSnapshots(tree: chrome.bookmarks.BookmarkTreeNode[]) {
           path: nextPath,
         });
       }
-      visit(node.children ?? [], nextPath, nextRootId);
+      visit((node.children ?? []) as BrowserBookmarkNode[], nextPath, nextRootId);
     }
   }
 
-  visit(tree, [], DEFAULT_ROOT_ID);
-  return { folders, bookmarks };
+  visit(tree, [], tree[0]?.id ?? "");
+  return { folders, bookmarks, separators };
 }
 
-function collectCurrentTree(tree: chrome.bookmarks.BookmarkTreeNode[]) {
-  const foldersById = new Map<string, chrome.bookmarks.BookmarkTreeNode>();
-  const foldersByPath = new Map<string, chrome.bookmarks.BookmarkTreeNode>();
+function collectCurrentTree(tree: BrowserBookmarkNode[]): CurrentTree {
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
+  const foldersById = new Map<string, BrowserBookmarkNode>();
+  const foldersByPath = new Map<string, BrowserBookmarkNode>();
+  const separatorsById = new Map<string, BrowserBookmarkNode>();
   const bookmarkLookup: BookmarkLookup = {
     byId: new Map(),
     byIdentity: new Map(),
   };
 
-  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[], rootId: string) {
+  function visit(nodes: BrowserBookmarkNode[], path: string[], rootId: string) {
     for (const node of nodes) {
       if (node.url) {
         bookmarkLookup.byId.set(node.id, node);
@@ -262,32 +300,43 @@ function collectCurrentTree(tree: chrome.bookmarks.BookmarkTreeNode[]) {
         continue;
       }
 
-      const nextRootId = isRootFolder(node.id) ? node.id : rootId;
-      const nextPath = isRootFolder(node.id) ? [] : [...path, node.title];
-      if (!isRootFolder(node.id)) {
+      if (isSeparatorNode(node)) {
+        separatorsById.set(node.id, node);
+        continue;
+      }
+
+      const isRoot = isRootFolder(node.id, rootFolderIds);
+      const nextRootId = isRoot ? node.id : rootId;
+      const nextPath = isRoot ? [] : [...path, node.title];
+      if (!isRoot) {
         foldersById.set(node.id, node);
         foldersByPath.set(pathKey(rootId, nextPath), node);
       }
-      visit(node.children ?? [], nextPath, nextRootId);
+      visit((node.children ?? []) as BrowserBookmarkNode[], nextPath, nextRootId);
     }
   }
 
-  visit(tree, [], DEFAULT_ROOT_ID);
-  return { foldersById, foldersByPath, bookmarkLookup };
+  visit(tree, [], tree[0]?.id ?? "");
+  return { tree, rootFolderIds, foldersById, foldersByPath, separatorsById, bookmarkLookup };
 }
 
-async function getWritableRootId(rootId: string) {
-  if (isRootFolder(rootId) && await getBookmark(rootId)) return rootId;
-  return DEFAULT_ROOT_ID;
+function getWritableRootId(rootId: string, current: CurrentTree) {
+  if (isRootFolder(rootId, current.rootFolderIds)) return rootId;
+
+  const fallbackRootId = getDefaultBookmarkParentIdFromTree(current.tree);
+  if (!fallbackRootId) {
+    throw new Error("未找到可写入的浏览器书签根目录");
+  }
+  return fallbackRootId;
 }
 
 async function ensureFolderPathFromSnapshot(
   rootId: string,
   path: string[],
   folderIndex: number | undefined,
-  current: ReturnType<typeof collectCurrentTree>
+  current: CurrentTree
 ) {
-  let parentId = await getWritableRootId(rootId);
+  let parentId = getWritableRootId(rootId, current);
 
   for (let index = 0; index < path.length; index += 1) {
     const partialPath = path.slice(0, index + 1);
@@ -313,9 +362,9 @@ async function ensureFolderPathFromSnapshot(
 
 async function resolveParentId(
   snapshot: { parentId?: string; rootId: string; parentPath: string[] },
-  current: ReturnType<typeof collectCurrentTree>
+  current: CurrentTree
 ) {
-  if (snapshot.parentId && isRootFolder(snapshot.parentId) && await getBookmark(snapshot.parentId)) {
+  if (snapshot.parentId && isRootFolder(snapshot.parentId, current.rootFolderIds)) {
     return snapshot.parentId;
   }
 
@@ -382,6 +431,34 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
         bookmarkId: folder.id,
         bookmarkTitle: folder.title,
         reason: error instanceof Error ? error.message : "恢复文件夹失败",
+      });
+    }
+  }
+
+  current = collectCurrentTree(await getBookmarkTree());
+
+  for (const separator of snapshots.separators) {
+    try {
+      const parentId = await resolveParentId(separator, current);
+      const existing = current.separatorsById.get(separator.id);
+      if (existing) {
+        if (existing.parentId !== parentId || existing.index !== separator.index) {
+          await moveBookmarkBestEffort(existing.id, parentId, separator.index);
+        }
+        continue;
+      }
+
+      const created = await createNodeBestEffort({
+        parentId,
+        index: separator.index,
+        type: "separator",
+      });
+      current.separatorsById.set(created.id, created);
+    } catch (error) {
+      failedItems.push({
+        bookmarkId: separator.id,
+        bookmarkTitle: "分隔线",
+        reason: error instanceof Error ? error.message : "恢复分隔线失败",
       });
     }
   }

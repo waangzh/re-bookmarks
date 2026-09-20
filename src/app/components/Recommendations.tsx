@@ -3,24 +3,14 @@ import { Link } from "react-router";
 import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
-import { parseFolderPath } from "../services/bookmarks";
+import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
 
 type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
 
 function getFaviconUrl(url?: string) {
-  if (!url) return "";
-
-  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-    return chrome.runtime.getURL(`_favicon/?pageUrl=${encodeURIComponent(url)}&size=32`);
-  }
-
-  try {
-    return `${new URL(url).origin}/favicon.ico`;
-  } catch {
-    return "";
-  }
+  return url ? getBookmarkFaviconUrl(url) : "";
 }
 
 function ExpandableReason({ reason }: { reason: string }) {

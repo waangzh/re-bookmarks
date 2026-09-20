@@ -6,7 +6,16 @@ import type {
   BookmarkImportReport,
   BookmarkNode,
 } from "../types";
-import { createBookmarkInFolder, createFolderInFolder, getBookmarkTree, isRootFolder } from "./bookmarks";
+import {
+  type BrowserBookmarkNode,
+  createBookmarkInFolder,
+  createFolderInFolder,
+  getBookmarkRootFolderIds,
+  getBookmarkTree,
+  getDefaultBookmarkParentIdFromTree,
+  isBookmarkFolder,
+  isRootFolder,
+} from "./bookmarks";
 import { createPreImportBackup } from "./backups";
 import { sanitizeUrl } from "./rules";
 
@@ -30,10 +39,6 @@ function normalizeImportPath(path: string[]) {
 
 function pathKey(path: string[]) {
   return normalizeImportPath(path).join("\u0000");
-}
-
-function defaultParentId(tree: chrome.bookmarks.BookmarkTreeNode[]) {
-  return tree[0]?.children?.find((child) => !child.url)?.id ?? "1";
 }
 
 function formatImportRootName(date = new Date()) {
@@ -136,16 +141,17 @@ function existingUrlLookup(bookmarks: BookmarkNode[]) {
   return lookup;
 }
 
-function collectFoldersByParent(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
+function collectFoldersByParent(nodes: BrowserBookmarkNode[]) {
   const foldersByParent = new Map<string, Set<string>>();
+  const rootFolderIds = getBookmarkRootFolderIds(nodes);
 
-  const visit = (node: chrome.bookmarks.BookmarkTreeNode) => {
-    if (!node.url && node.parentId && !isRootFolder(node.id)) {
+  const visit = (node: BrowserBookmarkNode) => {
+    if (isBookmarkFolder(node) && node.parentId && !isRootFolder(node.id, rootFolderIds)) {
       const names = foldersByParent.get(node.parentId) ?? new Set<string>();
       names.add(node.title);
       foldersByParent.set(node.parentId, names);
     }
-    node.children?.forEach(visit);
+    (node.children as BrowserBookmarkNode[] | undefined)?.forEach(visit);
   };
 
   nodes.forEach(visit);
@@ -165,7 +171,10 @@ function uniqueFolderName(baseName: string, siblingNames: Set<string>) {
 
 async function createUniqueImportRoot(baseName: string) {
   const tree = await getBookmarkTree();
-  const parentId = defaultParentId(tree);
+  const parentId = getDefaultBookmarkParentIdFromTree(tree);
+  if (!parentId) {
+    throw new Error("未找到可写入的浏览器书签根目录");
+  }
   const foldersByParent = collectFoldersByParent(tree);
   const rootName = uniqueFolderName(baseName, foldersByParent.get(parentId) ?? new Set());
   const root = await createFolderInFolder(parentId, rootName);

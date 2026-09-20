@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "ReMarks",
+  "version": "1.8.0",
+  "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
+  "permissions": ["bookmarks", "storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "optional_permissions": ["history"],
+  "action": {
+    "default_title": "打开 ReMarks",
+    "default_icon": {
+      "16": "dist-firefox/icons/icon16.png",
+      "32": "dist-firefox/icons/icon32.png",
+      "48": "dist-firefox/icons/icon48.png",
+      "128": "dist-firefox/icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "dist-firefox/options/index.html",
+    "open_in_tab": true
+  },
+  "sidebar_action": {
+    "default_title": "ReMarks",
+    "default_panel": "dist-firefox/sidebar/index.html",
+    "default_icon": {
+      "16": "dist-firefox/icons/icon16.png",
+      "32": "dist-firefox/icons/icon32.png",
+      "48": "dist-firefox/icons/icon48.png",
+      "128": "dist-firefox/icons/icon128.png"
+    }
+  },
+  "background": {
+    "scripts": ["dist-firefox/background.js"],
+    "type": "module"
+  },
+  "icons": {
+    "16": "dist-firefox/icons/icon16.png",
+    "32": "dist-firefox/icons/icon32.png",
+    "48": "dist-firefox/icons/icon48.png",
+    "128": "dist-firefox/icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "remarks-firefox@re-bookmarks.local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["bookmarksInfo", "websiteContent", "authenticationInfo"]
+      }
+    }
+  }
+}

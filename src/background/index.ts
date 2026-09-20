@@ -1,3 +1,5 @@
+declare const __REMARKS_BROWSER_TARGET__: "chromium" | "firefox";
+
 import { createPendingRecommendation } from "@/app/services/organizer";
 import { handleLinkHealthScanMessage, isLinkHealthScanMessage } from "@/app/services/bookmarkTasks";
 import { handlePreviewTaskMessage, isPreviewTaskMessage } from "@/app/services/previewTask";
@@ -15,8 +17,22 @@ chrome.bookmarks.onRemoved.addListener((id) => {
 
 void updateRecommendationBadge();
 
-if (chrome.sidePanel?.setPanelBehavior) {
+type FirefoxSidebarAction = {
+  open: () => Promise<void>;
+};
+
+type FirefoxBrowserApi = {
+  sidebarAction?: FirefoxSidebarAction;
+};
+
+const firefoxSidebarAction = (globalThis as typeof globalThis & { browser?: FirefoxBrowserApi }).browser?.sidebarAction;
+
+if (__REMARKS_BROWSER_TARGET__ === "chromium" && chrome.sidePanel?.setPanelBehavior) {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+} else if (firefoxSidebarAction && chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(() => {
+    void firefoxSidebarAction.open().catch(() => undefined);
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

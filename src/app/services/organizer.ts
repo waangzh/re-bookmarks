@@ -13,10 +13,14 @@ import type {
   TokenUsage,
 } from "../types";
 import {
+  type BrowserBookmarkNode,
   ensureFolderPath,
   getAllBookmarks,
   getBookmarkTree,
   getBookmark,
+  getDefaultBookmarkParentId,
+  getBookmarkRootFolderIds,
+  isBookmarkFolder,
   isFolderEmpty,
   isRootFolder,
   moveBookmark,
@@ -47,17 +51,20 @@ import {
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
 type PreviewProgressReporter = (progress: PreviewTaskProgress) => void | Promise<void>;
 
-function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId: string): string[] | null {
-  function search(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]): string[] | null {
+function findFolderPathById(tree: BrowserBookmarkNode[], targetId: string): string[] | null {
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
+
+  function search(nodes: BrowserBookmarkNode[], path: string[]): string[] | null {
     for (const node of nodes) {
-      // 构建到当前节点的路径（如果不是根节点且是文件夹）
-      const currentPath = node.title && !node.url && !isRootFolder(node.id) ? [...path, node.title] : path;
+      const currentPath = isBookmarkFolder(node) && !isRootFolder(node.id, rootFolderIds)
+        ? [...path, node.title]
+        : path;
 
       if (node.id === targetId) {
         return currentPath;
       }
       if (node.children) {
-        const result = search(node.children, currentPath);
+        const result = search(node.children as BrowserBookmarkNode[], currentPath);
         if (result) return result;
       }
     }
@@ -67,18 +74,20 @@ function findFolderPathById(tree: chrome.bookmarks.BookmarkTreeNode[], targetId:
 }
 
 function collectFolderPaths(
-  tree: chrome.bookmarks.BookmarkTreeNode[]
+  tree: BrowserBookmarkNode[]
 ): Array<{ id: string; path: string[] }> {
   const folders: Array<{ id: string; path: string[] }> = [];
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
 
-  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
+  function visit(nodes: BrowserBookmarkNode[], path: string[]) {
     for (const node of nodes) {
-      if (node.url) continue;
-      const currentPath = node.title && !isRootFolder(node.id) ? [...path, node.title] : path;
-      if (node.id && !isRootFolder(node.id)) {
+      if (!isBookmarkFolder(node)) continue;
+      const isRoot = isRootFolder(node.id, rootFolderIds);
+      const currentPath = isRoot ? path : [...path, node.title];
+      if (!isRoot) {
         folders.push({ id: node.id, path: currentPath });
       }
-      if (node.children) visit(node.children, currentPath);
+      if (node.children) visit(node.children as BrowserBookmarkNode[], currentPath);
     }
   }
 
@@ -239,7 +248,7 @@ function buildMovePlan(
     bookmarkId: bookmark.id,
     bookmarkTitle: bookmark.title,
     bookmarkUrl: bookmark.url,
-    fromParentId: bookmark.parentId ?? "1",
+    fromParentId: bookmark.parentId ?? "",
     fromIndex: bookmark.index,
     toFolderPath: path,
     confidence: classification.confidence,
@@ -550,8 +559,9 @@ async function cleanupEmptyFolders(folderIds: Set<string>): Promise<number> {
     let currentId: string | undefined = id;
     while (currentId && !isRootFolder(currentId)) {
       const folder = await getBookmark(currentId);
-      currentId = folder?.parentId;
-      depth++;
+      if (!folder || !isBookmarkFolder(folder as BrowserBookmarkNode)) break;
+      currentId = folder.parentId;
+      depth += 1;
     }
     foldersWithDepth.push({ id, depth });
   }
@@ -565,8 +575,9 @@ async function cleanupEmptyFolders(folderIds: Set<string>): Promise<number> {
     if (processed.has(id) || isRootFolder(id)) continue;
 
     try {
+      const folder = await getBookmark(id);
+      if (!folder || !isBookmarkFolder(folder as BrowserBookmarkNode)) continue;
       if (await isFolderEmpty(id)) {
-        const folder = await getBookmark(id);
         await removeFolder(id);
         removedCount++;
         processed.add(id);
@@ -593,13 +604,15 @@ async function findAllFolderIds(): Promise<Set<string>> {
   const tree = await getBookmarkTree();
   const folderIds = new Set<string>();
 
-  function collectFolders(nodes: chrome.bookmarks.BookmarkTreeNode[]) {
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
+
+  function collectFolders(nodes: BrowserBookmarkNode[]) {
     for (const node of nodes) {
-      if (!node.url && node.id && !isRootFolder(node.id)) {
+      if (isBookmarkFolder(node) && node.id && !isRootFolder(node.id, rootFolderIds)) {
         folderIds.add(node.id);
       }
       if (node.children) {
-        collectFolders(node.children);
+        collectFolders(node.children as BrowserBookmarkNode[]);
       }
     }
   }
@@ -728,8 +741,8 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
         if (folderPath && folderPath.length > 0) {
           targetParentId = await ensureFolderPath(folderPath);
         } else {
-          // 无法恢复原文件夹，放入书签栏根目录
-          targetParentId = "1";
+          // 无法恢复原文件夹时，回退到当前浏览器可写入的默认书签根目录。
+          targetParentId = await getDefaultBookmarkParentId();
         }
       }
       // 不指定 index，让书签添加到文件夹末尾，避免 Index out of bounds

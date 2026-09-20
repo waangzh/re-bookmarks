@@ -1,5 +1,13 @@
 import type { MovePlan, OrganizeReport, PendingRecommendation } from "../types";
-import { getBookmark, getBookmarkTree, isRootFolder, normalizeFolderPath } from "./bookmarks";
+import {
+  type BrowserBookmarkNode,
+  getBookmark,
+  getBookmarkRootFolderIds,
+  getBookmarkTree,
+  isBookmarkFolder,
+  isRootFolder,
+  normalizeFolderPath,
+} from "./bookmarks";
 import { createPendingRecommendation, executeMovePlans } from "./organizer";
 import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
 
@@ -29,15 +37,17 @@ function pathKey(path: string[]) {
   return normalizeFolderPath(path, Math.max(1, path.length)).join("\u0000");
 }
 
-function collectFolderPathKeys(tree: chrome.bookmarks.BookmarkTreeNode[]) {
+function collectFolderPathKeys(tree: BrowserBookmarkNode[]) {
   const keys = new Set<string>();
+  const rootFolderIds = getBookmarkRootFolderIds(tree);
 
-  function visit(nodes: chrome.bookmarks.BookmarkTreeNode[], path: string[]) {
+  function visit(nodes: BrowserBookmarkNode[], path: string[]) {
     for (const node of nodes) {
-      if (node.url) continue;
-      const currentPath = node.title && !isRootFolder(node.id) ? [...path, node.title] : path;
-      if (!isRootFolder(node.id) && currentPath.length > 0) keys.add(pathKey(currentPath));
-      if (node.children) visit(node.children, currentPath);
+      if (!isBookmarkFolder(node)) continue;
+      const isRoot = isRootFolder(node.id, rootFolderIds);
+      const currentPath = isRoot ? path : [...path, node.title];
+      if (!isRoot && currentPath.length > 0) keys.add(pathKey(currentPath));
+      if (node.children) visit(node.children as BrowserBookmarkNode[], currentPath);
     }
   }
 
@@ -185,7 +195,7 @@ export async function acceptRecommendations(
       bookmarkId: recommendation.bookmarkId,
       bookmarkTitle: bookmark?.title ?? recommendation.bookmarkTitle,
       bookmarkUrl: bookmark?.url ?? recommendation.bookmarkUrl,
-      fromParentId: bookmark?.parentId ?? "1",
+      fromParentId: bookmark?.parentId ?? "",
       fromIndex: bookmark?.index,
       toFolderPath: recommendation.suggestedFolderPath,
       confidence: recommendation.confidence,
