@@ -22,6 +22,7 @@ import { getAllBookmarkFolders, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { executeMovePlans } from "../services/organizer";
 import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
+import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { clearPreviewPlan } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -178,6 +179,17 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     setMessage("");
   };
 
+  const updateAIDataAuthorization = (enabled: boolean) => {
+    const provider = { ...draft.provider, enabled };
+    const nextDraft = {
+      ...draft,
+      provider,
+      providerConfigs: { ...draft.providerConfigs, [provider.type]: provider },
+    };
+    setDraft(nextDraft);
+    void saveSettings(nextDraft);
+  };
+
   const handleTestConnection = async () => {
     if (!draft.provider.apiKey.trim()) {
       setConnectionStatus("error");
@@ -187,8 +199,9 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     setConnectionStatus("testing");
     setMessage("");
     try {
+      await ensureRequiredHostPermission();
       await testAIConnection(draft.provider);
-      const provider = { ...draft.provider, enabled: true, testedAt: Date.now() };
+      const provider = { ...draft.provider, testedAt: Date.now() };
       const nextDraft = {
         ...draft,
         provider,
@@ -206,6 +219,18 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const handleGenerateSample = async () => {
     if (!sample.length) {
       setMessage("没有可用于生成小样本的书签");
+      setSampleState("error");
+      return;
+    }
+    if (!draft.provider.enabled) {
+      setMessage("请先授权向 AI 服务发送分类所需数据。");
+      setSampleState("error");
+      return;
+    }
+    try {
+      await ensureRequiredHostPermission();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "无法取得网站访问权限");
       setSampleState("error");
       return;
     }
@@ -382,7 +407,17 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
               {connectionStatus === "testing" ? "正在测试连接" : connectionStatus === "success" ? "重新测试连接" : "测试连接"}
             </button>
             {connectionStatus === "success" && (
-              <div className="onboarding__status onboarding__status--success"><CheckCircle2 aria-hidden="true" />连接成功，可以生成试分类</div>
+              <>
+                <div className="onboarding__status onboarding__status--success"><CheckCircle2 aria-hidden="true" />连接成功，请确认下方授权后再生成试分类</div>
+                <label className="onboarding__status">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.provider.enabled)}
+                    onChange={(event) => updateAIDataAuthorization(event.target.checked)}
+                  />
+                  允许向此服务发送书签标题、去敏 URL、文件夹路径和可获取的网页元数据；书签移动仍需后续确认
+                </label>
+              </>
             )}
             {connectionStatus === "error" && (
               <div className="onboarding__status onboarding__status--error"><AlertCircle aria-hidden="true" />{message}</div>
@@ -392,7 +427,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
             </button>
             <div className="onboarding__nav-row">
               <button type="button" onClick={() => setStep(1)}>返回</button>
-              <button type="button" onClick={() => setStep(3)} disabled={connectionStatus !== "success"}>下一步 <ArrowRight aria-hidden="true" /></button>
+              <button type="button" onClick={() => setStep(3)} disabled={connectionStatus !== "success" || !draft.provider.enabled}>下一步 <ArrowRight aria-hidden="true" /></button>
             </div>
           </section>
         )}

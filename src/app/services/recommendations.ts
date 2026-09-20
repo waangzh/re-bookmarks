@@ -9,7 +9,8 @@ import {
   normalizeFolderPath,
 } from "./bookmarks";
 import { createPendingRecommendation, executeMovePlans } from "./organizer";
-import { getSettings, getPendingRecommendations, savePendingRecommendations } from "./storage";
+import { getSettings, getPendingRecommendations, updatePendingRecommendations } from "./storage";
+import { ensureRequiredHostPermission } from "./hostPermissions";
 
 function hasChromeAction() {
   return typeof chrome !== "undefined" && Boolean(chrome.action);
@@ -80,12 +81,11 @@ export async function getActivePendingRecommendations() {
         .filter((check) => !check.exists)
         .map((check) => check.recommendation.bookmarkId)
     );
-    const latestRecommendations = await getPendingRecommendations();
-    const nextRecommendations = latestRecommendations.filter(
-      (recommendation) => !removedBookmarkIds.has(recommendation.bookmarkId)
+    return updatePendingRecommendations((latestRecommendations) =>
+      latestRecommendations.filter(
+        (recommendation) => !removedBookmarkIds.has(recommendation.bookmarkId)
+      )
     );
-    await savePendingRecommendations(nextRecommendations);
-    return nextRecommendations;
   }
 
   return activeRecommendations;
@@ -99,19 +99,18 @@ export async function updateRecommendationBadge() {
 }
 
 export async function removeRecommendation(id: string) {
-  const recommendations = await getPendingRecommendations();
-  const next = recommendations.filter((recommendation) => recommendation.id !== id);
-  await savePendingRecommendations(next);
+  const next = await updatePendingRecommendations((recommendations) =>
+    recommendations.filter((recommendation) => recommendation.id !== id)
+  );
   await updateRecommendationBadge();
   return next;
 }
 
 export async function removeRecommendationsForBookmark(bookmarkId: string) {
-  const recommendations = await getPendingRecommendations();
-  const next = recommendations.filter((recommendation) => recommendation.bookmarkId !== bookmarkId);
-  if (next.length === recommendations.length) return recommendations;
-
-  await savePendingRecommendations(next);
+  const next = await updatePendingRecommendations((recommendations) => {
+    const filtered = recommendations.filter((recommendation) => recommendation.bookmarkId !== bookmarkId);
+    return filtered.length === recommendations.length ? recommendations : filtered;
+  });
   await updateRecommendationBadge();
   return next;
 }
@@ -123,35 +122,36 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
     throw new Error("请填写目标文件夹");
   }
 
-  const [recommendations, tree] = await Promise.all([
-    getPendingRecommendations(),
-    getBookmarkTree(),
-  ]);
+  const tree = await getBookmarkTree();
   const existingPathKeys = collectFolderPathKeys(tree);
   let matched = false;
-  const next = recommendations.map((recommendation) => {
-    if (recommendation.id !== id) return recommendation;
-    matched = true;
-    return {
-      ...recommendation,
-      suggestedFolderPath: safeFolderPath,
-      kind: existingPathKeys.has(pathKey(safeFolderPath)) ? "move" as const : "create_folder" as const,
-      errorCode: undefined,
-      reason: "已由用户指定目标目录",
-      confidence: 1,
-    };
-  });
+  const next = await updatePendingRecommendations((recommendations) =>
+    recommendations.map((recommendation) => {
+      if (recommendation.id !== id) return recommendation;
+      matched = true;
+      return {
+        ...recommendation,
+        suggestedFolderPath: safeFolderPath,
+        kind: existingPathKeys.has(pathKey(safeFolderPath)) ? "move" as const : "create_folder" as const,
+        errorCode: undefined,
+        reason: "已由用户指定目标目录",
+        confidence: 1,
+      };
+    })
+  );
 
   if (!matched) {
     throw new Error("推荐已不存在");
   }
-
-  await savePendingRecommendations(next);
   await updateRecommendationBadge();
   return next;
 }
 
 export async function retryRecommendation(recommendation: PendingRecommendation) {
+  const settings = await getSettings();
+  if (settings.provider.apiKey && settings.provider.enabled) {
+    await ensureRequiredHostPermission();
+  }
   const bookmark = await getBookmark(recommendation.bookmarkId);
   if (!bookmark?.url) {
     await removeRecommendation(recommendation.id);
@@ -166,9 +166,9 @@ export async function retryRecommendation(recommendation: PendingRecommendation)
 async function removeCompletedRecommendations(ids: Set<string>) {
   if (ids.size === 0) return getPendingRecommendations();
 
-  const recommendations = await getPendingRecommendations();
-  const next = recommendations.filter((recommendation) => !ids.has(recommendation.id));
-  await savePendingRecommendations(next);
+  const next = await updatePendingRecommendations((recommendations) =>
+    recommendations.filter((recommendation) => !ids.has(recommendation.id))
+  );
   await updateRecommendationBadge();
   return next;
 }

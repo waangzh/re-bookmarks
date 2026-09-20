@@ -15,14 +15,18 @@ function hasChromePermissions() {
 export async function hasHistoryPermission() {
   if (!hasChromePermissions()) return false;
   return new Promise<boolean>((resolve) => {
-    chrome.permissions.contains({ permissions: ["history"] }, resolve);
+    chrome.permissions.contains({ permissions: ["history"] }, (granted) => {
+      resolve(!chrome.runtime.lastError && granted);
+    });
   });
 }
 
 export async function requestHistoryPermission() {
   if (!hasChromePermissions()) return false;
   return new Promise<boolean>((resolve) => {
-    chrome.permissions.request({ permissions: ["history"] }, resolve);
+    chrome.permissions.request({ permissions: ["history"] }, (granted) => {
+      resolve(!chrome.runtime.lastError && granted);
+    });
   });
 }
 

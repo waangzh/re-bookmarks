@@ -2,13 +2,13 @@
 
 # ReMarks
 
-**会学习分类偏好的 Chrome / Edge AI 书签整理扩展**
+**会学习分类偏好的 Chrome / Edge / Firefox AI 书签整理扩展**
 
 先确认分类框架，再按目录检查分配；整理前自动备份，把书签的最终决定权留给你。
 
 [![Version](https://img.shields.io/badge/version-1.8.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v1.8.0)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
-![Chrome / Edge](https://img.shields.io/badge/Chrome%20%7C%20Edge-supported-0ea5e9)
+![Chrome / Edge / Firefox](https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Firefox-supported-0ea5e9)
 ![React](https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 
@@ -114,11 +114,21 @@ ReMarks 把“分类习惯”作为贯穿推荐、预览和书签管理的学习
 
 > README 以 `master` 当前源码为准；Release 压缩包对应其版本标签中的代码与发布说明。
 
+### Chrome / Edge
+
 1. 前往 [最新 Release](https://github.com/waangzh/re-bookmarks/releases/latest) 下载 `re-bookmarks-v*.zip`。
 2. 解压压缩包。
 3. 打开 `chrome://extensions` 或 `edge://extensions`。
 4. 开启“开发者模式”，点击“加载已解压的扩展程序”。
 5. 选择解压后包含 `manifest.json` 的文件夹。
+
+### Firefox
+
+1. 从 Release 下载 Mozilla 已签名的 `re-bookmarks-firefox-v*.xpi`。
+2. 在 Firefox 中打开该文件并确认安装；Firefox 140.0 以下不支持此版本。
+3. 未签名的 `dist-firefox/` 仅用于开发调试，可在 `about:debugging#/runtime/this-firefox` 临时加载。
+
+签名、最低版本和回归步骤见 [Firefox 构建、测试与签名](docs/firefox-release.md)。
 
 
 ### 从源码构建
@@ -127,16 +137,16 @@ ReMarks 把“分类习惯”作为贯穿推荐、预览和书签管理的学习
 
 - Node.js 22（与发布工作流一致）
 - pnpm 10.25.0
-- Chrome 或 Edge
+- Chrome、Edge 或 Firefox 140+
 
 ```bash
 git clone https://github.com/waangzh/re-bookmarks.git
 cd re-bookmarks
 pnpm install
-npm run build
+npm run build:all
 ```
 
-构建完成后，在扩展管理页加载项目中的 `dist/` 文件夹。
+Chromium 产物在 `dist/`；Firefox 开发产物在 `dist-firefox/`。Firefox 正式安装前还需要 Mozilla 签名，命令见 [Firefox 构建、测试与签名](docs/firefox-release.md)。
 
 ## 📖 使用流程
 
@@ -167,7 +177,7 @@ npm run build
 
 ### 会发送给 AI 的数据
 
-分类请求可能包含书签标题、域名、现有文件夹路径、URL，以及深度整理时获取到的页面标题、描述等元数据。
+完成 Provider 测试后，还需要主动开启“允许向此服务发送分类数据”。开启后，分类请求才可能包含书签标题、域名、现有文件夹路径、URL，以及深度整理时获取到的页面标题、描述等元数据。
 
 - 默认情况下，URL 会移除 query 和 hash。
 - 只有主动开启“发送完整 URL”后，才会发送完整 URL。
@@ -184,10 +194,10 @@ npm run build
 | `activeTab` | 在侧边栏显示当前网页是否已收藏及相关书签 |
 | `favicon` | 显示书签网站图标 |
 | `sidePanel` | 点击扩展图标时打开 ReMarks 侧边栏 |
-| `<all_urls>` | 请求自定义 AI 端点、读取网页元数据和执行失效链接检测 |
+| `<all_urls>` | Chrome / Edge 在安装时授予；Firefox 在测试 AI、开始 AI 整理、重试推荐或启动链接检测时按需请求，用于自定义 AI endpoint、网页元数据和失效链接检测 |
 | `history`（可选） | 用户主动开启后，仅在本地统计常访问的已收藏网页 |
 
-`history` 保持为 optional permission：未开启常访问书签时不会请求，拒绝授权也不影响核心整理功能。
+`history` 保持为 optional permission：未开启常访问书签时不会请求，拒绝或撤销授权会关闭该功能，但不影响核心整理功能。Firefox 拒绝或撤销网站访问权限时，AI、网页元数据和链接检测会降级并提示重新授权；本地书签浏览、备份和手动管理保持可用。完整说明见[隐私说明](docs/privacy-policy.md)。
 
 ## ⚙️ AI Provider
 

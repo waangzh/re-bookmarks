@@ -10,7 +10,6 @@ import {
 export const PREVIEW_TASK_MESSAGE = "remarks:preview-task";
 const QUICK_TASK_TIMEOUT_MS = 30 * 60 * 1000;
 const DEEP_TASK_TIMEOUT_MS = 90 * 60 * 1000;
-const STALLED_TASK_TIMEOUT_MS = 3 * 60 * 1000;
 const STALE_TASK_ERROR = "上次生成任务已超时，请重新开始";
 const runningTaskControllers = new Map<string, AbortController>();
 
@@ -41,10 +40,15 @@ function hasRuntimeMessaging() {
   return typeof chrome !== "undefined" && Boolean(chrome.runtime?.sendMessage);
 }
 
+function createTaskId() {
+  const randomId = globalThis.crypto?.randomUUID?.();
+  return "preview-task-" + Date.now() + "-" + (randomId ?? Math.random().toString(36).slice(2));
+}
+
 function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode, model?: string): PreviewTaskCache {
   const now = Date.now();
   return {
-    id: `preview-task-${now}`,
+    id: createTaskId(),
     status: "running",
     createdAt: now,
     updatedAt: now,
@@ -75,7 +79,7 @@ function getTaskTimeoutMs(task: PreviewTaskCache) {
 function isStaleRunningTask(task: PreviewTaskCache, now = Date.now()) {
   if (task.status !== "running") return false;
   const lastActiveAt = task.updatedAt || task.createdAt;
-  return now - lastActiveAt > Math.min(getTaskTimeoutMs(task), STALLED_TASK_TIMEOUT_MS);
+  return now - lastActiveAt > getTaskTimeoutMs(task);
 }
 
 async function getRawPreviewTask() {
@@ -83,7 +87,9 @@ async function getRawPreviewTask() {
 }
 
 function createTaskController(taskId: string) {
-  abortPreviewTask(taskId);
+  const currentController = runningTaskControllers.get(taskId);
+  if (currentController) return currentController;
+
   const controller = new AbortController();
   runningTaskControllers.set(taskId, controller);
   return controller;
@@ -178,12 +184,28 @@ async function completePreviewTask(
   }
 }
 
-export async function launchPreviewTask(bookmarks: BookmarkNode[]) {
-  const task = createRunningTask(bookmarks, "quick");
+async function getOrCreatePreviewTask(
+  bookmarks: BookmarkNode[],
+  organizeMode: OrganizeMode,
+  model?: string
+) {
+  const existingTask = await getPreviewTask();
+  if (existingTask?.status === "running") return { task: existingTask, created: false };
+
+  const task = createRunningTask(bookmarks, organizeMode, model);
   await savePreviewTask(task);
+  return { task, created: true };
+}
+
+export async function launchPreviewTask(bookmarks: BookmarkNode[]) {
+  const { task, created } = await getOrCreatePreviewTask(bookmarks, "quick");
+  if (!created) return task;
+
+  const claimedTask = { ...task, executionOwner: "page" as const, updatedAt: Date.now() };
+  await savePreviewTask(claimedTask);
   const controller = createTaskController(task.id);
   void completePreviewTask(bookmarks, task.id, "quick", undefined, controller.signal);
-  return task;
+  return claimedTask;
 }
 
 function sendPreviewTaskMessage(message: PreviewTaskMessage) {
@@ -202,34 +224,54 @@ function sendPreviewTaskMessage(message: PreviewTaskMessage) {
   });
 }
 
-export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode = "quick", model?: string) {
-  const task = createRunningTask(bookmarks, organizeMode, model);
-  await savePreviewTask(task);
+async function startTaskInPage(task: PreviewTaskCache, bookmarks: BookmarkNode[]) {
+  const currentTask = await getRawPreviewTask();
+  if (!isSameRunningTask(currentTask, task.id)) return currentTask;
+  if (currentTask.executionOwner === "background") return currentTask;
 
-  if (!hasRuntimeMessaging()) {
-    const controller = createTaskController(task.id);
-    void completePreviewTask(bookmarks, task.id, organizeMode, model, controller.signal);
-    return task;
-  }
+  const claimedTask = { ...currentTask, executionOwner: "page" as const, updatedAt: Date.now() };
+  await savePreviewTask(claimedTask);
+  const controller = createTaskController(task.id);
+  void completePreviewTask(
+    bookmarks,
+    task.id,
+    task.organizeMode ?? "quick",
+    task.model,
+    controller.signal
+  );
+  return claimedTask;
+}
 
-  chrome.runtime.sendMessage(
-    {
+async function sendRunMessage(task: PreviewTaskCache, bookmarks: BookmarkNode[]) {
+  if (!hasRuntimeMessaging()) return startTaskInPage(task, bookmarks);
+
+  try {
+    return await sendPreviewTaskMessage({
       type: PREVIEW_TASK_MESSAGE,
       action: "run",
       taskId: task.id,
       bookmarks,
-      organizeMode,
-      model,
-    },
-    () => {
-      if (chrome.runtime.lastError) {
-        const controller = createTaskController(task.id);
-        void completePreviewTask(bookmarks, task.id, organizeMode, model, controller.signal);
-      }
-    }
-  );
+      organizeMode: task.organizeMode,
+      model: task.model,
+    });
+  } catch {
+    return startTaskInPage(task, bookmarks);
+  }
+}
 
-  return task;
+export async function startPreviewTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode = "quick", model?: string) {
+  const { task, created } = await getOrCreatePreviewTask(bookmarks, organizeMode, model);
+  if (!created) {
+    void sendRunMessage(task, bookmarks);
+    return task;
+  }
+
+  return (await sendRunMessage(task, bookmarks)) ?? task;
+}
+
+export async function resumePreviewTask(task: PreviewTaskCache, bookmarks: BookmarkNode[]) {
+  if (task.status !== "running") return task;
+  return (await sendRunMessage(task, bookmarks)) ?? task;
 }
 
 export async function requestClearPreviewTask() {
@@ -261,15 +303,28 @@ export function isPreviewTaskMessage(message: unknown): message is PreviewTaskMe
 
 export async function handlePreviewTaskMessage(message: PreviewTaskMessage) {
   if (message.action === "run") {
+    const currentTask = await getRawPreviewTask();
+    if (!isSameRunningTask(currentTask, message.taskId)) return currentTask;
+    if (currentTask.executionOwner === "page") return currentTask;
+    if (currentTask.executionOwner === "background" && runningTaskControllers.has(message.taskId)) {
+      return currentTask;
+    }
+
+    const claimedTask: PreviewTaskCache = {
+      ...currentTask,
+      executionOwner: "background",
+      updatedAt: Date.now(),
+    };
+    await savePreviewTask(claimedTask);
     const controller = createTaskController(message.taskId);
-    await completePreviewTask(
+    void completePreviewTask(
       message.bookmarks,
       message.taskId,
-      message.organizeMode ?? "quick",
-      message.model,
+      message.organizeMode ?? claimedTask.organizeMode ?? "quick",
+      message.model ?? claimedTask.model,
       controller.signal
     );
-    return getPreviewTask();
+    return claimedTask;
   }
   if (message.action === "clear") {
     abortPreviewTask();

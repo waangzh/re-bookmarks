@@ -1,5 +1,6 @@
 import type { BookmarkForAI, BookmarkNode, OrganizeMode } from "../types";
 import { sanitizeUrl } from "./rules";
+import { hasRequiredHostPermission } from "./hostPermissions";
 
 const METADATA_FETCH_CONCURRENCY = 4;
 const METADATA_MAX_BYTES = 128 * 1024;
@@ -232,6 +233,12 @@ export async function enrichBookmarksWithPageMetadata<T extends BookmarkForAI>(
   options: Pick<MetadataFetchOptions, "sendFullUrl"> & { mode?: OrganizeMode; signal?: AbortSignal }
 ) {
   const sourceById = new Map(sourceBookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  if (!(await hasRequiredHostPermission())) {
+    return bookmarks.map((bookmark) => ({
+      ...bookmark,
+      metadata: unavailable("未授予网站访问权限，已仅使用标题和 URL"),
+    }));
+  }
   const limits = METADATA_MODE_LIMITS[options.mode ?? "quick"];
   const batchController = new AbortController();
   const abortForExternalSignal = () => batchController.abort();

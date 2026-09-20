@@ -102,7 +102,7 @@ export type PendingRecommendation = {
   confidence: number;
   reason?: string;
   kind?: PendingRecommendationKind;
-  errorCode?: "missing_api_key" | "invalid_response" | "provider_error";
+  errorCode?: "missing_api_key" | "ai_not_authorized" | "host_permission" | "invalid_response" | "provider_error";
 };
 
 export type BookmarkImportItemStatus = "ready" | "duplicate" | "invalid";
@@ -288,6 +288,7 @@ export type PreviewTaskCache = {
   tokenUsage?: TokenUsage;
   error?: string;
   progress?: PreviewTaskProgress;
+  executionOwner?: "background" | "page";
 };
 
 export type FolderHabitProfile = {

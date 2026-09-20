@@ -1,7 +1,10 @@
 node_modules/
 dist/
 dist-firefox/
-docs/
+web-ext-artifacts/
+firefox-artifacts/
+*.xpi
+docs/generated/
 
 .env
 .env.*

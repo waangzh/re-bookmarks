@@ -42,6 +42,12 @@ export function History() {
     let alive = true;
     hasHistoryPermission().then((granted) => {
       if (!alive) return;
+      if (settings.enableHistory && !granted) {
+        setEnabled(false);
+        setMessage("浏览历史权限已被拒绝或撤销，常访问书签已关闭。");
+        void saveSettings({ ...settings, enableHistory: false });
+        return;
+      }
       setEnabled(settings.enableHistory && granted);
     });
     return () => {

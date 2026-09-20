@@ -7,12 +7,14 @@ import { removeRecommendationsForBookmark, updateRecommendationBadge } from "@/a
 
 chrome.bookmarks.onCreated.addListener((_id, bookmark) => {
   if (bookmark.url) {
-    void createPendingRecommendation(bookmark).then(() => updateRecommendationBadge());
+    void createPendingRecommendation(bookmark)
+      .then(() => updateRecommendationBadge())
+      .catch(() => undefined);
   }
 });
 
 chrome.bookmarks.onRemoved.addListener((id) => {
-  void removeRecommendationsForBookmark(id);
+  void removeRecommendationsForBookmark(id).catch(() => undefined);
 });
 
 void updateRecommendationBadge();

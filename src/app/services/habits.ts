@@ -1,5 +1,5 @@
 import type { FolderHabitExportV1, FolderHabitProfile, FolderHabitSample } from "../types";
-import { analyzeFolderHabitsWithAI } from "./aiProvider";
+import { AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE, analyzeFolderHabitsWithAI, isAIProviderAuthorized } from "./aiProvider";
 import { getAllBookmarkFolders, getAllBookmarks } from "./bookmarks";
 import { getDomain, sanitizeUrl } from "./rules";
 import {
@@ -456,6 +456,8 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
     analysisWarning = "未找到可分析的书签样本，已使用本地规则推断";
   } else if (!settings.provider.apiKey) {
     analysisWarning = "未配置 API Key，已使用本地规则推断";
+  } else if (!isAIProviderAuthorized(settings.provider)) {
+    analysisWarning = AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE + " 已使用本地规则推断";
   } else {
     try {
       analyzed = await analyzeFolderHabitsWithAI(settings.provider, samples, fallback);

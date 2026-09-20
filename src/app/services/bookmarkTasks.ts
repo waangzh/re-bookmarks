@@ -5,6 +5,7 @@ import type {
   PendingRecommendation,
 } from "../types";
 import { getLinkHealthReport, saveLinkHealthReport } from "./storage";
+import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
 
 export const LINK_HEALTH_SCAN_MESSAGE = "remarks:link-health-scan";
 
@@ -624,6 +625,9 @@ function runLinkHealthScan(bookmarks: BookmarkNode[], report: BookmarkLinkHealth
 }
 
 export async function startLinkHealthScan(bookmarks: BookmarkNode[]) {
+  if (!(await hasRequiredHostPermission())) {
+    throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
+  }
   const task = await createLinkHealthScanTask(bookmarks);
 
   if (!hasRuntimeMessaging()) {

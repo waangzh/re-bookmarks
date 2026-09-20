@@ -38,7 +38,8 @@ import type {
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
 import { clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
-import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../services/previewTask";
+import { getPreviewTask, requestClearPreviewTask, resumePreviewTask, startPreviewTask } from "../services/previewTask";
+import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
@@ -640,6 +641,7 @@ export function Preview() {
     setAllBookmarks(urlBookmarks);
     setFolderHabitProfile(habitProfile);
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
+    return urlBookmarks;
   };
 
   const restoreCompletedTask = (task: PreviewTaskCache) => {
@@ -678,13 +680,14 @@ export function Preview() {
       let keepLoading = false;
       setLoading(true);
       try {
-        await loadSelectableBookmarks();
+        const selectableBookmarks = await loadSelectableBookmarks();
         if (!alive) return;
         const task = await getPreviewTask();
         if (!alive) return;
         if (task?.status === "running") {
           keepLoading = true;
           restoreRunningTask(task);
+          void resumePreviewTask(task, selectableBookmarks);
           return;
         }
         if (task?.status === "completed" && restoreCompletedTask(task)) {
@@ -864,6 +867,14 @@ export function Preview() {
     if (settings.provider.apiKey && !model) {
       setError("请选择或输入本次整理使用的模型");
       return;
+    }
+    if (settings.provider.apiKey && settings.provider.enabled) {
+      try {
+        await ensureRequiredHostPermission();
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "无法取得网站访问权限");
+        return;
+      }
     }
     setPhase("preview");
     setLoading(true);

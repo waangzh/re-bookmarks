@@ -50,6 +50,7 @@ import {
   saveIgnoredManualTaskBookmarkIds,
 } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+import { ensureRequiredHostPermission, hasRequiredHostPermission } from "../services/hostPermissions";
 
 type TaskMode = "unsorted" | "duplicate" | "invalid";
 type LinkHealthGroupKey = "broken" | "suspicious" | "temporary_failed";
@@ -363,21 +364,29 @@ export function ManageBookmarks() {
     if (resumedLinkScanIdsRef.current.has(linkHealthReport.id)) return;
 
     resumedLinkScanIdsRef.current.add(linkHealthReport.id);
-    setScanningLinks(true);
-    setLinkScanActive(true);
-    void startLinkHealthScan(bookmarks)
-      .then((report) => {
-        setLinkHealthReport(report);
-        const checked = report.results.length;
-        setScanProgress({ checked, total: report.totalCount ?? bookmarks.length });
-      })
-      .catch((error: unknown) => {
+    void hasRequiredHostPermission().then((granted) => {
+      if (!granted) {
         setScanningLinks(false);
-        setMessage(error instanceof Error ? error.message : "链接检测续扫失败");
-      })
-      .finally(() => {
-        setLinkScanActive(false);
-      });
+        setMessage("网站访问权限已撤销，无法继续链接检测。请点击“开始检测”重新授权。");
+        return;
+      }
+
+      setScanningLinks(true);
+      setLinkScanActive(true);
+      return startLinkHealthScan(bookmarks)
+        .then((report) => {
+          setLinkHealthReport(report);
+          const checked = report.results.length;
+          setScanProgress({ checked, total: report.totalCount ?? bookmarks.length });
+        })
+        .catch((error: unknown) => {
+          setScanningLinks(false);
+          setMessage(error instanceof Error ? error.message : "链接检测续扫失败");
+        })
+        .finally(() => {
+          setLinkScanActive(false);
+        });
+    });
   }, [bookmarks, linkHealthReport?.id, linkHealthReport?.status, taskMode]);
 
   useEffect(() => {
@@ -1834,6 +1843,7 @@ export function ManageBookmarks() {
     setScanProgress({ checked: 0, total: bookmarks.length });
     let keepScanning = false;
     try {
+      await ensureRequiredHostPermission();
       const report = await startLinkHealthScan(bookmarks);
       keepScanning = true;
       setLinkHealthReport(report);

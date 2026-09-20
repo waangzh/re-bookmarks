@@ -130,6 +130,24 @@ export function savePendingRecommendations(recommendations: PendingRecommendatio
   return setStorageValue(STORAGE_KEYS.pendingRecommendations, recommendations);
 }
 
+let pendingRecommendationUpdateQueue: Promise<void> = Promise.resolve();
+
+export function updatePendingRecommendations(
+  update: (recommendations: PendingRecommendation[]) => PendingRecommendation[]
+): Promise<PendingRecommendation[]> {
+  const operation = pendingRecommendationUpdateQueue.then(async () => {
+    const nextRecommendations = update(await getPendingRecommendations());
+    await savePendingRecommendations(nextRecommendations);
+    return nextRecommendations;
+  });
+
+  pendingRecommendationUpdateQueue = operation.then(
+    () => undefined,
+    () => undefined
+  );
+  return operation;
+}
+
 export function getIgnoredManualTaskBookmarkIds(): Promise<string[]> {
   return getStorageValue<string[]>(STORAGE_KEYS.ignoredManualTaskBookmarkIds, []);
 }

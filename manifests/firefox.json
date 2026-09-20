@@ -4,7 +4,7 @@
   "version": "1.8.0",
   "description": "ReMarks：使用 AI 智能分类整理浏览器书签",
   "permissions": ["bookmarks", "storage", "activeTab"],
-  "host_permissions": ["<all_urls>"],
+  "optional_host_permissions": ["<all_urls>"],
   "optional_permissions": ["history"],
   "action": {
     "default_title": "打开 ReMarks",
@@ -41,7 +41,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "remarks-firefox@re-bookmarks.local",
+      "id": "remarks@waangzh.github.io",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["bookmarksInfo", "websiteContent", "authenticationInfo"]

@@ -18,6 +18,7 @@ import type { AIProviderConfig, AIProviderType, Settings } from "../types";
 import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { requestClearPreviewTask } from "../services/previewTask";
+import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 
@@ -99,10 +100,11 @@ export function Options() {
     setTestStatus("testing");
     setMessage("");
     try {
+      await ensureRequiredHostPermission();
       await testAIConnection(draft.provider);
       setTestStatus("success");
       setDraft((current) => {
-        const provider = { ...current.provider, enabled: true, testedAt: Date.now() };
+        const provider = { ...current.provider, testedAt: Date.now() };
         return {
           ...current,
           provider,
@@ -124,8 +126,12 @@ export function Options() {
       return;
     }
     const granted = await requestHistoryPermission();
-    setDraft((current) => ({ ...current, enableHistory: granted }));
-    if (!granted) setMessage("未授予浏览历史权限，常访问书签已保持关闭");
+    const nextDraft = { ...draft, enableHistory: granted };
+    setDraft(nextDraft);
+    if (!granted) {
+      await saveSettings(nextDraft);
+      setMessage("未授予浏览历史权限，常访问书签已保持关闭");
+    }
   };
 
   const persistDraft = async () => {
@@ -216,7 +222,7 @@ export function Options() {
               <button
                 type="button"
                 onClick={() => void handleStartOrganize()}
-                disabled={testStatus !== "success"}
+                disabled={!draft.provider.enabled}
                 className="extension-page__wide-primary"
               >
                 <Sparkles aria-hidden="true" />
@@ -224,12 +230,29 @@ export function Options() {
               </button>
             </div>
 
+            <div className="extension-switch-row">
+              <div>
+                <div className="extension-switch-row__title">允许向此服务发送分类数据</div>
+                <div className="extension-switch-row__hint">会发送书签标题、去敏 URL、文件夹路径和可获取的网页元数据；书签移动仍需另行确认</div>
+              </div>
+              <label className="relative inline-block w-12 h-6">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.provider.enabled)}
+                  disabled={!draft.provider.testedAt && testStatus !== "success"}
+                  onChange={(event) => updateProviderConfig("enabled", event.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-60 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
+              </label>
+            </div>
+
             {testStatus === "success" && (
               <div className="extension-status extension-status--success">
                 <Check aria-hidden="true" />
                 <span>
                   <strong>连接成功</strong>
-                  <small>{providerProfile.label} 已返回有效响应，可以开始生成整理建议。</small>
+                  <small>{providerProfile.label} 已返回有效响应；开启下方授权后才会发送书签分类数据。</small>
                 </span>
               </div>
             )}

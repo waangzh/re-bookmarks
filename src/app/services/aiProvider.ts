@@ -8,6 +8,7 @@ import type {
   PreviewTaskPhase,
   TokenUsage,
 } from "../types";
+import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
 
 type ClassificationOptions = {
   maxTopLevelFolders: number;
@@ -182,6 +183,12 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
 };
 
 export const AI_PROVIDER_OPTIONS = Object.values(AI_PROVIDER_PROFILES);
+
+export const AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE = "尚未授权向 AI 服务发送分类所需数据。请在设置中测试连接后，开启“允许向此服务发送分类数据”。";
+
+export function isAIProviderAuthorized(config: AIProviderConfig) {
+  return Boolean(config.apiKey && config.enabled);
+}
 
 function profileFor(type: AIProviderType) {
   return AI_PROVIDER_PROFILES[type] ?? AI_PROVIDER_PROFILES.custom;
@@ -562,6 +569,7 @@ async function chatCompletion(
   signal?: AbortSignal
 ) {
   if (!config.apiKey) throw new Error("缺少 API Key");
+  if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
 
   const profile = profileFor(config.type);
   const endpoint = endpointFor(config);
@@ -675,6 +683,7 @@ export async function testAIConnection(config: AIProviderConfig) {
 
 export async function listAIModels(config: AIProviderConfig): Promise<AIModelOption[]> {
   if (!config.apiKey) throw new Error("请先配置 API Key 后再查询模型");
+  if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
 
   const profile = profileFor(config.type);
   const endpoint = endpointFor(config);

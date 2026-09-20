@@ -24,13 +24,28 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: npm run build
+      - run: npm run build:all
+
+      - name: Validate Firefox package
+        run: npx --yes web-ext@latest lint --source-dir dist-firefox
 
       - name: Create zip
         run: cd dist && zip -r ../re-bookmarks-${{ github.ref_name }}.zip .
 
+      - name: Sign Firefox package
+        env:
+          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
+          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        run: |
+          npx --yes web-ext@latest sign --source-dir dist-firefox --artifacts-dir firefox-artifacts --api-key "$AMO_API_KEY" --api-secret "$AMO_API_SECRET" --channel unlisted
+          signed_xpi=$(find firefox-artifacts -maxdepth 1 -name '*.xpi' -type f | head -n 1)
+          test -n "$signed_xpi"
+          cp "$signed_xpi" "re-bookmarks-firefox-${{ github.ref_name }}.xpi"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: re-bookmarks-${{ github.ref_name }}.zip
+          files: |
+            re-bookmarks-${{ github.ref_name }}.zip
+            re-bookmarks-firefox-${{ github.ref_name }}.xpi
           generate_release_notes: true

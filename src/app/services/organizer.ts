@@ -28,7 +28,12 @@ import {
   removeFolder,
   sortFoldersAndAncestorsChildrenFoldersFirst,
 } from "./bookmarks";
-import { classifyWithAI } from "./aiProvider";
+import {
+  AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE,
+  classifyWithAI,
+  isAIProviderAuthorized,
+} from "./aiProvider";
+import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
 import { enrichBookmarksWithPageMetadata } from "./pageMetadata";
 import {
   LEGACY_UNCLASSIFIED_FOLDER_NAMES,
@@ -41,11 +46,10 @@ import { getBookmarkTreeStats, saveBackupToHistory } from "./backups";
 import {
   getLastBackup,
   getFolderHabitProfile,
-  getPendingRecommendations,
   getSettings,
   saveLastBackup,
   saveReportToHistory,
-  savePendingRecommendations,
+  updatePendingRecommendations,
 } from "./storage";
 
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
@@ -404,6 +408,13 @@ export async function generateMovePlanPreviewForBookmarks(
   const provider = options.model?.trim()
     ? { ...settings.provider, model: options.model.trim() }
     : settings.provider;
+  const hasHostPermission = await hasRequiredHostPermission();
+  const canUseAI = isAIProviderAuthorized(provider) && hasHostPermission;
+  const aiUnavailableReason = !provider.apiKey
+    ? "未配置 API Key，无法调用 AI"
+    : !isAIProviderAuthorized(provider)
+      ? AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE
+      : HOST_PERMISSION_REQUIRED_MESSAGE;
   const results = new Map<string, ClassificationResult>();
   const failureReasons = new Map<string, string>();
   const tokenUsage = createTokenUsage();
@@ -423,7 +434,7 @@ export async function generateMovePlanPreviewForBookmarks(
     });
   };
 
-  if (urlBookmarks.length && provider.apiKey) {
+  if (urlBookmarks.length && canUseAI) {
     // 阶段一：采样首次分类，建立统一分类体系
     const sampleSize = Math.min(30, urlBookmarks.length);
     const sample = urlBookmarks.slice(0, sampleSize);
@@ -491,11 +502,11 @@ export async function generateMovePlanPreviewForBookmarks(
     }
   } else if (urlBookmarks.length) {
     for (const bookmark of urlBookmarks) {
-      failureReasons.set(bookmark.id, "未配置 API Key，无法调用 AI");
+      failureReasons.set(bookmark.id, aiUnavailableReason);
     }
   }
 
-  if (!provider.apiKey) processedBookmarks = urlBookmarks.length;
+  if (!canUseAI) processedBookmarks = urlBookmarks.length;
   await reportProgress("generating_preview");
   compactClassificationResults(results, settings, habitProfile);
 
@@ -792,7 +803,7 @@ export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
   });
 }
 
-export async function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {
+async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.BookmarkTreeNode) {
   if (!bookmark.url) return null;
 
   const [settings, currentBookmark, tree, habitProfile] = await Promise.all([
@@ -823,6 +834,16 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     runtimeError = {
       errorCode: "missing_api_key",
       reason: "未配置 API Key，尚未进行内容分类。请完成 AI 设置后重试。",
+    };
+  } else if (!isAIProviderAuthorized(settings.provider)) {
+    runtimeError = {
+      errorCode: "ai_not_authorized",
+      reason: AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE,
+    };
+  } else if (!(await hasRequiredHostPermission())) {
+    runtimeError = {
+      errorCode: "host_permission",
+      reason: HOST_PERMISSION_REQUIRED_MESSAGE + " 请从推荐页点击重试并允许授权。",
     };
   } else {
     let aiBookmark: BookmarkForAI | undefined;
@@ -884,11 +905,9 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     );
 
     if (isSameFolderPath(latestFolderPath, suggestedFolderPath)) {
-      const recommendations = await getPendingRecommendations();
-      const nextRecommendations = recommendations.filter((item) => item.bookmarkId !== latestBookmark.id);
-      if (nextRecommendations.length !== recommendations.length) {
-        await savePendingRecommendations(nextRecommendations);
-      }
+      await updatePendingRecommendations((recommendations) =>
+        recommendations.filter((item) => item.bookmarkId !== latestBookmark.id)
+      );
       return null;
     }
 
@@ -916,18 +935,34 @@ export async function createPendingRecommendation(bookmark: chrome.bookmarks.Boo
     errorCode: runtimeError?.errorCode,
   };
 
-  const recommendations = await getPendingRecommendations();
-  await savePendingRecommendations([
+  await updatePendingRecommendations((recommendations) => [
     recommendation,
     ...recommendations.filter((item) => item.bookmarkId !== latestBookmark.id),
   ]);
 
   const savedBookmark = await getBookmark(latestBookmark.id);
   if (!savedBookmark?.url) {
-    const savedRecommendations = await getPendingRecommendations();
-    await savePendingRecommendations(savedRecommendations.filter((item) => item.bookmarkId !== latestBookmark.id));
+    await updatePendingRecommendations((recommendations) =>
+      recommendations.filter((item) => item.bookmarkId !== latestBookmark.id)
+    );
     return null;
   }
 
   return recommendation;
+}
+
+const pendingRecommendationTasks = new Map<string, Promise<PendingRecommendation | null>>();
+
+export function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {
+  const runningTask = pendingRecommendationTasks.get(bookmark.id);
+  if (runningTask) return runningTask;
+
+  let task: Promise<PendingRecommendation | null>;
+  task = createPendingRecommendationInternal(bookmark).finally(() => {
+    if (pendingRecommendationTasks.get(bookmark.id) === task) {
+      pendingRecommendationTasks.delete(bookmark.id);
+    }
+  });
+  pendingRecommendationTasks.set(bookmark.id, task);
+  return task;
 }
