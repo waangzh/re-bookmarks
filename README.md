@@ -2,17 +2,15 @@
 
 # ReMarks
 
-**会学习分类偏好的 Chrome / Edge / Firefox AI 书签整理扩展**
+**适用于 Chrome、Edge 与 Firefox 的 AI 辅助书签整理扩展**
 
-先确认分类框架，再按目录检查分配；整理前自动备份，把书签的最终决定权留给你。
+先生成可审核的分类建议，再由你确认移动；每次批量改动前都会创建本地备份。
 
 [![Version](https://img.shields.io/badge/version-1.8.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v1.8.0)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
 ![Chrome / Edge / Firefox](https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Firefox-supported-0ea5e9)
-![React](https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 
-[源码亮点](#-当前源码亮点) · [核心能力](#-核心能力) · [偏好学习](#分类偏好无感学习) · [安装](#-安装与体验) · [使用流程](#-使用流程) · [隐私与权限](#-隐私与权限) · [本地开发](#-本地开发) · [路线图](#-路线图)
+[核心能力](#-核心能力) · [偏好学习](#分类偏好无感学习) · [安装](#-安装与体验) · [使用流程](#-使用流程) · [隐私与权限](#-隐私与权限) · [本地开发](#-本地开发)
 
 <img src="pic/remarks.png" alt="ReMarks 产品概览" width="760">
 
@@ -30,14 +28,6 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 | 预览可拖动调整；忽略建议不会记录偏好 | 支持撤销或重新应用最近一次整理 | 浏览历史仅本地统计，且权限默认不开启 |
 | 删除、恢复等敏感操作需要再次确认 | 最多保留 5 份近期备份并支持安全恢复 | API Key 仅保存在 `chrome.storage.local` |
 
-## 🌟 当前源码亮点
-
-- **更容易建立信任**：首次使用引导会生成小样本，可直接修正目标目录、仅应用已检查条目，或带着修正后的偏好继续完整预览。
-- **更省审核时间**：先确认拟新增的一级目录，再按目标目录检查代表条目；跨一级目录、疑似重复或弱依据建议仍逐项决定。
-- **更灵活地调整**：整理前可选择本次模型；待处理推荐支持编辑分类，未分类书签可手动归档或忽略。
-- **反馈语义更准确**：“忽略建议”只关闭当前建议；只有“不推荐这个分类”和实际修改目标目录才会写入分类偏好。
-- **越用越符合习惯**：明确修正会在下一次分类中优先影响域名、目录、层级和分类风格。
-- **更方便地迁移**：支持导入浏览器导出的书签 HTML，保留目录层级，并在写入前预览和备份。
 
 ## 🖼️ 界面预览
 
@@ -54,7 +44,7 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 ### 首次引导与可修正小样本
 
 - 首次打开会先在本地统计书签、未分类项、疑似重复和现有文件夹，不会上传浏览历史。
-- 连接 AI 后从不同目录抽取最多 20 个书签生成试分类，并展示其中最多 5 条供逐项检查。
+- 测试 AI 连接并主动授权数据发送后，从不同目录抽取最多 20 个书签生成试分类，并展示其中最多 5 条供逐项检查。
 - 每条代表建议会显示分类理由和相对把握程度；可在当前页面直接改写目标目录，修改后的目录结构和修正数量会即时更新。
 - 可以只应用页面中已经检查的条目：执行前仍会创建完整备份，未展示的样本不会随之移动；也可以先保存明确修正，再进入完整预览。
 - 没有 API Key 时，可通过“先使用本地搜索与重复检查”进入本地功能；之后仍可在设置页连接 AI。
@@ -124,11 +114,11 @@ ReMarks 把“分类习惯”作为贯穿推荐、预览和书签管理的学习
 
 ### Firefox
 
-1. 从 Release 下载 Mozilla 已签名的 `re-bookmarks-firefox-v*.xpi`。
-2. 在 Firefox 中打开该文件并确认安装；Firefox 140.0 以下不支持此版本。
+1. 如果对应 Release 附带 Mozilla 已签名的 `re-bookmarks-firefox-v*.xpi`，在 Firefox 中打开该文件并确认安装。
+2. Firefox 140.0 以下不支持此版本。
 3. 未签名的 `dist-firefox/` 仅用于开发调试，可在 `about:debugging#/runtime/this-firefox` 临时加载。
 
-签名、最低版本和回归步骤见 [Firefox 构建、测试与签名](docs/firefox-release.md)。
+签名 XPI 依赖 AMO 凭据；签名、最低版本和回归步骤见 [Firefox 构建、测试与签名](docs/firefox-release.md)。
 
 
 ### 从源码构建
@@ -192,8 +182,8 @@ Chromium 产物在 `dist/`；Firefox 开发产物在 `dist-firefox/`。Firefox �
 | `bookmarks` | 读取书签树，以及在确认后创建文件夹、移动、编辑、删除或恢复书签 |
 | `storage` | 在本地保存设置、推荐、预览任务、报告和备份 |
 | `activeTab` | 在侧边栏显示当前网页是否已收藏及相关书签 |
-| `favicon` | 显示书签网站图标 |
-| `sidePanel` | 点击扩展图标时打开 ReMarks 侧边栏 |
+| `favicon` | 仅 Chrome / Edge：显示书签网站图标；Firefox 使用本地图标降级显示 |
+| `sidePanel` | 仅 Chrome / Edge：点击扩展图标时打开 ReMarks 侧栏；Firefox 使用原生 `sidebar_action` |
 | `<all_urls>` | Chrome / Edge 在安装时授予；Firefox 在测试 AI、开始 AI 整理、重试推荐或启动链接检测时按需请求，用于自定义 AI endpoint、网页元数据和失效链接检测 |
 | `history`（可选） | 用户主动开启后，仅在本地统计常访问的已收藏网页 |
 
@@ -214,16 +204,20 @@ Chromium 产物在 `dist/`；Firefox 开发产物在 `dist-firefox/`。Firefox �
 ## 🛠️ 本地开发
 
 ```bash
-# 监听源码变化并持续重建
+# 监听 Chromium 开发构建
 npm run dev
 
-# 生产构建，同时生成可加载的 dist/manifest.json
+# 生成 Chrome / Edge 可加载产物
 npm run build
+
+# 生成 Firefox 可加载产物
+npm run build:firefox
+
+# 同时构建两个目标
+npm run build:all
 ```
 
-监听构建不会自动刷新浏览器中的扩展，代码变化后需要在扩展管理页点击“重新加载”。
-
-项目当前没有独立的 lint、typecheck 或单元测试脚本；代码变更至少应通过 `npm run build`，涉及界面时还应手动检查 360px 紧凑布局、侧边栏和设置页。
+监听构建只覆盖 Chromium；Firefox 调试需重新执行 `npm run build:firefox`，并在浏览器扩展管理页重新加载。项目没有独立的 lint、typecheck 或单元测试脚本；代码变更至少应通过 `npm run build:all`，涉及界面时还应手动检查 360px popup、侧边栏和设置页。
 
 ### 技术栈
 
@@ -232,7 +226,7 @@ npm run build
 - Vite 6 + Tailwind CSS v4
 - Zustand + React Router
 - Radix UI + lucide-react
-- `chrome.bookmarks`、`chrome.storage`、`chrome.permissions`、可选 `chrome.history`
+- 书签、存储、权限与可选历史记录 WebExtension API
 
 ### 项目结构
 
@@ -244,19 +238,22 @@ src/
     store/         Zustand 全局状态
     types.ts       跨模块业务类型
     App.tsx        popup、side panel 与 options 共用路由
-  background/      Manifest V3 service worker
+  background/      Chromium service worker 与 Firefox background scripts 共用逻辑
   popup/           360px 紧凑页面入口
-  sidebar/         浏览器侧边栏入口
+  sidebar/         Chromium side panel 与 Firefox 原生侧栏入口
   options/         设置页入口
   styles/          Tailwind 入口与全局样式
 scripts/           Manifest 后处理与图标生成脚本
 public/icons/      扩展图标
-manifest.json      开发态扩展清单
+manifest.json      Chromium 开发态扩展清单
+manifests/firefox.json  Firefox 开发态扩展清单
+docs/              隐私说明与 Firefox 构建、测试、签名指南
 ```
 
 ## 📌 当前状态与限制
 
-- `package.json` 与 `manifest.json` 当前版本均为 `1.8.0`；“可修正小样本 → 分阶段预览 → 备份 → 确认执行 → 报告/搜索验证/恢复”闭环已可用。
+- `package.json`、Chromium 与 Firefox 清单当前版本均为 `1.8.0`；Chrome、Edge 与 Firefox 共用业务代码，通过独立清单和构建产物适配浏览器差异。
+- 标签发布工作流会校验 Firefox 产物，并在配置 AMO 签名凭据时生成可安装的 unlisted XPI；未签名产物只用于开发调试。
 - AI 结果可能不准确，尤其是标题含糊或页面元数据不可访问时；请始终检查预览。
 - 分类偏好当前通过高优先级 Prompt 影响 AI，而不是本地硬路由；模型仍可能不完全遵循，所以学习机制不会替代人工确认。
 - 一级/二级目录和主题/用途倾向基于用户修正次数与目录名称启发式判断，少量反馈只会保留为记录，不会立即形成全局偏好。
@@ -265,18 +262,6 @@ manifest.json      开发态扩展清单
 - 失效链接检测受网络、登录状态、反爬和限流影响，“可疑”或“暂时无法确认”不等于链接已经失效。
 - 数据主要保存在 `chrome.storage.local`；卸载扩展或清空扩展存储前，请先确认不再需要本地报告和备份。
 
-## 🔮 路线图
-
-近期版本已经补齐首次使用引导、风险分级审核、Provider 参数兼容、整理模型选择、书签 HTML 导入、推荐分类编辑、备份恢复和手动归档忽略。
-
-下一阶段计划：
-
-- [ ] 持续完善不同 AI Provider 的模型发现、参数差异和错误提示。
-- [ ] 完善分类偏好冲突处理、解释信息与自动化测试。
-- [ ] 增加可选的定期整理提醒。
-- [ ] 补充关键 service 的自动化测试与独立类型检查。
-
-路线图不代表固定发布时间，欢迎在 [Issues](https://github.com/waangzh/re-bookmarks/issues) 中讨论优先级。
 
 ## 🤝 参与贡献
 
@@ -286,7 +271,7 @@ manifest.json      开发态扩展清单
 
 1. 从 `master` 创建功能分支。
 2. 保持修改范围聚焦，不提交 `dist/`、`.env*`、日志或真实 API Key。
-3. 运行 `npm run build`。
+3. 运行 `npm run build:all`。
 4. 涉及书签移动、删除、权限或隐私边界时，在 PR 中说明手动验证场景。
 
 ## ❤ 感谢
