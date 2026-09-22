@@ -23,11 +23,12 @@ export async function hasRequiredHostPermission() {
   });
 }
 
-export async function requestRequiredHostPermission() {
-  if (!requiresRuntimeHostPermission()) return true;
-  if (await hasRequiredHostPermission()) return true;
-  if (!hasPermissionsApi()) return false;
+export function requestRequiredHostPermission(): Promise<boolean> {
+  if (!requiresRuntimeHostPermission()) return Promise.resolve(true);
+  if (!hasPermissionsApi()) return Promise.resolve(false);
 
+  // Firefox requires this call to remain directly within the user gesture.
+  // Do not await permissions.contains() before opening the request prompt.
   return new Promise<boolean>((resolve) => {
     chrome.permissions.request({ origins: ALL_HOSTS }, (granted) => {
       resolve(!chrome.runtime.lastError && granted);
