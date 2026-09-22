@@ -12,7 +12,7 @@
 
 [核心能力](#-核心能力) · [偏好学习](#分类偏好无感学习) · [安装](#-安装与体验) · [使用流程](#-使用流程) · [隐私与权限](#-隐私与权限) · [本地开发](#-本地开发)
 
-<img src="pic/remarks.png" alt="ReMarks 产品概览" width="760">
+<img src="pic/remarks.png" alt="ReMarks 产品概览" width="650">
 
 </div>
 
