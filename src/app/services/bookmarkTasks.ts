@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { getLinkHealthReport, saveLinkHealthReport } from "./storage";
 import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
+import { filterAvailableBookmarks, getCurrentWhitelist } from "./whitelist";
 
 export const LINK_HEALTH_SCAN_MESSAGE = "remarks:link-health-scan";
 
@@ -503,6 +504,7 @@ export async function checkBookmarkLinks(
   options?: LinkHealthProgressHandler | LinkHealthScanOptions
 ): Promise<BookmarkLinkHealthReport> {
   const { initialReport, onProgress } = normalizeLinkHealthScanOptions(options);
+  bookmarks = filterAvailableBookmarks(bookmarks, (await getCurrentWhitelist()).index);
   const bookmarkIds = new Set(bookmarks.map((bookmark) => bookmark.id));
   const results: BookmarkLinkHealthResult[] = initialReport?.results.filter((result) => bookmarkIds.has(result.bookmarkId)) ?? [];
   const checkedBookmarkIds = new Set(results.map((result) => result.bookmarkId));
@@ -535,7 +537,15 @@ export async function checkBookmarkLinks(
     while (nextIndex < pendingBookmarks.length) {
       const bookmark = pendingBookmarks[nextIndex];
       nextIndex += 1;
-      results.push(await checkOneBookmark(bookmark));
+      const protectedNow = (await getCurrentWhitelist()).index.protectedBookmarkIds.has(bookmark.id);
+      results.push(protectedNow ? {
+        bookmarkId: bookmark.id,
+        bookmarkTitle: bookmark.title,
+        bookmarkUrl: bookmark.url ?? "",
+        checkedAt: Date.now(),
+        status: "skipped",
+        reason: "已加入白名单",
+      } : await checkOneBookmark(bookmark));
       checked += 1;
       onProgress?.(checked, total);
       await saveLinkHealthReport(buildReport("running"));
@@ -625,6 +635,7 @@ function runLinkHealthScan(bookmarks: BookmarkNode[], report: BookmarkLinkHealth
 }
 
 export async function startLinkHealthScan(bookmarks: BookmarkNode[]) {
+  bookmarks = filterAvailableBookmarks(bookmarks, (await getCurrentWhitelist()).index);
   if (!(await hasRequiredHostPermission())) {
     throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
   }

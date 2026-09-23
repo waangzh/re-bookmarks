@@ -21,10 +21,11 @@ import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewT
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { countDuplicateGroups, getLinkHealthProblemCount, getUnsortedTaskCount } from "../services/bookmarkTasks";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
-import { getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan } from "../services/storage";
+import { STORAGE_KEYS, getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
 import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
+import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint, type WhitelistIndex } from "../services/whitelist";
 
 type PreviewState = "none" | "running" | "ready";
 type HistoryPreviewState = "checking" | "disabled" | "loading" | "ready";
@@ -126,6 +127,7 @@ export function SidebarHome() {
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
   const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<string[]>([]);
   const [ignoredManualTaskLoaded, setIgnoredManualTaskLoaded] = useState(false);
+  const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
 
   useEffect(() => {
     void loadAll();
@@ -139,9 +141,21 @@ export function SidebarHome() {
   }, []);
 
   useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
+    const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes[STORAGE_KEYS.bookmarkWhitelist]) return;
+      void loadAll();
+      void getCurrentWhitelist().then(({ index }) => setWhitelistIndex(index));
+    };
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, [loadAll]);
+
+  useEffect(() => {
     let alive = true;
-    void Promise.all([getPreviewPlan(), getPreviewTask(), getLinkHealthReport()]).then(([cache, task, report]) => {
+    void Promise.all([getPreviewPlan(), getPreviewTask(), getLinkHealthReport(), getCurrentWhitelist()]).then(([cache, task, report, protection]) => {
       if (!alive) return;
+      setWhitelistIndex(protection.index);
       setLinkHealthReport(report);
       setPreviewTask(task);
       if (task?.status === "running") {
@@ -152,7 +166,7 @@ export function SidebarHome() {
         setPreviewState("none");
         return;
       }
-      setPreviewState(cache?.movePlan?.length || task?.movePlan?.length ? "ready" : "none");
+      setPreviewState((cache?.whitelistFingerprint === whitelistFingerprint(protection.entries) && cache.movePlan.length) || task?.movePlan?.length ? "ready" : "none");
     });
     return () => {
       alive = false;
@@ -191,15 +205,18 @@ export function SidebarHome() {
     };
   }, [settings.enableHistory]);
 
+  const actionableBookmarks = useMemo(() => whitelistIndex
+    ? filterAvailableBookmarks(bookmarks, whitelistIndex) : bookmarks, [bookmarks, whitelistIndex]);
+
   const stats = useMemo(() => {
     return {
       bookmarkCount: bookmarks.length,
       unsortedTaskCount: ignoredManualTaskLoaded
-        ? getUnsortedTaskCount(bookmarks, pendingRecommendations, ignoredManualTaskBookmarkIds)
+        ? getUnsortedTaskCount(actionableBookmarks, pendingRecommendations.filter((item) => !whitelistIndex?.protectedBookmarkIds.has(item.bookmarkId)), ignoredManualTaskBookmarkIds)
         : null,
       duplicateCount: countDuplicateGroups(bookmarks),
     };
-  }, [bookmarks, ignoredManualTaskBookmarkIds, ignoredManualTaskLoaded, pendingRecommendations]);
+  }, [actionableBookmarks, bookmarks, ignoredManualTaskBookmarkIds, ignoredManualTaskLoaded, pendingRecommendations, whitelistIndex]);
 
   const aiSuggestions = useMemo(() => {
     const suggestions: Array<{ label: string; to: string }> = [];
@@ -344,7 +361,7 @@ export function SidebarHome() {
           </Link>
           <Link to="/manage?task=invalid" className="sidebar-task-card sidebar-task-card--purple">
             <span>失效链接</span>
-            <strong>{linkHealthReport ? getLinkHealthProblemCount(linkHealthReport, bookmarks) : "检测"}</strong>
+            <strong>{linkHealthReport ? getLinkHealthProblemCount(linkHealthReport, actionableBookmarks) : "检测"}</strong>
             <Link2 className="w-4 h-4" />
           </Link>
         </div>

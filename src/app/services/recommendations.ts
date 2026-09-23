@@ -11,6 +11,7 @@ import {
 import { createPendingRecommendation, executeMovePlans } from "./organizer";
 import { getSettings, getPendingRecommendations, updatePendingRecommendations } from "./storage";
 import { ensureRequiredHostPermission } from "./hostPermissions";
+import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
 
 function hasChromeAction() {
   return typeof chrome !== "undefined" && Boolean(chrome.action);
@@ -65,26 +66,25 @@ export async function getActivePendingRecommendations() {
   const recommendations = await getPendingRecommendations();
   if (!hasChromeBookmarks() || recommendations.length === 0) return recommendations;
 
+  const protection = await getCurrentWhitelist();
   const checks = await Promise.all(
     recommendations.map(async (recommendation) => ({
       recommendation,
-      exists: await bookmarkExists(recommendation.bookmarkId),
+      active: await bookmarkExists(recommendation.bookmarkId) &&
+        !protection.index.protectedBookmarkIds.has(recommendation.bookmarkId) &&
+        !isProtectedTargetPath(recommendation.suggestedFolderPath, protection.tree, protection.index),
     }))
   );
   const activeRecommendations = checks
-    .filter((check) => check.exists)
+    .filter((check) => check.active)
     .map((check) => check.recommendation);
 
   if (activeRecommendations.length !== recommendations.length) {
-    const removedBookmarkIds = new Set(
-      checks
-        .filter((check) => !check.exists)
-        .map((check) => check.recommendation.bookmarkId)
+    const removedRecommendationIds = new Set(
+      checks.filter((check) => !check.active).map((check) => check.recommendation.id)
     );
     return updatePendingRecommendations((latestRecommendations) =>
-      latestRecommendations.filter(
-        (recommendation) => !removedBookmarkIds.has(recommendation.bookmarkId)
-      )
+      latestRecommendations.filter((recommendation) => !removedRecommendationIds.has(recommendation.id))
     );
   }
 

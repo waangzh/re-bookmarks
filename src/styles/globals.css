@@ -5363,6 +5363,118 @@ input {
   padding: 5px;
 }
 
+.bookmark-whitelist-panel {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.bookmark-whitelist-panel summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.bookmark-whitelist-panel summary span {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bookmark-whitelist-panel p {
+  margin: 8px 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.bookmark-whitelist-search {
+  width: 100%;
+  margin: 4px 0 8px;
+}
+
+.bookmark-whitelist-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.bookmark-whitelist-tools button {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.bookmark-whitelist-tools button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.bookmark-whitelist-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.bookmark-whitelist-list > div,
+.bookmark-whitelist-folder-row {
+  display: flex;
+  align-items: center;
+}
+
+.bookmark-whitelist-list > div {
+  gap: 6px;
+  padding: 5px 0;
+}
+
+.bookmark-whitelist-list input[type="checkbox"] {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.bookmark-whitelist-list span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.bookmark-whitelist-list button {
+  flex: none;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.bookmark-whitelist-list button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.bookmark-whitelist-folder-row > .bookmark-tree-row {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.bookmark-whitelist-action {
+  flex: none;
+  color: #2563eb;
+}
+
 .bookmark-tree-row {
   display: flex;
   align-items: center;
@@ -7276,6 +7388,13 @@ input {
   gap: 14px;
 }
 
+.onboarding__custom-fields {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .onboarding__form label {
   display: grid;
   gap: 7px;
@@ -7668,6 +7787,7 @@ input {
 }
 
 .onboarding--popup .onboarding__form,
+.onboarding--popup .onboarding__custom-fields,
 .onboarding--popup .onboarding__finish-summary {
   grid-template-columns: 1fr;
 }
@@ -7829,6 +7949,7 @@ input {
   }
 
   .onboarding__form,
+  .onboarding__custom-fields,
   .onboarding__finish-summary {
     grid-template-columns: 1fr;
   }

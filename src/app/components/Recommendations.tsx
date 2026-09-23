@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
+import { addBookmarkWhitelistEntry } from "../services/whitelist";
+import { STORAGE_KEYS } from "../services/storage";
 
 type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
 
@@ -53,6 +55,15 @@ export function Recommendations() {
 
   useEffect(() => {
     void loadRecommendations();
+  }, [loadRecommendations]);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
+    const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName === "local" && changes[STORAGE_KEYS.bookmarkWhitelist]) void loadRecommendations();
+    };
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [loadRecommendations]);
 
   const sortedRecommendations = useMemo(() => {
@@ -151,6 +162,20 @@ export function Recommendations() {
       setDismissNotice("已忽略这条建议，未记录分类偏好");
     } catch (err) {
       setError(err instanceof Error ? err.message : "忽略推荐失败");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleProtect = async (recommendation: PendingRecommendation) => {
+    setBusyId(recommendation.id);
+    setError("");
+    try {
+      await addBookmarkWhitelistEntry("bookmark", recommendation.bookmarkId);
+      await loadRecommendations();
+      setDismissNotice("已加入白名单，后续不再整理此书签");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加入白名单失败");
     } finally {
       setBusyId(null);
     }
@@ -468,6 +493,13 @@ export function Recommendations() {
                         </>
                       )}
                     </div>
+                    {editingRecommendationId !== rec.id && (
+                      <button type="button" onClick={() => void handleProtect(rec)}
+                        disabled={Boolean(busyId) || Boolean(bulkAction)}
+                        className="extension-text-button recommendation-negative-feedback">
+                        <ShieldCheck className="w-3 h-3" />以后不整理此书签
+                      </button>
+                    )}
                     {editingRecommendationId !== rec.id && isActionable && (
                       <div className="recommendation-feedback-row">
                         <button

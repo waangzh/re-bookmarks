@@ -1,4 +1,5 @@
 import type { BookmarkNode } from "../types";
+import { getCurrentWhitelist, protectedNodeReason } from "./whitelist";
 
 export type BrowserBookmarkNode = chrome.bookmarks.BookmarkTreeNode & {
   type?: "bookmark" | "folder" | "separator";
@@ -265,8 +266,13 @@ export async function createBookmarkInFolder(parentId: string, title: string, ur
   return createBookmarkNode({ parentId, title, url, index });
 }
 
-export async function updateBookmark(id: string, title: string, url: string) {
+export async function updateBookmark(id: string, title: string, url: string, allowProtected = false) {
   if (!hasChromeBookmarks()) return null;
+  if (!allowProtected) {
+    const { tree, index } = await getCurrentWhitelist();
+    const reason = protectedNodeReason(id, tree, index);
+    if (reason) throw new Error(reason + "，请先从白名单解除保护");
+  }
 
   return new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve, reject) => {
     chrome.bookmarks.update(id, { title, url }, (node) => {
@@ -279,10 +285,16 @@ export async function updateBookmark(id: string, title: string, url: string) {
   });
 }
 
-export async function moveBookmark(id: string, parentId: string, index?: number) {
+export async function moveBookmark(id: string, parentId: string, index?: number, allowProtected = false) {
   if (!hasChromeBookmarks()) return null;
   if (isRootFolder(id)) {
     throw new Error("不能移动浏览器内置书签根目录");
+  }
+  if (!allowProtected) {
+    const { tree, index: whitelist } = await getCurrentWhitelist();
+    const reason = protectedNodeReason(id, tree, whitelist);
+    if (reason) throw new Error(reason + "，请先从白名单解除保护");
+    if (whitelist.protectedFolderIds.has(parentId)) throw new Error("目标文件夹在白名单中，无法移动到此处");
   }
 
   return new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve, reject) => {
@@ -301,6 +313,8 @@ export async function sortFolderChildrenFoldersFirst(folderId: string): Promise<
 
   const children = await getFolderChildren(folderId);
   if (children.length < 2 || children.some((child) => isSeparatorNode(child))) return false;
+  const protection = await getCurrentWhitelist();
+  if (children.some((child) => protectedNodeReason(child.id, protection.tree, protection.index))) return false;
 
   const orderedChildren = [
     ...children.filter((child) => isBookmarkFolder(child)),
@@ -355,6 +369,9 @@ export async function sortFoldersAndAncestorsChildrenFoldersFirst(folderIds: str
 
 export async function removeBookmark(id: string) {
   if (!hasChromeBookmarks()) return;
+  const { tree, index } = await getCurrentWhitelist();
+  const reason = protectedNodeReason(id, tree, index);
+  if (reason) throw new Error(reason + "，请先从白名单解除保护");
 
   return new Promise<void>((resolve, reject) => {
     chrome.bookmarks.remove(id, () => {
@@ -377,6 +394,9 @@ export async function removeFolder(id: string): Promise<void> {
   if (!folder || !isBookmarkFolder(folder as BrowserBookmarkNode)) {
     throw new Error("目标不是可删除的书签文件夹");
   }
+  const { tree, index } = await getCurrentWhitelist();
+  const reason = protectedNodeReason(id, tree, index);
+  if (reason) throw new Error(reason + "，请先从白名单解除保护");
 
   return new Promise<void>((resolve, reject) => {
     chrome.bookmarks.removeTree(id, () => {

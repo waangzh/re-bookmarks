@@ -1,5 +1,6 @@
 import type {
   BookmarkBackup,
+  BookmarkWhitelistEntry,
   BookmarkLinkHealthReport,
   FolderHabitProfile,
   OrganizeReport,
@@ -21,6 +22,7 @@ export const STORAGE_KEYS = {
   folderHabitProfile: "remarks.folderHabitProfile",
   linkHealthReport: "remarks.linkHealthReport",
   ignoredManualTaskBookmarkIds: "remarks.ignoredManualTaskBookmarkIds",
+  bookmarkWhitelist: "remarks.bookmarkWhitelist",
 } as const;
 
 export const REPORT_HISTORY_LIMIT = 5;
@@ -146,6 +148,34 @@ export function updatePendingRecommendations(
     () => undefined
   );
   return operation;
+}
+
+export function whitelistFingerprint(entries: BookmarkWhitelistEntry[]) {
+  return entries.map((entry) => entry.type + ":" + entry.id).sort().join("|");
+}
+
+export function getBookmarkWhitelist(): Promise<BookmarkWhitelistEntry[]> {
+  if (!hasChromeStorage()) return Promise.resolve([]);
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(STORAGE_KEYS.bookmarkWhitelist, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error("读取白名单失败：" + chrome.runtime.lastError.message));
+        return;
+      }
+      const entries = result[STORAGE_KEYS.bookmarkWhitelist] ?? [];
+      if (!Array.isArray(entries) || entries.some((entry) =>
+        !entry || (entry.type !== "bookmark" && entry.type !== "folder") || typeof entry.id !== "string"
+      )) {
+        reject(new Error("白名单数据无效，请先修复本地存储"));
+        return;
+      }
+      resolve(entries as BookmarkWhitelistEntry[]);
+    });
+  });
+}
+
+export function saveBookmarkWhitelist(entries: BookmarkWhitelistEntry[]): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.bookmarkWhitelist, entries);
 }
 
 export function getIgnoredManualTaskBookmarkIds(): Promise<string[]> {
@@ -296,8 +326,14 @@ export async function clearPreviewTask(): Promise<void> {
   });
 }
 
-export function getFolderHabitProfile(): Promise<FolderHabitProfile | null> {
-  return getStorageValue<FolderHabitProfile | null>(STORAGE_KEYS.folderHabitProfile, null);
+export async function getFolderHabitProfile(): Promise<FolderHabitProfile | null> {
+  const [profile, entries] = await Promise.all([
+    getStorageValue<FolderHabitProfile | null>(STORAGE_KEYS.folderHabitProfile, null),
+    getBookmarkWhitelist(),
+  ]);
+  if (!profile) return null;
+  if (!entries.length && profile.whitelistFingerprint === undefined) return profile;
+  return profile.whitelistFingerprint === whitelistFingerprint(entries) ? profile : null;
 }
 
 export function saveFolderHabitProfile(profile: FolderHabitProfile): Promise<void> {

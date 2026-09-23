@@ -25,6 +25,7 @@ import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../se
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { clearPreviewPlan } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+import { filterAvailableBookmarks, getCurrentWhitelist, type WhitelistIndex } from "../services/whitelist";
 
 type OnboardingProps = {
   defaultView?: "popup" | "options" | "sidebar";
@@ -68,6 +69,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const { bookmarks, settings, loading, loadAll, saveSettings } = useAppStore();
   const [step, setStep] = useState(1);
   const [folderCount, setFolderCount] = useState(0);
+  const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
   const [draft, setDraft] = useState<Settings>(settings);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [sampleState, setSampleState] = useState<SampleState>("idle");
@@ -84,6 +86,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   useEffect(() => {
     void loadAll();
     void getAllBookmarkFolders().then((folders) => setFolderCount(folders.length));
+    void getCurrentWhitelist().then(({ index }) => setWhitelistIndex(index));
   }, [loadAll]);
 
   useEffect(() => {
@@ -126,11 +129,13 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     unsorted: bookmarks.filter(isUnsortedBookmark).length,
     duplicates: countDuplicateGroups(bookmarks),
     folders: folderCount,
-    organizable: bookmarks.length,
-  }), [bookmarks, folderCount]);
+    organizable: whitelistIndex ? filterAvailableBookmarks(bookmarks, whitelistIndex).length : bookmarks.length,
+  }), [bookmarks, folderCount, whitelistIndex]);
 
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
-  const sample = useMemo(() => selectRepresentativeSample(bookmarks, SAMPLE_SIZE), [bookmarks]);
+  const sample = useMemo(() => selectRepresentativeSample(
+    whitelistIndex ? filterAvailableBookmarks(bookmarks, whitelistIndex) : [], SAMPLE_SIZE
+  ), [bookmarks, whitelistIndex]);
   const sampleSize = sample.length;
   const sampleFolderCount = new Set(samplePlans.map((plan) => plan.toFolderPath.join("/"))).size;
   const reviewedSamplePlans = samplePlans.slice(0, REVIEWED_SAMPLE_SIZE);
@@ -166,9 +171,9 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     setMessage("");
   };
 
-  const updateApiKey = (apiKey: string) => {
+  const updateProviderConfig = <Key extends keyof AIProviderConfig>(key: Key, value: AIProviderConfig[Key]) => {
     setDraft((current) => {
-      const provider = { ...current.provider, apiKey, enabled: false };
+      const provider = { ...current.provider, [key]: value, enabled: false, testedAt: undefined };
       return {
         ...current,
         provider,
@@ -195,6 +200,18 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
       setConnectionStatus("error");
       setMessage("请输入 API Key");
       return;
+    }
+    if (draft.provider.type === "custom") {
+      if (!draft.provider.model.trim()) {
+        setConnectionStatus("error");
+        setMessage("请输入模型名称");
+        return;
+      }
+      if (!/^https?:\/\/[^\s/]+/i.test(draft.provider.endpoint?.trim() ?? "")) {
+        setConnectionStatus("error");
+        setMessage("请输入有效的 Base URL（以 http:// 或 https:// 开头）");
+        return;
+      }
     }
     setConnectionStatus("testing");
     setMessage("");
@@ -389,18 +406,55 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                     <option key={provider.type} value={provider.type}>{provider.label}</option>
                   ))}
                 </select>
-                <small>模型与请求参数已使用 {providerProfile.label} 推荐值</small>
+                <small>{draft.provider.type === "custom" ? "请在下方填写兼容 OpenAI 接口的配置" : "模型与请求参数已使用 " + providerProfile.label + " 推荐值"}</small>
               </label>
               <label>
                 <span className="onboarding__label-row"><span><KeyRound aria-hidden="true" />API Key</span><em>仅保存在本地</em></span>
                 <input
                   type="password"
                   value={draft.provider.apiKey}
-                  onChange={(event) => updateApiKey(event.target.value)}
+                  onChange={(event) => updateProviderConfig("apiKey", event.target.value)}
                   placeholder="输入服务商提供的 API Key"
                   autoComplete="off"
                 />
               </label>
+              {draft.provider.type === "custom" && (
+                <div className="onboarding__custom-fields">
+                  <label>
+                    <span>Base URL</span>
+                    <input type="url" value={draft.provider.endpoint ?? ""} onChange={(event) => updateProviderConfig("endpoint", event.target.value)} placeholder="https://example.com/v1" />
+                    <small>填写接口根地址；请求会发送到 /chat/completions。</small>
+                  </label>
+                  <label>
+                    <span>模型</span>
+                    <input type="text" value={draft.provider.model} onChange={(event) => updateProviderConfig("model", event.target.value)} placeholder="输入服务支持的模型名称" />
+                  </label>
+                  <label>
+                    <span>Temperature</span>
+                    <input type="number" min="0" max="2" step="0.1" value={draft.provider.temperature ?? ""} onChange={(event) => updateProviderConfig("temperature", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="默认 0.1" />
+                  </label>
+                  <label>
+                    <span>Max tokens</span>
+                    <input type="number" min="1" step="1" value={draft.provider.maxTokens ?? ""} onChange={(event) => updateProviderConfig("maxTokens", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="按任务自动" />
+                  </label>
+                  <label>
+                    <span>Token 参数</span>
+                    <select value={draft.provider.tokenParam ?? "auto"} onChange={(event) => updateProviderConfig("tokenParam", event.target.value as AIProviderConfig["tokenParam"])}>
+                      <option value="auto">自动（{providerProfile.tokenParam}）</option>
+                      <option value="max_tokens">max_tokens</option>
+                      <option value="max_completion_tokens">max_completion_tokens</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>JSON mode</span>
+                    <select value={draft.provider.jsonMode ?? "auto"} onChange={(event) => updateProviderConfig("jsonMode", event.target.value as AIProviderConfig["jsonMode"])}>
+                      <option value="auto">按任务自动</option>
+                      <option value="on">始终开启</option>
+                      <option value="off">始终关闭</option>
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
             <button className="onboarding__primary" type="button" onClick={() => void handleTestConnection()} disabled={connectionStatus === "testing"}>
               {connectionStatus === "testing" ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}

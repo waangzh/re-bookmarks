@@ -12,6 +12,12 @@ export type BookmarkNode = {
 
 export type OrganizeMode = "quick" | "deep";
 
+export type BookmarkWhitelistEntry = {
+  type: "bookmark" | "folder";
+  id: string;
+  addedAt: number;
+};
+
 export type UnclassifiedHandling = "collect" | "preserveSourcePath";
 
 export type BookmarkForAI = {
@@ -251,6 +257,7 @@ export type PreviewPlanCache = {
   id: string;
   createdAt: number;
   bookmarkCount: number;
+  whitelistFingerprint?: string;
   organizeMode?: OrganizeMode;
   model?: string;
   movePlan: MovePlan[];
@@ -282,6 +289,7 @@ export type PreviewTaskCache = {
   updatedAt: number;
   bookmarkCount: number;
   selectedBookmarkIds: string[];
+  whitelistFingerprint?: string;
   organizeMode?: OrganizeMode;
   model?: string;
   movePlan?: MovePlan[];
@@ -306,6 +314,7 @@ export type FolderHabitProfile = {
   promptHint: string;
   analysisSource?: "ai" | "fallback";
   analysisWarning?: string;
+  whitelistFingerprint?: string;
   learning?: {
     correctionCount: number;
     rejectionCount: number;

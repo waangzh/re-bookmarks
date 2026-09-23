@@ -50,7 +50,15 @@ import {
   saveLastBackup,
   saveReportToHistory,
   updatePendingRecommendations,
+  getBookmarkWhitelist,
 } from "./storage";
+import {
+  buildWhitelistIndex,
+  filterAvailableBookmarks,
+  getAvailableFolderPaths,
+  getCurrentWhitelist,
+  isProtectedTargetPath,
+} from "./whitelist";
 
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
 type PreviewProgressReporter = (progress: PreviewTaskProgress) => void | Promise<void>;
@@ -399,12 +407,15 @@ export async function generateMovePlanPreviewForBookmarks(
   organizeMode: OrganizeMode = "quick",
   options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number; model?: string } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
-  const [settings, habitProfile, folderTree] = await Promise.all([
+  const [settings, habitProfile, folderTree, whitelistEntries] = await Promise.all([
     getSettings(),
     getFolderHabitProfile(),
     getBookmarkTree(),
+    getBookmarkWhitelist(),
   ]);
-  const existingFolderPaths = collectFolderPaths(folderTree).map((folder) => folder.path);
+  const whitelist = buildWhitelistIndex(folderTree, whitelistEntries);
+  urlBookmarks = filterAvailableBookmarks(urlBookmarks, whitelist);
+  const existingFolderPaths = getAvailableFolderPaths(folderTree, whitelist);
   const provider = options.model?.trim()
     ? { ...settings.provider, model: options.model.trim() }
     : settings.provider;
@@ -518,12 +529,16 @@ export async function generateMovePlanPreviewForBookmarks(
     if (normalizedUrl && !firstSameUrl) seenUrls.set(normalizedUrl, bookmark.title);
 
     const duplicateReason = firstSameUrl ? `可能与「${firstSameUrl}」重复` : undefined;
-    return buildMovePlan(
+    const plan = buildMovePlan(
       bookmark,
       results.get(bookmark.id) ?? fallbackResult(bookmark.id, failureReasons.get(bookmark.id) || undefined),
       settings,
       duplicateReason
     );
+    if (isProtectedTargetPath(plan.toFolderPath, folderTree, whitelist)) {
+      return { ...plan, keepInPlace: true, reason: "目标文件夹在白名单中，已保持原位" };
+    }
+    return plan;
   });
 
   return {
@@ -642,6 +657,7 @@ export async function executeMovePlans(
   options: { cleanupAllEmptyFolders?: boolean; reportKind?: OrganizeReport["kind"] } = {}
 ): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
+  const effectivePlans = plans.map((plan) => ({ ...plan }));
   const backupStats = getBookmarkTreeStats(tree);
 
   // 记录执行前的文件夹
@@ -652,7 +668,7 @@ export async function executeMovePlans(
     createdAt: Date.now(),
     tree,
     ...backupStats,
-    movePlan: plans,
+    movePlan: effectivePlans,
   };
 
   await saveLastBackup(backup);
@@ -663,9 +679,19 @@ export async function executeMovePlans(
   const sourceFolderIds = new Set<string>();
   const affectedFolderIds = new Set<string>();
 
-  for (const plan of plans) {
+  for (const [planIndex, plan] of plans.entries()) {
     if (plan.keepInPlace) continue;
     try {
+      const currentProtection = await getCurrentWhitelist();
+      const protectionReason = currentProtection.index.reasonById.get(plan.bookmarkId);
+      if (protectionReason || isProtectedTargetPath(plan.toFolderPath, currentProtection.tree, currentProtection.index)) {
+        effectivePlans[planIndex] = {
+          ...plan,
+          keepInPlace: true,
+          reason: protectionReason ?? "目标文件夹在白名单中，已保持原位",
+        };
+        continue;
+      }
       const parentId = await ensureFolderPath(
         plan.toFolderPath,
         Math.max(settings.maxNestingLevel, plan.toFolderPath.length)
@@ -721,10 +747,10 @@ export async function executeMovePlans(
     kind: options.reportKind ?? "organize",
     createdAt: Date.now(),
     movedCount,
-    folderCount: uniqueFolderCount(plans.filter((plan) => !plan.keepInPlace)),
+    folderCount: uniqueFolderCount(effectivePlans.filter((plan) => !plan.keepInPlace)),
     removedFolders,
     failedItems,
-    movePlan: plans,
+    movePlan: effectivePlans,
     privacySummary: privacySummary(settings),
     tokenUsage,
   };
@@ -761,7 +787,7 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
       if (currentBookmark?.parentId === targetParentId) {
         continue;
       }
-      await moveBookmark(plan.bookmarkId, targetParentId);
+      await moveBookmark(plan.bookmarkId, targetParentId, undefined, true);
       movedCount += 1;
     } catch (error) {
       failedItems.push({
@@ -813,11 +839,13 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
     getFolderHabitProfile(),
   ]);
   if (!currentBookmark?.url) return null;
+  const initialWhitelist = buildWhitelistIndex(tree, await getBookmarkWhitelist());
+  if (initialWhitelist.protectedBookmarkIds.has(bookmark.id)) return null;
 
   const currentFolderPath = currentBookmark.parentId
     ? findFolderPathById(tree, currentBookmark.parentId) ?? []
     : [];
-  const existingFolderPaths = collectFolderPaths(tree).map((folder) => folder.path);
+  const existingFolderPaths = getAvailableFolderPaths(tree, initialWhitelist);
   const bookmarkNode = {
     id: currentBookmark.id,
     parentId: currentBookmark.parentId,
@@ -877,11 +905,13 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
 
   const latestBookmark = await getBookmark(currentBookmark.id);
   if (!latestBookmark?.url) return null;
-  const latestTree = await getBookmarkTree();
+  const latestProtection = await getCurrentWhitelist();
+  const latestTree = latestProtection.tree;
+  if (latestProtection.index.protectedBookmarkIds.has(latestBookmark.id)) return null;
   const latestFolderPath = latestBookmark.parentId
     ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath
     : currentFolderPath;
-  const latestFolderPaths = collectFolderPaths(latestTree).map((folder) => folder.path);
+  const latestFolderPaths = getAvailableFolderPaths(latestTree, latestProtection.index);
 
   let kind: PendingRecommendation["kind"];
   let suggestedFolderPath: string[] = [];
@@ -903,6 +933,8 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
       settings.allowNestedFolders,
       settings.maxNestingLevel
     );
+
+    if (isProtectedTargetPath(suggestedFolderPath, latestTree, latestProtection.index)) return null;
 
     if (isSameFolderPath(latestFolderPath, suggestedFolderPath)) {
       await updatePendingRecommendations((recommendations) =>
@@ -941,7 +973,9 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
   ]);
 
   const savedBookmark = await getBookmark(latestBookmark.id);
-  if (!savedBookmark?.url) {
+  const savedProtection = await getCurrentWhitelist();
+  if (!savedBookmark?.url || savedProtection.index.protectedBookmarkIds.has(latestBookmark.id) ||
+      isProtectedTargetPath(suggestedFolderPath, savedProtection.tree, savedProtection.index)) {
     await updatePendingRecommendations((recommendations) =>
       recommendations.filter((item) => item.bookmarkId !== latestBookmark.id)
     );

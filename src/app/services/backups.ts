@@ -16,6 +16,7 @@ import {
   getStorageValue,
   setStorageValue,
 } from "./storage";
+import { remapBookmarkWhitelistEntries } from "./whitelist";
 
 type FolderSnapshot = {
   id: string;
@@ -104,10 +105,10 @@ async function createNodeBestEffort(createDetails: BookmarkCreateDetails) {
 
 async function moveBookmarkBestEffort(id: string, parentId: string, index?: number) {
   try {
-    await moveBookmark(id, parentId, index);
+    await moveBookmark(id, parentId, index, true);
   } catch (error) {
     if (index === undefined) throw error;
-    await moveBookmark(id, parentId);
+    await moveBookmark(id, parentId, undefined, true);
   }
 }
 
@@ -396,6 +397,7 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
   let current = collectCurrentTree(await getBookmarkTree());
   const failedItems: FailedMove[] = [];
   const usedBookmarkIds = new Set<string>();
+  const restoredIdMap = new Map<string, string>();
   let restoredCount = 0;
   let recreatedCount = 0;
 
@@ -425,7 +427,8 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
         }
         continue;
       }
-      await ensureFolderPathFromSnapshot(folder.rootId, folder.path, folder.index, current);
+      const restoredId = await ensureFolderPathFromSnapshot(folder.rootId, folder.path, folder.index, current);
+      if (restoredId !== folder.id) restoredIdMap.set(folder.id, restoredId);
     } catch (error) {
       failedItems.push({
         bookmarkId: folder.id,
@@ -474,9 +477,10 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
       if (target) {
         usedBookmarkIds.add(target.id);
         if (target.title !== bookmark.title || target.url !== bookmark.url) {
-          await updateBookmark(target.id, bookmark.title, bookmark.url);
+          await updateBookmark(target.id, bookmark.title, bookmark.url, true);
         }
         await moveBookmarkBestEffort(target.id, parentId, bookmark.index);
+        if (target.id !== bookmark.id) restoredIdMap.set(bookmark.id, target.id);
         restoredCount += 1;
         continue;
       }
@@ -489,6 +493,7 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
       });
       current.bookmarkLookup.byId.set(created.id, created);
       usedBookmarkIds.add(created.id);
+      if (created.id !== bookmark.id) restoredIdMap.set(bookmark.id, created.id);
       recreatedCount += 1;
     } catch (error) {
       failedItems.push({
@@ -497,6 +502,16 @@ export async function restoreBackup(backupId: string): Promise<BookmarkRestoreRe
         reason: error instanceof Error ? error.message : "恢复书签失败",
       });
     }
+  }
+
+  try {
+    await remapBookmarkWhitelistEntries(restoredIdMap);
+  } catch (error) {
+    failedItems.push({
+      bookmarkId: "whitelist",
+      bookmarkTitle: "白名单规则",
+      reason: error instanceof Error ? error.message : "恢复白名单保护失败",
+    });
   }
 
   return {

@@ -2,10 +2,12 @@ import type { BookmarkNode, OrganizeMode, PreviewTaskCache } from "../types";
 import { generateMovePlanPreviewForBookmarks } from "./organizer";
 import {
   clearPreviewTask,
+  getBookmarkWhitelist,
   getPreviewTask as getStoredPreviewTask,
   savePreviewPlan,
   savePreviewTask,
 } from "./storage";
+import { whitelistFingerprint } from "./whitelist";
 
 export const PREVIEW_TASK_MESSAGE = "remarks:preview-task";
 const QUICK_TASK_TIMEOUT_MS = 30 * 60 * 1000;
@@ -45,7 +47,7 @@ function createTaskId() {
   return "preview-task-" + Date.now() + "-" + (randomId ?? Math.random().toString(36).slice(2));
 }
 
-function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode, model?: string): PreviewTaskCache {
+function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode, model: string | undefined, fingerprint: string): PreviewTaskCache {
   const now = Date.now();
   return {
     id: createTaskId(),
@@ -54,6 +56,7 @@ function createRunningTask(bookmarks: BookmarkNode[], organizeMode: OrganizeMode
     updatedAt: now,
     bookmarkCount: bookmarks.length,
     selectedBookmarkIds: bookmarks.map((bookmark) => bookmark.id),
+    whitelistFingerprint: fingerprint,
     organizeMode,
     model,
     progress: {
@@ -110,6 +113,10 @@ function abortPreviewTask(taskId?: string) {
 
 export async function getPreviewTask() {
   const task = await getRawPreviewTask();
+  if (task && task.whitelistFingerprint !== whitelistFingerprint(await getBookmarkWhitelist())) {
+    await clearPreviewTask();
+    return null;
+  }
   if (!task || !isStaleRunningTask(task)) return task;
 
   const failedTask: PreviewTaskCache = {
@@ -146,6 +153,10 @@ async function completePreviewTask(
     });
     const currentTask = await getRawPreviewTask();
     if (!isSameRunningTask(currentTask, taskId)) return;
+    if (currentTask.whitelistFingerprint !== whitelistFingerprint(await getBookmarkWhitelist())) {
+      await clearPreviewTask();
+      return;
+    }
 
     const completedTask: PreviewTaskCache = {
       ...currentTask,
@@ -161,6 +172,7 @@ async function completePreviewTask(
         id: `preview-${Date.now()}`,
         createdAt: Date.now(),
         bookmarkCount: previewResult.movePlans.length,
+        whitelistFingerprint: currentTask.whitelistFingerprint,
         organizeMode,
         model,
         movePlan: previewResult.movePlans,
@@ -192,7 +204,8 @@ async function getOrCreatePreviewTask(
   const existingTask = await getPreviewTask();
   if (existingTask?.status === "running") return { task: existingTask, created: false };
 
-  const task = createRunningTask(bookmarks, organizeMode, model);
+  const fingerprint = whitelistFingerprint(await getBookmarkWhitelist());
+  const task = createRunningTask(bookmarks, organizeMode, model, fingerprint);
   await savePreviewTask(task);
   return { task, created: true };
 }

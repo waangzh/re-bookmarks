@@ -37,13 +37,14 @@ import type {
 } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
+import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, resumePreviewTask, startPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -630,16 +631,32 @@ export function Preview() {
   }, [modelMenuOpen]);
 
   const loadSelectableBookmarks = async () => {
-    const [bookmarks, habitProfile] = await Promise.all([
+    const [bookmarks, habitProfile, protection] = await Promise.all([
       getAllBookmarks(),
       getFolderHabitProfile(),
+      getCurrentWhitelist(),
     ]);
-    const urlBookmarks = bookmarks.filter((b) => b.url);
+    const urlBookmarks = filterAvailableBookmarks(bookmarks.filter((b) => b.url), protection.index);
     setAllBookmarks(urlBookmarks);
     setFolderHabitProfile(habitProfile);
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
     return urlBookmarks;
   };
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
+    const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== "local" || !changes[STORAGE_KEYS.bookmarkWhitelist]) return;
+      void loadSelectableBookmarks().then(() => {
+        setPlans([]);
+        setActiveTaskId(null);
+        setPhase((current) => current === "submitting" ? current : "selection");
+        setCacheMessage("白名单已更新，请重新生成分类预览");
+      }).catch((error) => setError(error instanceof Error ? error.message : "读取白名单失败"));
+    };
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+  }, []);
 
   const restoreCompletedTask = (task: PreviewTaskCache) => {
     if (!task.movePlan?.length) return false;
@@ -698,7 +715,8 @@ export function Preview() {
         // 先检查是否有缓存的预览
         const cached = await getPreviewPlan();
         if (!alive) return;
-        if (cached?.movePlan.length) {
+        if (cached?.movePlan.length && cached.whitelistFingerprint ===
+            whitelistFingerprint((await getCurrentWhitelist()).entries)) {
           setPlans(cached.movePlan);
           setTokenUsage(cached.tokenUsage);
           setOrganizeMode(cached.organizeMode ?? "quick");
@@ -1121,12 +1139,14 @@ export function Preview() {
     setCacheMessage("已更新预览计划，正在保存调整...");
 
     try {
+      const fingerprint = whitelistFingerprint((await getCurrentWhitelist()).entries);
       await Promise.all([
         requestClearPreviewTask(),
         savePreviewPlan({
           id: `preview-drag-${Date.now()}`,
           createdAt: Date.now(),
           bookmarkCount: nextPlans.length,
+          whitelistFingerprint: fingerprint,
           organizeMode,
           movePlan: nextPlans,
           tokenUsage,

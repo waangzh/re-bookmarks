@@ -2,6 +2,7 @@ import type { FolderHabitExportV1, FolderHabitProfile, FolderHabitSample } from 
 import { AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE, analyzeFolderHabitsWithAI, isAIProviderAuthorized } from "./aiProvider";
 import { getAllBookmarkFolders, getAllBookmarks } from "./bookmarks";
 import { getDomain, sanitizeUrl } from "./rules";
+import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "./whitelist";
 import {
   clearPreviewPlan,
   getFolderHabitProfile,
@@ -327,6 +328,7 @@ export async function importFolderHabitProfileJson(text: string): Promise<Folder
   if (!isRecord(parsed)) throw new Error("导入文件格式不正确");
   if (parsed.version !== FOLDER_HABIT_EXPORT_VERSION) throw new Error("导入文件版本不受支持");
 
+  const currentWhitelist = whitelistFingerprint((await getCurrentWhitelist()).entries);
   const samples = await collectFolderHabitSamples();
   const bookmarkCount = samples.reduce((total, sample) => total + sample.bookmarkCount, 0);
   const next = cleanFolderHabitProfile({
@@ -334,10 +336,14 @@ export async function importFolderHabitProfileJson(text: string): Promise<Folder
     createdAt: Date.now(),
     folderCount: samples.length,
     bookmarkCount,
+    whitelistFingerprint: currentWhitelist,
     ...parseImportProfile(parsed.profile),
   });
 
   if (!hasImportContent(next)) throw new Error("导入文件没有可用的分类规则");
+  if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== currentWhitelist) {
+    throw new Error("白名单已变化，请重新导入分类习惯");
+  }
 
   await saveFolderHabitProfile(next);
   await clearPreviewPlan();
@@ -411,7 +417,8 @@ function buildFallbackProfile(samples: FolderHabitSample[]): Omit<FolderHabitPro
 }
 
 export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> {
-  const bookmarks = await getAllBookmarks();
+  const [allBookmarks, protection] = await Promise.all([getAllBookmarks(), getCurrentWhitelist()]);
+  const bookmarks = filterAvailableBookmarks(allBookmarks, protection.index);
   const folders = new Map<string, FolderHabitSample>();
 
   for (const bookmark of bookmarks) {
@@ -442,6 +449,7 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
 }
 
 export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> {
+  const initialWhitelist = whitelistFingerprint((await getCurrentWhitelist()).entries);
   const [settings, samples, storedProfile] = await Promise.all([
     getSettings(),
     collectFolderHabitSamples(),
@@ -473,19 +481,31 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
     ...analyzed,
     analysisSource,
     analysisWarning,
+    whitelistFingerprint: initialWhitelist,
     learning: storedProfile?.learning,
   });
 
+  if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== initialWhitelist) {
+    throw new Error("白名单在习惯分析期间发生变化，请重新分析");
+  }
   await saveFolderHabitProfile(profile);
   await clearPreviewPlan();
   return profile;
 }
 
 export async function saveEditedFolderHabitProfile(profile: FolderHabitProfile): Promise<FolderHabitProfile> {
+  const currentWhitelist = whitelistFingerprint((await getCurrentWhitelist()).entries);
+  if (profile.whitelistFingerprint !== undefined && profile.whitelistFingerprint !== currentWhitelist) {
+    throw new Error("白名单已变化，请重新打开分类习惯后编辑");
+  }
   const next = cleanFolderHabitProfile({
     ...profile,
+    whitelistFingerprint: currentWhitelist,
     analysisWarning: profile.analysisWarning,
   });
+  if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== currentWhitelist) {
+    throw new Error("白名单已变化，请重新打开分类习惯后编辑");
+  }
   await saveFolderHabitProfile(next);
   await clearPreviewPlan();
   return next;
@@ -497,6 +517,7 @@ export async function recordHabitFeedback(feedback: HabitFeedback): Promise<stri
   if (!suggestedFolderPath.length || (chosenFolderPath && samePath(suggestedFolderPath, chosenFolderPath))) return null;
 
   const now = Date.now();
+  const currentWhitelist = whitelistFingerprint((await getCurrentWhitelist()).entries);
   const stored = await getFolderHabitProfile();
   const profile = cleanFolderHabitProfile(stored ?? {
     id: `habit-${now}`,
@@ -574,8 +595,10 @@ export async function recordHabitFeedback(feedback: HabitFeedback): Promise<stri
 
   const next = cleanFolderHabitProfile({
     ...profile,
+    whitelistFingerprint: currentWhitelist,
     learning,
   });
+  if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== currentWhitelist) return null;
   await saveFolderHabitProfile(next);
 
   if (feedback.type === "folder_rejected") {
