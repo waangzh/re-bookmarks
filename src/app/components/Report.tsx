@@ -464,10 +464,6 @@ export function Report() {
           <section className="extension-section report-value-check">
             <div className="report-value-check__copy">
               <Search aria-hidden="true" />
-              <div>
-                <h3>验证以后是否更好找</h3>
-                <p>移动数量和目录变化只记录本次操作，不代表整理价值。试着找一个之后还会用的书签，再决定是否保留这套结构。</p>
-              </div>
             </div>
             <Link to="/manage?search=1" className="report-value-check__action">
               去搜索书签 <ArrowRight aria-hidden="true" />

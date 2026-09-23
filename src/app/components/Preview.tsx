@@ -104,7 +104,6 @@ const QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT = 300;
 const STALLED_PROGRESS_WARNING_MS = 2 * 60 * 1000;
 const STRONG_MODEL_SIGNAL = 0.9;
 const WEAK_MODEL_SIGNAL = 0.7;
-const DEFAULT_EXPANDED_RISK_GROUPS = ["__framework__", "__batch__", "__review__"];
 
 function pathKey(path: string[]) {
   return path.map((part) => part.trim()).filter(Boolean).join(" / ");
@@ -502,9 +501,7 @@ export function Preview() {
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
   const [frameworkDecisions, setFrameworkDecisions] = useState<Record<string, PreviewFrameworkDecision>>({});
-  const [expandedRiskGroups, setExpandedRiskGroups] = useState<Set<string>>(
-    () => new Set(DEFAULT_EXPANDED_RISK_GROUPS)
-  );
+  const [riskGroupExpansionOverrides, setRiskGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [draggedPlan, setDraggedPlan] = useState<MovePlan | null>(null);
@@ -904,7 +901,7 @@ export function Preview() {
 
   const handleRegenerate = async () => {
     setExpandedPreviewFolders(new Set());
-    setExpandedRiskGroups(new Set(DEFAULT_EXPANDED_RISK_GROUPS));
+    setRiskGroupExpansionOverrides({});
     setPlanDecisions({});
     setFrameworkDecisions({});
     setSelectedPlan(null);
@@ -984,9 +981,6 @@ export function Preview() {
     (item) => !planDecisions[item.plan.bookmarkId]
   ).length;
   const pendingDecisionCount = pendingFrameworkCount + pendingAssignmentCount + pendingReviewCount;
-  const keptPlanCount = actionableRiskItems.filter(
-    (item) => planDecisions[item.plan.bookmarkId] === "keep"
-  ).length;
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -1424,16 +1418,21 @@ export function Preview() {
     setError("");
   };
 
+  const isDefaultRiskGroupExpanded = (key: string) => {
+    if (key === "__framework__") return riskAnalysis.frameworkGroups.length > 0;
+    if (key === "__batch__") return assignmentRiskCount > 0;
+    if (key === "__review__") return riskAnalysis.review.length > 0;
+    return false;
+  };
+
+  const isRiskGroupExpanded = (key: string) =>
+    riskGroupExpansionOverrides[key] ?? isDefaultRiskGroupExpanded(key);
+
   const toggleRiskGroup = (key: string) => {
-    setExpandedRiskGroups((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    setRiskGroupExpansionOverrides((previous) => ({
+      ...previous,
+      [key]: !(previous[key] ?? isDefaultRiskGroupExpanded(key)),
+    }));
   };
 
   const renderRiskPlanItem = (
@@ -1533,7 +1532,7 @@ export function Preview() {
   };
 
   const renderBatchRiskGroup = (group: PreviewBatchGroup) => {
-    const isExpanded = expandedRiskGroups.has(group.key);
+    const isExpanded = isRiskGroupExpanded(group.key);
     const bookmarkIds = group.items.map((item) => item.plan.bookmarkId);
     const movedCount = bookmarkIds.filter((id) => planDecisions[id] === "move").length;
     const pendingCount = bookmarkIds.filter((id) => !planDecisions[id]).length;
@@ -1842,9 +1841,6 @@ export function Preview() {
                 <AlertCircle className="extension-notice__icon" />
                 <span>分阶段确认，减少重复审核</span>
               </div>
-              <p>
-                先确认新增目录，再按目录检查分配；跨一级目录等异常仍需逐项决定。当前批准移动 {approvedPlans.length} 个，保持原位 {keptPlanCount} 个，另有 {pendingDecisionCount} 个审核决定。模型信号仅作相对参考，不代表正确率。
-              </p>
             </div>
 
             {!loading && tokenUsage && (
@@ -1905,7 +1901,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><ShieldCheck /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>规则复用，无需逐项审核</strong>
+                      <strong tabIndex={0}>规则复用，无需逐项审核</strong>
                       <span>
                         {riskAnalysis.auto.length} 个建议同时满足：复用现有目录、符合已有习惯且未跨一级目录
                       </span>
@@ -1914,17 +1910,17 @@ export function Preview() {
                       type="button"
                       className="preview-risk-section__toggle"
                       onClick={() => toggleRiskGroup("__auto__")}
-                      aria-expanded={expandedRiskGroups.has("__auto__")}
+                      aria-expanded={isRiskGroupExpanded("__auto__")}
                     >
-                      {expandedRiskGroups.has("__auto__")
+                      {isRiskGroupExpanded("__auto__")
                         ? "收起"
                         : riskAnalysis.auto.length > 0
                           ? `抽查 ${Math.min(5, riskAnalysis.auto.length)} 个`
                           : "展开"}
-                      {expandedRiskGroups.has("__auto__") ? <ChevronDown /> : <ChevronRight />}
+                      {isRiskGroupExpanded("__auto__") ? <ChevronDown /> : <ChevronRight />}
                     </button>
                   </div>
-                  {expandedRiskGroups.has("__auto__") && (
+                  {isRiskGroupExpanded("__auto__") && (
                     riskAnalysis.auto.length > 0 ? (
                       <div className="preview-risk-list">
                         {riskAnalysis.auto.slice(0, 5).map((item) => renderRiskPlanItem(item))}
@@ -1939,7 +1935,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><FolderPlus /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>1. 确认分类框架</strong>
+                      <strong tabIndex={0}>1. 确认分类框架</strong>
                       <span>
                         {riskAnalysis.frameworkGroups.length} 个拟新增一级目录；先确认目录是否合理，再审核其中的书签分配
                       </span>
@@ -1948,13 +1944,13 @@ export function Preview() {
                       type="button"
                       className="preview-risk-section__toggle"
                       onClick={() => toggleRiskGroup("__framework__")}
-                      aria-expanded={expandedRiskGroups.has("__framework__")}
+                      aria-expanded={isRiskGroupExpanded("__framework__")}
                     >
-                      {expandedRiskGroups.has("__framework__") ? "收起" : "展开"}
-                      {expandedRiskGroups.has("__framework__") ? <ChevronDown /> : <ChevronRight />}
+                      {isRiskGroupExpanded("__framework__") ? "收起" : "展开"}
+                      {isRiskGroupExpanded("__framework__") ? <ChevronDown /> : <ChevronRight />}
                     </button>
                   </div>
-                  {expandedRiskGroups.has("__framework__") && (
+                  {isRiskGroupExpanded("__framework__") && (
                     riskAnalysis.frameworkGroups.length > 0 ? (
                       <div className="preview-framework-groups">
                         {riskAnalysis.frameworkGroups.map(renderFrameworkGroup)}
@@ -1969,7 +1965,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><Layers3 /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>2. 检查书签分配</strong>
+                      <strong tabIndex={0}>2. 检查书签分配</strong>
                       <span>
                         {assignmentRiskCount} 个建议按目标目录分组；每组展示强、典型、弱三个代表条目
                       </span>
@@ -1978,13 +1974,13 @@ export function Preview() {
                       type="button"
                       className="preview-risk-section__toggle"
                       onClick={() => toggleRiskGroup("__batch__")}
-                      aria-expanded={expandedRiskGroups.has("__batch__")}
+                      aria-expanded={isRiskGroupExpanded("__batch__")}
                     >
-                      {expandedRiskGroups.has("__batch__") ? "收起" : "展开"}
-                      {expandedRiskGroups.has("__batch__") ? <ChevronDown /> : <ChevronRight />}
+                      {isRiskGroupExpanded("__batch__") ? "收起" : "展开"}
+                      {isRiskGroupExpanded("__batch__") ? <ChevronDown /> : <ChevronRight />}
                     </button>
                   </div>
-                  {expandedRiskGroups.has("__batch__") && (
+                  {isRiskGroupExpanded("__batch__") && (
                     pendingFrameworkCount > 0 ? (
                       <p className="preview-risk-section__empty">请先确认上方分类框架，再审核书签分配</p>
                     ) : assignmentGroups.length > 0 ? (
@@ -2001,7 +1997,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><ShieldAlert /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>3. 逐项审核异常</strong>
+                      <strong tabIndex={0}>3. 逐项审核异常</strong>
                       <span>{riskAnalysis.review.length} 个跨一级目录、疑似重复或弱依据变更；不提供整组批准</span>
                     </div>
                     <div className="preview-risk-section__actions">
@@ -2009,14 +2005,14 @@ export function Preview() {
                         type="button"
                         className="preview-risk-section__toggle"
                         onClick={() => toggleRiskGroup("__review__")}
-                        aria-expanded={expandedRiskGroups.has("__review__")}
+                        aria-expanded={isRiskGroupExpanded("__review__")}
                       >
-                        {expandedRiskGroups.has("__review__") ? "收起" : "展开"}
-                        {expandedRiskGroups.has("__review__") ? <ChevronDown /> : <ChevronRight />}
+                        {isRiskGroupExpanded("__review__") ? "收起" : "展开"}
+                        {isRiskGroupExpanded("__review__") ? <ChevronDown /> : <ChevronRight />}
                       </button>
                     </div>
                   </div>
-                  {expandedRiskGroups.has("__review__") && (
+                  {isRiskGroupExpanded("__review__") && (
                     pendingFrameworkCount > 0 ? (
                       <p className="preview-risk-section__empty">请先确认上方分类框架，再逐项审核异常变更</p>
                     ) : riskAnalysis.review.length > 0 ? (
@@ -2033,24 +2029,24 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><PauseCircle /></div>
                     <div className="preview-risk-section__heading">
-                      <strong>保持原位</strong>
+                      <strong tabIndex={0}>保持原位</strong>
                       <span>{riskAnalysis.keep.length} 个模型信号较弱或无需移动的书签，不会执行移动</span>
                     </div>
                     <button
                       type="button"
                       className="preview-risk-section__toggle"
                       onClick={() => toggleRiskGroup("__keep__")}
-                      aria-expanded={expandedRiskGroups.has("__keep__")}
+                      aria-expanded={isRiskGroupExpanded("__keep__")}
                     >
-                      {expandedRiskGroups.has("__keep__")
+                      {isRiskGroupExpanded("__keep__")
                         ? "收起"
                         : riskAnalysis.keep.length > 0
                           ? `查看 ${Math.min(5, riskAnalysis.keep.length)} 个`
                           : "展开"}
-                      {expandedRiskGroups.has("__keep__") ? <ChevronDown /> : <ChevronRight />}
+                      {isRiskGroupExpanded("__keep__") ? <ChevronDown /> : <ChevronRight />}
                     </button>
                   </div>
-                  {expandedRiskGroups.has("__keep__") && (
+                  {isRiskGroupExpanded("__keep__") && (
                     riskAnalysis.keep.length > 0 ? (
                       <div className="preview-risk-list">
                         {riskAnalysis.keep.slice(0, 5).map((item) => renderRiskPlanItem(item))}

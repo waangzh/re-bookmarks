@@ -1514,11 +1514,17 @@ input {
 }
 
 .preview-risk-section {
-  overflow: hidden;
+  position: relative;
+  overflow: visible;
   border: 1px solid #dfe5ec;
   border-left-width: 4px;
   border-radius: 9px;
   background: #ffffff;
+}
+
+.preview-risk-section:hover,
+.preview-risk-section:focus-within {
+  z-index: 1;
 }
 
 .preview-risk-section--auto {
@@ -1585,6 +1591,7 @@ input {
 }
 
 .preview-risk-section__heading {
+  position: relative;
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -1594,15 +1601,36 @@ input {
   color: #1e293b;
   font-size: 13px;
   font-weight: 700;
+  cursor: help;
+}
+
+.preview-risk-section__heading strong:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .preview-risk-section__heading span {
-  overflow: hidden;
-  color: #64748b;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1;
+  display: none;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 100px));
+  border: 1px solid #d7dee8;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 7px 9px;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 12%);
+  color: #475569;
   font-size: 11px;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  pointer-events: none;
+}
+
+.preview-risk-section__heading strong:hover + span,
+.preview-risk-section__heading strong:focus + span {
+  display: block;
 }
 
 .preview-risk-section__actions {
@@ -2154,25 +2182,6 @@ input {
 
   .preview-risk-overview > div:nth-child(4) {
     border-top: 1px solid #e8edf3;
-  }
-
-  .preview-risk-section__header {
-    grid-template-columns: 30px minmax(0, 1fr);
-  }
-
-  .preview-risk-section__toggle {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .preview-risk-section__actions {
-    grid-column: 2;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .preview-risk-section__heading span {
-    white-space: normal;
   }
 
   .preview-risk-item {
@@ -3387,19 +3396,6 @@ input {
   height: 22px;
   flex: 0 0 auto;
   color: #2563eb;
-}
-
-.report-value-check h3 {
-  margin: 0;
-  color: #1e3a8a;
-  font-size: 14px;
-}
-
-.report-value-check p {
-  margin: 4px 0 0;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .report-value-check__action {
