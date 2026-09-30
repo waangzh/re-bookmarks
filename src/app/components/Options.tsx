@@ -1,21 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   AlertCircle,
   ArrowLeft,
   Bot,
   Check,
+  ChevronDown,
   ChevronRight,
   FlaskConical,
   FolderTree,
   KeyRound,
   RotateCcw,
+  RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 import type { AIProviderConfig, AIProviderType, Settings } from "../types";
-import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { requestClearPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
@@ -28,6 +30,20 @@ export function Options() {
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [models, setModels] = useState<AIModelOption[]>([]);
+  const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [modelMessage, setModelMessage] = useState("");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelFiltering, setModelFiltering] = useState(false);
+  const [highlightedModel, setHighlightedModel] = useState(0);
+  const modelPicker = useRef<HTMLDivElement>(null);
+  const modelInput = useRef<HTMLInputElement>(null);
+  const displayedModels = modelFiltering
+    ? models.filter((model) => model.id.toLowerCase().includes(draft.provider.model.trim().toLowerCase()))
+    : models;
+  const modelRequest = useRef<AbortController | null>(null);
+  const currentProvider = useRef(draft.provider);
+  currentProvider.current = draft.provider;
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
   const effectiveTemperature = draft.provider.temperature ?? providerProfile.defaultTemperature;
   const effectiveTokenParam = draft.provider.tokenParam && draft.provider.tokenParam !== "auto"
@@ -41,6 +57,71 @@ export function Options() {
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    modelRequest.current?.abort();
+    modelRequest.current = null;
+    setModels([]);
+    setModelMenuOpen(false);
+    setModelStatus("idle");
+    setModelMessage("");
+    return () => modelRequest.current?.abort();
+  }, [draft.provider.type, draft.provider.apiKey, draft.provider.endpoint]);
+
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!modelPicker.current?.contains(event.target as Node)) setModelMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [modelMenuOpen]);
+
+  useEffect(() => {
+    if (modelMenuOpen) {
+      document.getElementById(`settings-model-option-${highlightedModel}`)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [modelMenuOpen, highlightedModel]);
+
+  const openModelMenu = () => {
+    setModelFiltering(false);
+    setHighlightedModel(0);
+    setModelMenuOpen(models.length > 0);
+  };
+
+  const chooseModel = (id: string) => {
+    updateProviderConfig("model", id);
+    setModelMenuOpen(false);
+    modelInput.current?.focus();
+  };
+
+  const handleDetectModels = async () => {
+    const provider = draft.provider;
+    const controller = new AbortController();
+    modelRequest.current?.abort();
+    modelRequest.current = controller;
+    const isCurrent = () => !controller.signal.aborted &&
+      currentProvider.current.type === provider.type &&
+      currentProvider.current.apiKey === provider.apiKey &&
+      currentProvider.current.endpoint === provider.endpoint;
+    setModels([]);
+    setModelMenuOpen(false);
+    setModelStatus("loading");
+    setModelMessage("");
+    try {
+      await ensureRequiredHostPermission();
+      if (!isCurrent()) return;
+      const available = await listAIModels(provider, controller.signal);
+      if (!isCurrent()) return;
+      setModels(available);
+      setModelStatus("success");
+      setModelMessage(`已获取 ${available.length} 个模型。列表不保证均支持书签分类，请选择后测试连接。`);
+    } catch (error) {
+      if (!isCurrent()) return;
+      setModelStatus("error");
+      setModelMessage(error instanceof Error ? error.message : "模型检测失败，请稍后重试或手动输入模型名称");
+    }
+  };
 
   const updateProvider = (type: AIProviderType) => {
     const defaults = AI_PROVIDER_PROFILES[type];
@@ -82,7 +163,10 @@ export function Options() {
     value: AIProviderConfig[Key]
   ) => {
     setDraft((current) => {
-      const provider = { ...current.provider, [key]: value };
+      const requiresRetest = key !== "enabled" && key !== "testedAt";
+      const provider = { ...current.provider, [key]: value,
+        ...(requiresRetest ? { enabled: false, testedAt: undefined } : {}),
+      };
       return {
         ...current,
         provider,
@@ -97,11 +181,14 @@ export function Options() {
   };
 
   const handleTestConnection = async () => {
+    const providerToTest = draft.provider;
     setTestStatus("testing");
     setMessage("");
     try {
       await ensureRequiredHostPermission();
-      await testAIConnection(draft.provider);
+      if (currentProvider.current !== providerToTest) return;
+      await testAIConnection(providerToTest);
+      if (currentProvider.current !== providerToTest) return;
       setTestStatus("success");
       setDraft((current) => {
         const provider = { ...current.provider, testedAt: Date.now() };
@@ -115,6 +202,7 @@ export function Options() {
         };
       });
     } catch (error) {
+      if (currentProvider.current !== providerToTest) return;
       setTestStatus("error");
       setMessage(error instanceof Error ? error.message : "连接失败，请检查配置");
     }
@@ -214,6 +302,103 @@ export function Options() {
               />
             </div>
 
+            <div className="extension-field">
+              <label htmlFor="settings-model">模型</label>
+              <div
+                ref={modelPicker}
+                className="organize-model-picker__control"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setModelMenuOpen(false);
+                }}
+              >
+                <input
+                  ref={modelInput}
+                  id="settings-model"
+                  type="text"
+                  autoComplete="off"
+                  value={draft.provider.model}
+                  onClick={openModelMenu}
+                  onChange={(event) => {
+                    updateProviderConfig("model", event.target.value);
+                    setModelFiltering(true);
+                    setHighlightedModel(0);
+                    setModelMenuOpen(models.length > 0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      if (!models.length) return;
+                      event.preventDefault();
+                      if (!modelMenuOpen) {
+                        openModelMenu();
+                      } else if (displayedModels.length) {
+                        const direction = event.key === "ArrowDown" ? 1 : -1;
+                        setHighlightedModel((current) => (current + direction + displayedModels.length) % displayedModels.length);
+                      }
+                    } else if (event.key === "Enter" && modelMenuOpen && displayedModels[highlightedModel]) {
+                      event.preventDefault();
+                      chooseModel(displayedModels[highlightedModel].id);
+                    } else if (event.key === "Escape") {
+                      setModelMenuOpen(false);
+                    }
+                  }}
+                  placeholder={providerProfile.model}
+                  className="extension-control organize-model-picker__input"
+                  role="combobox"
+                  aria-expanded={modelMenuOpen}
+                  aria-controls="settings-model-options"
+                  aria-autocomplete="list"
+                  aria-activedescendant={modelMenuOpen && displayedModels[highlightedModel]
+                    ? `settings-model-option-${highlightedModel}` : undefined}
+                />
+                <button
+                  type="button"
+                  className={`organize-model-picker__toggle${modelMenuOpen ? " is-open" : ""}`}
+                  disabled={!models.length}
+                  aria-label={modelMenuOpen ? "收起模型列表" : "展开模型列表"}
+                  aria-expanded={modelMenuOpen}
+                  aria-controls="settings-model-options"
+                  onClick={() => {
+                    modelInput.current?.focus();
+                    if (modelMenuOpen) setModelMenuOpen(false);
+                    else openModelMenu();
+                  }}
+                >
+                  <ChevronDown aria-hidden="true" />
+                </button>
+                {modelMenuOpen && (
+                  <ul id="settings-model-options" className="organize-model-picker__menu" role="listbox" aria-label="检测到的模型">
+                    {displayedModels.length ? displayedModels.map((model, index) => (
+                      <li
+                        id={`settings-model-option-${index}`}
+                        key={model.id}
+                        role="option"
+                        aria-selected={model.id === draft.provider.model}
+                        className={`organize-model-picker__option${model.id === draft.provider.model ? " is-selected" : ""}${index === highlightedModel ? " is-highlighted" : ""}`}
+                        onMouseEnter={() => setHighlightedModel(index)}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => chooseModel(model.id)}
+                      >
+                        <span>{model.id}</span>
+                        <Check aria-hidden="true" />
+                      </li>
+                    )) : <li className="organize-model-picker__empty">未找到匹配模型，可直接使用当前输入值</li>}
+                  </ul>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleDetectModels()}
+                disabled={!draft.provider.apiKey.trim() || modelStatus === "loading"}
+                className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button"
+              >
+                <RefreshCw aria-hidden="true" />
+                {modelStatus === "loading" ? "正在检测模型..." : "检测可用模型"}
+              </button>
+              <p role={modelStatus === "error" ? "alert" : "status"} aria-live="polite">
+                {modelMessage || "使用当前 API Key 和 Endpoint 查询最新模型；也可手动输入。修改模型后需重新测试连接。"}
+              </p>
+            </div>
+
             <div className="settings-simple__actions">
               <button onClick={handleTestConnection} disabled={testStatus === "testing"} className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button">
                 <FlaskConical aria-hidden="true" />
@@ -298,16 +483,6 @@ export function Options() {
                         <option key={provider.type} value={provider.type}>{provider.label}</option>
                       ))}
                     </select>
-                  </div>
-                  <div className="extension-field">
-                    <label>模型</label>
-                    <input
-                      type="text"
-                      value={draft.provider.model}
-                      onChange={(event) => updateProviderConfig("model", event.target.value)}
-                      placeholder={providerProfile.model}
-                      className="extension-control"
-                    />
                   </div>
                 </div>
 

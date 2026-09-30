@@ -681,26 +681,47 @@ export async function testAIConnection(config: AIProviderConfig) {
   return completion.content.trim().length > 0;
 }
 
-export async function listAIModels(config: AIProviderConfig): Promise<AIModelOption[]> {
-  if (!config.apiKey) throw new Error("请先配置 API Key 后再查询模型");
+export async function listAIModels(config: AIProviderConfig, signal?: AbortSignal): Promise<AIModelOption[]> {
+  if (!config.apiKey.trim()) throw new Error("请先配置 API Key 后再查询模型");
+  if (signal?.aborted) throw new DOMException("模型查询已取消", "AbortError");
   if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
 
   const profile = profileFor(config.type);
   const endpoint = endpointFor(config);
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const timer = globalThis.setTimeout(() => controller.abort(), MODEL_LIST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${endpoint}/models`, {
+    // Google 原生列表提供生成能力和分页字段；代理地址仍使用其兼容接口。
+    const url = new URL(`${endpoint}/models`);
+    const nativeGemini = config.type === "gemini" &&
+      url.hostname === "generativelanguage.googleapis.com" &&
+      /\/openai\/models$/.test(url.pathname);
+    if (nativeGemini) {
+      url.pathname = url.pathname.replace(/\/openai\/models$/, "/models");
+      url.searchParams.set("pageSize", "1000");
+    }
+    const models: AIModelOption[] = [];
+    const seenTokens = new Set<string>();
+    do {
+    const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
+        ...(nativeGemini
+          ? { "x-goog-api-key": config.apiKey.trim() }
+          : { Authorization: `Bearer ${config.apiKey.trim()}` }),
       },
       signal: controller.signal,
     });
 
     if (!response.ok) {
+      if (response.status === 404 || response.status === 405 || response.status === 501) {
+        throw new Error(`${profile.label} 当前 Endpoint 不支持模型列表接口（HTTP ${response.status}）。请参考供应商文档手动输入模型名称，再测试连接。`);
+      }
       const detail = await response.text().catch(() => "");
       throw new Error(providerStatusMessage(profile, response.status, detail));
     }
@@ -717,27 +738,47 @@ export async function listAIModels(config: AIProviderConfig): Promise<AIModelOpt
       throw new Error(`${profile.label} 返回的模型列表格式不受支持`);
     }
 
-    const models = records.flatMap((item) => {
+    models.push(...records.flatMap((item) => {
       if (!item || typeof item !== "object") return [];
-      const value = item as { id?: unknown; name?: unknown; owned_by?: unknown; ownedBy?: unknown };
+      const value = item as { id?: unknown; name?: unknown; owned_by?: unknown; ownedBy?: unknown; supportedGenerationMethods?: unknown };
+      if (nativeGemini && (!Array.isArray(value.supportedGenerationMethods) ||
+        !value.supportedGenerationMethods.includes("generateContent"))) return [];
       const idValue = typeof value.id === "string" ? value.id : value.name;
       if (typeof idValue !== "string" || !idValue.trim()) return [];
       const ownedByValue = value.owned_by ?? value.ownedBy;
       return [{
-        id: idValue.trim(),
+        id: nativeGemini ? idValue.trim().replace(/^models\//, "") : idValue.trim(),
         ownedBy: typeof ownedByValue === "string" ? ownedByValue : undefined,
       }];
-    });
+    }));
+
+    const nextToken = nativeGemini && payload && typeof payload === "object"
+      ? (payload as { nextPageToken?: unknown }).nextPageToken : undefined;
+    if (nextToken !== undefined && (typeof nextToken !== "string" || !nextToken.trim())) {
+      throw new Error(`${profile.label} 返回了无效的模型分页标记`);
+    }
+    if (typeof nextToken !== "string") break;
+    if (seenTokens.has(nextToken)) throw new Error(`${profile.label} 返回了重复的模型分页标记`);
+    seenTokens.add(nextToken);
+    url.searchParams.set("pageToken", nextToken);
+    } while (!controller.signal.aborted);
+
+    if (controller.signal.aborted) throw new DOMException("模型查询已取消", "AbortError");
+    if (!models.length) throw new Error(`${profile.label} 未返回可选择的模型，请手动输入模型名称后测试连接`);
 
     return Array.from(new Map(models.map((model) => [model.id, model])).values())
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (signal?.aborted) throw error;
       throw new Error(`${profile.label} 模型列表查询超时，请稍后重试`);
     }
+    if (error instanceof TypeError) throw new Error(`${profile.label} 模型列表查询失败，请检查 Endpoint、网络或跨域支持`);
+    if (error instanceof SyntaxError) throw new Error(`${profile.label} 未返回有效的模型列表 JSON`);
     if (error instanceof Error) throw error;
     throw new Error(`${profile.label} 模型列表查询失败`);
   } finally {
+    signal?.removeEventListener("abort", abort);
     globalThis.clearTimeout(timer);
   }
 }
