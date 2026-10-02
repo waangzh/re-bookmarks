@@ -229,22 +229,24 @@ export function Backups() {
             </Link>
             <div>
               <h1 className="extension-page__title">书签备份</h1>
-              <p className="extension-page__subtitle">手动保存当前状态，并从最近备份安全恢复</p>
+              <p className="extension-page__subtitle">保存书签，随时恢复</p>
             </div>
           </div>
-          <Link to="/import" className="extension-page__wide-secondary backup-header-actions__link">
-            <FileUp className="w-4 h-4" />
-            导入书签
-          </Link>
-          <button
-            type="button"
-            onClick={() => void handleCreateBackup()}
-            disabled={Boolean(busyAction)}
-            className="extension-page__primary-button"
-          >
-            <Archive className="w-4 h-4" />
-            {busyAction === "create" ? "备份中" : "立即备份"}
-          </button>
+          <div className="backup-header-actions">
+            <Link to="/import" className="extension-page__wide-secondary backup-header-actions__link">
+              <FileUp className="w-4 h-4" />
+              导入书签
+            </Link>
+            <button
+              type="button"
+              onClick={() => void handleCreateBackup()}
+              disabled={Boolean(busyAction)}
+              className="extension-page__primary-button"
+            >
+              <Archive className="w-4 h-4" />
+              {busyAction === "create" ? "备份中" : "立即备份"}
+            </button>
+          </div>
         </div>
 
         {message && (

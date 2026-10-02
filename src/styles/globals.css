@@ -5890,11 +5890,27 @@ input {
   animation: bookmark-task-spin 900ms linear infinite;
 }
 
+.extension-page--backups .extension-page__header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.backup-header-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .backup-header-actions__link {
   width: auto;
-  min-width: 104px;
+  min-width: 0;
   padding-inline: 12px;
+  white-space: nowrap;
   text-decoration: none;
+}
+
+.backup-header-actions .extension-page__primary-button {
+  min-height: 44px;
 }
 
 .extension-page--backups .extension-page__inner > * + * {
