@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadService } from "./load-service.mjs";
-const { getPlanSummary, getPlanChangeReason, classificationPolicyFingerprint } = await loadService("src/app/services/previewSafety.ts");
+const { getPlanSummary, getPlanChangeReason, classificationPolicyFingerprint, parsePreviewReview } = await loadService("src/app/services/previewSafety.ts");
 const settings = { maxNestingLevel: 2, customPrompt: "原规则" };
 const source = { id: "a", parentId: "f", title: "中文长标题", url: "https://a.test/?q=1", path: ["开发", "资料"] };
 const plan = { bookmarkId: "a", bookmarkTitle: source.title, bookmarkUrl: source.url, fromParentId: "f", sourceFolderPath: source.path, toFolderPath: ["开发", "工具"], expectedTargetId: "target", policyFingerprint: classificationPolicyFingerprint(settings) };
@@ -29,4 +29,11 @@ test("风险分组不会因模型信号较强而整组批准疑似重复或跨�
   const result = buildPreviewRiskAnalysis([duplicate, cross], bookmarks, null);
   assert.equal(result.auto.length, 0);
   assert.equal(result.review.length, 2);
+});
+
+test("损坏或旧版审核记录不造成崩溃也不恢复非法批准", () => {
+  for (const value of [null, {}, [], { signatures: {}, plans: { a: "approved" }, frameworks: {} }, { signatures: [], plans: {}, frameworks: {} }]) {
+    assert.equal(parsePreviewReview(value), null);
+  }
+  assert.deepEqual(parsePreviewReview({ signatures: { a: "snapshot" }, plans: { a: "keep" }, frameworks: {} }).plans, { a: "keep" });
 });

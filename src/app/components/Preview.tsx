@@ -46,7 +46,7 @@ import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
-import { getPlanChangeReason, getPlanSummary } from "../services/previewSafety";
+import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -980,8 +980,9 @@ export function Preview() {
   useEffect(() => {
     if (phase !== "preview" || loading || reviewLoaded || !plans.length) return;
     let alive = true;
-    void getStorageValue<{ signatures: Record<string, string>; plans: Record<string, PreviewPlanDecision>; frameworks: Record<string, PreviewFrameworkDecision> } | null>(STORAGE_KEYS.previewReview, null).then((saved) => {
+    void getStorageValue<unknown>(STORAGE_KEYS.previewReview, null).then((value) => {
       if (!alive) return;
+      const saved = parsePreviewReview(value);
       if (saved) {
         const valid = plans.filter((plan) => saved.signatures[plan.bookmarkId] === JSON.stringify(plan));
         setPlanDecisions((previous) => ({ ...previous, ...Object.fromEntries(valid.filter((plan) => saved.plans[plan.bookmarkId]).map((plan) => [plan.bookmarkId, saved.plans[plan.bookmarkId]])) }));
@@ -991,6 +992,19 @@ export function Preview() {
     });
     return () => { alive = false; };
   }, [phase, loading, plans, reviewLoaded]);
+  useEffect(() => {
+    if (phase !== "preview" || loading || !plans.length) return;
+    setPlans((previous) => {
+      let changed = false;
+      const next = previous.map((plan) => {
+        const reason = getPlanChangeReason(plan, allBookmarks.find((bookmark) => bookmark.id === plan.bookmarkId), existingFolders, settings);
+        if (!reason || (plan.keepInPlace && plan.reason === reason)) return plan;
+        changed = true;
+        return { ...plan, keepInPlace: true, reason };
+      });
+      return changed ? next : previous;
+    });
+  }, [phase, loading, allBookmarks, existingFolders, settings, plans]);
   useEffect(() => {
     if (!reviewLoaded || phase !== "preview" || loading || savingPreviewDrop) return;
     const timer = window.setTimeout(() => {
@@ -1038,7 +1052,7 @@ export function Preview() {
     return decisions;
   }, [frameworkDecisions, riskAnalysis.frameworkGroups]);
   const approvedPlans = useMemo(
-    () => plans.filter((plan) => planDecisions[plan.bookmarkId] === "move"),
+    () => plans.filter((plan) => !plan.keepInPlace && planDecisions[plan.bookmarkId] === "move"),
     [plans, planDecisions]
   );
   const pendingFrameworkCount = riskAnalysis.frameworkGroups.filter(
@@ -1074,10 +1088,10 @@ export function Preview() {
         const frameworkDecision = frameworkDecisionByBookmarkId.get(item.plan.bookmarkId);
         if (item.level === "keep" || frameworkDecision === "keep") {
           next[item.plan.bookmarkId] = "keep";
-        } else if (item.level === "auto") {
-          next[item.plan.bookmarkId] = "move";
         } else if (previous[item.plan.bookmarkId]) {
           next[item.plan.bookmarkId] = previous[item.plan.bookmarkId];
+        } else if (item.level === "auto") {
+          next[item.plan.bookmarkId] = "move";
         }
       }
       return next;
@@ -1654,6 +1668,7 @@ export function Preview() {
           >
             接受这组
           </button>
+          <button type="button" className="preview-risk-action" onClick={() => setPlanDecision(bookmarkIds, "keep")}>保留这组</button>
           <button
             type="button"
             className="preview-risk-action"

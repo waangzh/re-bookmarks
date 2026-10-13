@@ -43,3 +43,18 @@ export function getPlanSummary(plans: MovePlan[], bookmarks: BookmarkNode[], fol
       return source.length && source[0] !== plan.toFolderPath[0];
     }).length };
 }
+
+export type PreviewReviewState = {
+  signatures: Record<string, string>;
+  plans: Record<string, "move" | "keep">;
+  frameworks: Record<string, "approve" | "keep">;
+};
+
+export function parsePreviewReview(value: unknown): PreviewReviewState | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const validMap = (map: unknown, allowed?: string[]) => map && typeof map === "object" && !Array.isArray(map) &&
+    Object.values(map).every((entry) => typeof entry === "string" && (!allowed || allowed.includes(entry)));
+  if (!validMap(record.signatures) || !validMap(record.plans, ["move", "keep"]) || !validMap(record.frameworks, ["approve", "keep"])) return null;
+  return record as PreviewReviewState;
+}

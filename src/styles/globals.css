@@ -499,7 +499,7 @@ input {
 
 .sidebar-shell {
   width: 100%;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
   overflow-x: hidden;
   background: #f7faff;
@@ -8003,3 +8003,16 @@ input {
 
 .preview-inline-folder-edit { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 12px; }
 .preview-inline-folder-edit select { min-width: 0; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; background: #fff; }
+
+@media (max-width: 320px) {
+  .sidebar-shell .extension-page__inner { padding: 12px 8px; }
+  .sidebar-shell .extension-page__header { flex-wrap: wrap; }
+  .sidebar-shell .extension-metrics,
+  .sidebar-shell .preview-risk-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sidebar-shell .extension-section,
+  .sidebar-shell .extension-success { min-width: 0; overflow-wrap: anywhere; }
+  .sidebar-shell .extension-success { align-items: flex-start; }
+  .sidebar-shell .extension-success__icon { flex-shrink: 0; width: 24px; height: 24px; }
+  .sidebar-shell .report-history-card__metrics { flex-wrap: wrap; }
+  .sidebar-shell .extension-page__title { font-size: 18px; }
+}

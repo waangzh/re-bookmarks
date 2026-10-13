@@ -227,9 +227,9 @@ export function Report() {
     if (!confirm("确认要撤销最近一次整理吗？书签将尝试移回整理前的文件夹，但不会恢复文件夹内的原有排序。")) return;
     setBusyAction("undo");
     try {
-      await undoLastOrganize();
-      setSelectedReportId(null);
+      const report = await undoLastOrganize();
       await loadAll();
+      setSelectedReportId(report?.id ?? null);
       setMessage("已尝试将书签移回整理前的文件夹；原有排序未恢复，并已清理空的目标文件夹");
     } finally {
       setBusyAction(null);
@@ -241,9 +241,9 @@ export function Report() {
     if (!confirm("确认要重新应用最近一次智能整理吗？将按最近一次分类结果移动书签，不会重新调用 AI。")) return;
     setBusyAction("reapply");
     try {
-      await reapplyLastOrganize();
-      setSelectedReportId(null);
+      const report = await reapplyLastOrganize();
       await loadAll();
+      setSelectedReportId(report?.id ?? null);
       setMessage("已重新应用最近一次智能整理");
     } finally {
       setBusyAction(null);

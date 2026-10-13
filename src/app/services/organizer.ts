@@ -665,7 +665,10 @@ export async function executeMovePlans(
 ): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
   plans = [...new Map(plans.map((plan) => [plan.bookmarkId, plan])).values()];
-  const effectivePlans = plans.map((plan) => ({ ...plan }));
+  const effectivePlans: MovePlan[] = plans.map((plan) => ({ ...plan,
+    executionStatus: plan.keepInPlace ? "kept" : "unchanged",
+    executedTargetParentId: undefined,
+  }));
   const backupStats = getBookmarkTreeStats(tree);
 
   // 记录执行前的文件夹
@@ -700,6 +703,7 @@ export async function executeMovePlans(
         effectivePlans[planIndex] = {
           ...plan,
           keepInPlace: true,
+          executionStatus: "failed",
           reason: protectionReason ?? "目标文件夹在白名单中，已保持原位",
         };
         failedItems.push({ bookmarkId: plan.bookmarkId, bookmarkTitle: plan.bookmarkTitle, reason: protectionReason ?? "目标目录已受保护，未执行" });
@@ -713,7 +717,11 @@ export async function executeMovePlans(
         affectedFolderIds.add(parentId);
         continue;
       }
+      // 先持久化本项的目标，页面中断时仍可依据真实位置安全撤销。
+      effectivePlans[planIndex] = { ...plan, executionStatus: "pending", executedTargetParentId: parentId };
+      await saveLastBackup({ ...backup, movePlan: effectivePlans });
       await moveBookmark(plan.bookmarkId, parentId);
+      effectivePlans[planIndex] = { ...plan, executionStatus: "moved", executedTargetParentId: parentId };
       movedCount += 1;
       affectedFolderIds.add(parentId);
       if (plan.fromParentId) {
@@ -721,6 +729,9 @@ export async function executeMovePlans(
         affectedFolderIds.add(plan.fromParentId);
       }
     } catch (error) {
+      if (effectivePlans[planIndex].executionStatus !== "moved") {
+        effectivePlans[planIndex] = { ...plan, executionStatus: "failed" };
+      }
       failedItems.push({
         bookmarkId: plan.bookmarkId,
         bookmarkTitle: plan.bookmarkTitle,
@@ -761,7 +772,7 @@ export async function executeMovePlans(
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(effectivePlans.filter((plan) => !plan.keepInPlace)),
-    keptCount: effectivePlans.filter((plan) => plan.keepInPlace).length,
+    keptCount: effectivePlans.filter((plan) => plan.executionStatus === "kept" || plan.executionStatus === "unchanged").length,
     createdFolderCount: createdTargetFolders.length,
     reusedFolderCount: new Set(effectivePlans.filter((plan) => !plan.keepInPlace && !failedItems.some((item) => item.bookmarkId === plan.bookmarkId)).map((plan) => JSON.stringify(plan.toFolderPath)).filter((path) => !createdTargetFolders.some((folder) => JSON.stringify(folder.path) === path))).size,
     removedFolders,
@@ -785,7 +796,23 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
   let movedCount = 0;
 
   for (const plan of movePlan) {
+    if (plan.keepInPlace || (plan.executionStatus && plan.executionStatus !== "moved" && plan.executionStatus !== "pending")) continue;
     try {
+      const currentBookmark = await getBookmark(plan.bookmarkId);
+      if (!currentBookmark) throw new Error("书签已不存在，无法撤销");
+      if (currentBookmark.title !== plan.bookmarkTitle || currentBookmark.url !== plan.bookmarkUrl) {
+        throw new Error("书签标题或 URL 已变化，未撤销用户后续修改");
+      }
+      if (currentBookmark.parentId === plan.fromParentId) continue;
+      if (plan.executedTargetParentId && currentBookmark.parentId !== plan.executedTargetParentId) {
+        throw new Error("书签已被再次移动，未撤销用户后续修改");
+      }
+      if (!plan.executedTargetParentId) {
+        const currentPath = findFolderPathById(await getBookmarkTree(), currentBookmark.parentId ?? "");
+        if (!currentPath || !isSameFolderPath(currentPath, plan.toFolderPath)) {
+          throw new Error("书签已离开原整理目标，未执行旧记录撤销");
+        }
+      }
       let targetParentId = plan.fromParentId;
       // 检查原文件夹是否仍然存在（可能被清理逻辑删除了）
       const existing = await getBookmark(targetParentId);
@@ -799,7 +826,6 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
         }
       }
       // 不指定 index，让书签添加到文件夹末尾，避免 Index out of bounds
-      const currentBookmark = await getBookmark(plan.bookmarkId);
       if (currentBookmark?.parentId === targetParentId) {
         continue;
       }
@@ -814,7 +840,7 @@ export async function undoLastOrganize(): Promise<OrganizeReport | null> {
     }
   }
 
-  const removedFolders = await cleanupAllEmptyFolders();
+  const removedFolders = await cleanupEmptyFolders(new Set((backup.createdTargetFolders ?? []).map((folder) => folder.id)));
 
   const report: OrganizeReport = {
     id: `undo-${Date.now()}`,
@@ -842,11 +868,12 @@ export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
   const current = await getAllBookmarks();
   const reapplyPlans = movePlan.map((plan) => {
     const bookmark = current.find((item) => item.id === plan.bookmarkId);
-    return bookmark ? { ...plan, fromParentId: bookmark.parentId ?? "", sourceFolderPath: bookmark.path, bookmarkTitle: bookmark.title, bookmarkUrl: bookmark.url, policyFingerprint: undefined,
-      keepInPlace: plan.keepInPlace || JSON.stringify(bookmark.path) === JSON.stringify(plan.toFolderPath) } : plan;
+    const originalPath = plan.sourceFolderPath ?? findFolderPathById(backup.tree, plan.fromParentId);
+    const atOriginalPath = bookmark && originalPath && isSameFolderPath(bookmark.path, originalPath);
+    return bookmark && atOriginalPath ? { ...plan, fromParentId: bookmark.parentId ?? "", sourceFolderPath: originalPath,
+      keepInPlace: plan.keepInPlace || Boolean(plan.executionStatus && plan.executionStatus !== "moved") } : plan;
   });
   return executeMovePlans(reapplyPlans, undefined, {
-    cleanupAllEmptyFolders: true,
     reportKind: "reapply",
   });
 }

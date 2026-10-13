@@ -1,4 +1,4 @@
-export function setupBrowser({ failBackup = false, failMoveId, tree } = {}) {
+export function setupBrowser({ failBackup = false, failBackupAfter = Infinity, failMoveId, tree } = {}) {
   const bookmark = (id, title) => ({ id, parentId: "source", title, url: "https://" + id + ".test/", index: 0 });
   const currentTree = tree ?? [{ id: "0", title: "", children: [{ id: "root", parentId: "0", title: "书签栏", children: [
     { id: "dev", parentId: "root", title: "开发", children: [
@@ -8,6 +8,7 @@ export function setupBrowser({ failBackup = false, failMoveId, tree } = {}) {
   ] }] }];
   const values = {};
   const moves = [];
+  let backupWrites = 0;
   const events = () => { const listeners = new Set(); return { addListener: (fn) => listeners.add(fn), removeListener: (fn) => listeners.delete(fn), emit: (...args) => listeners.forEach((fn) => fn(...args)) }; };
   const find = (id, nodes = currentTree) => {
     for (const node of nodes) { if (node.id === id) return node; const child = find(id, node.children ?? []); if (child) return child; }
@@ -19,7 +20,7 @@ export function setupBrowser({ failBackup = false, failMoveId, tree } = {}) {
     runtime,
     storage: { onChanged: events(), local: {
       get: (key, cb) => cb({ [key]: values[key] }),
-      set: (data, cb) => { if (failBackup && data["remarks.lastBackup"]) return complete(cb, "备份写入失败"); Object.assign(values, structuredClone(data)); complete(cb); },
+      set: (data, cb) => { if (data["remarks.lastBackup"] && (failBackup || ++backupWrites > failBackupAfter)) return complete(cb, "备份写入失败"); Object.assign(values, structuredClone(data)); complete(cb); },
       remove: (key, cb) => { delete values[key]; complete(cb); },
     } },
     bookmarks: {

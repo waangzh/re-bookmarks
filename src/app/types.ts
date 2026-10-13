@@ -77,6 +77,8 @@ export type MovePlan = {
   sourceFolderPath?: string[];
   expectedTargetId?: string | null;
   policyFingerprint?: string;
+  executionStatus?: "pending" | "moved" | "unchanged" | "failed" | "kept";
+  executedTargetParentId?: string;
 };
 
 export type TokenUsage = {
