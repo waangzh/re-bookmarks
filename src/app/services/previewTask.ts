@@ -256,6 +256,16 @@ async function startTaskInPage(task: PreviewTaskCache, bookmarks: BookmarkNode[]
 }
 
 async function sendRunMessage(task: PreviewTaskCache, bookmarks: BookmarkNode[]) {
+  const selected = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
+  const scopedBookmarks = task.selectedBookmarkIds.map((id) => selected.get(id));
+  if (scopedBookmarks.some((bookmark) => !bookmark) || !scopedBookmarks.length) {
+    const failedTask: PreviewTaskCache = { ...task, status: "failed", updatedAt: Date.now(),
+      error: "原任务所选书签已删除或受保护，请重新选择范围；未扩大整理范围" };
+    const current = await getRawPreviewTask();
+    if (isSameRunningTask(current, task.id)) await savePreviewTask(failedTask);
+    return failedTask;
+  }
+  bookmarks = scopedBookmarks as BookmarkNode[];
   if (!hasRuntimeMessaging()) return startTaskInPage(task, bookmarks);
 
   try {
@@ -318,6 +328,13 @@ export async function handlePreviewTaskMessage(message: PreviewTaskMessage) {
   if (message.action === "run") {
     const currentTask = await getRawPreviewTask();
     if (!isSameRunningTask(currentTask, message.taskId)) return currentTask;
+    const selectedIds = new Set(currentTask.selectedBookmarkIds);
+    const scopedBookmarks = message.bookmarks.filter((bookmark) => selectedIds.has(bookmark.id));
+    if (new Set(scopedBookmarks.map((bookmark) => bookmark.id)).size !== selectedIds.size || !selectedIds.size) {
+      const failedTask: PreviewTaskCache = { ...currentTask, status: "failed", updatedAt: Date.now(), error: "原任务的书签范围已变化，请重新选择；未扩大整理范围" };
+      await savePreviewTask(failedTask);
+      return failedTask;
+    }
     if (currentTask.executionOwner === "page") return currentTask;
     if (currentTask.executionOwner === "background" && runningTaskControllers.has(message.taskId)) {
       return currentTask;
@@ -331,7 +348,7 @@ export async function handlePreviewTaskMessage(message: PreviewTaskMessage) {
     await savePreviewTask(claimedTask);
     const controller = createTaskController(message.taskId);
     void completePreviewTask(
-      message.bookmarks,
+      scopedBookmarks,
       message.taskId,
       message.organizeMode ?? claimedTask.organizeMode ?? "quick",
       message.model ?? claimedTask.model,

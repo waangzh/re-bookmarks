@@ -110,6 +110,24 @@ until("(async()=>{const state=await browser.storage.local.get('remarks.previewRe
 command("/url", {"url": base + "sidebar/index.html#/preview"})
 until("document.querySelector('.extension-page__primary-button')&&!document.querySelector('.extension-page__primary-button').disabled")
 results.append("整组保留、批准和重开恢复审核决定")
+evaluate("Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()==='展开检查').click()")
+until("Array.from(document.querySelectorAll('button')).some(button=>button.textContent.trim()==='搜索或输入目录')")
+evaluate("(()=>{const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent.trim()==='搜索或输入目录');button.focus();button.click();})()")
+until("!!document.querySelector('[aria-label=\"修改预览目录\"] input')")
+assert evaluate("document.activeElement===document.querySelector('[aria-label=\"修改预览目录\"] input')")
+command("/actions", {"actions": [{"type": "key", "id": "keyboard", "actions": [{"type": "keyDown", "value": "\ue00c"}, {"type": "keyUp", "value": "\ue00c"}]}]})
+until("!document.querySelector('[aria-label=\"修改预览目录\"]')")
+until("document.activeElement.textContent.trim()==='搜索或输入目录'")
+evaluate("(()=>{const button=document.querySelector('.extension-page__primary-button');button.focus();button.click();})()")
+until("!!document.querySelector('[aria-label=\"最终执行确认\"]')")
+assert evaluate("document.activeElement.textContent==='返回审核'")
+for _ in range(5):
+    command("/actions", {"actions": [{"type": "key", "id": "keyboard", "actions": [{"type": "keyDown", "value": "\ue004"}, {"type": "keyUp", "value": "\ue004"}]}]})
+    assert evaluate("!!document.activeElement.closest('[aria-label=\"最终执行确认\"]')")
+command("/actions", {"actions": [{"type": "key", "id": "keyboard", "actions": [{"type": "keyDown", "value": "\ue00c"}, {"type": "keyUp", "value": "\ue00c"}]}]})
+until("!document.querySelector('[aria-label=\"最终执行确认\"]')")
+until("document.activeElement===document.querySelector('.extension-page__primary-button')")
+results.append("两种对话框初始焦点、Tab 锁定、Escape 与焦点恢复通过")
 evaluate("document.querySelector('.extension-page__primary-button').click()")
 until("!!document.querySelector('[aria-label=\"最终执行确认\"]')")
 before = evaluate("browser.bookmarks.get(" + json.dumps([node["id"] for node in fixture["nodes"]]) + ")")
@@ -142,6 +160,17 @@ results.append("真实安全恢复保留备份后新增书签并恢复备份内�
 permission = evaluate("browser.permissions.contains({permissions:['history']})")
 assert permission is False
 results.append("未启用历史时没有 history 授权")
+# Simulate a persisted interrupted task whose original source no longer exists.
+running = {"id": "interrupted-missing", "status": "running", "createdAt": int(time.time() * 1000),
+           "updatedAt": int(time.time() * 1000), "selectedBookmarkIds": ["missing-test-bookmark"],
+           "bookmarkCount": 1, "whitelistFingerprint": "", "executionOwner": "background", "organizeMode": "quick"}
+before_resume = evaluate("browser.bookmarks.get(" + json.dumps([node["id"] for node in fixture["nodes"]]) + ")")
+evaluate("browser.storage.local.set(" + json.dumps({"remarks.previewTask": running, "remarks.previewPlan": None}) + ")")
+command("/url", {"url": base + "sidebar/index.html#/preview"})
+until("document.body.innerText.includes('未扩大整理范围')")
+after_resume = evaluate("browser.bookmarks.get(" + json.dumps([node["id"] for node in fixture["nodes"]]) + ")")
+assert [node["parentId"] for node in before_resume] == [node["parentId"] for node in after_resume]
+results.append("中断任务原选择缺失时明确失败，没有扩大为全库整理")
 layout = evaluate("({width:innerWidth,scroll:document.documentElement.scrollWidth})")
 assert layout["scroll"] <= layout["width"]
 screenshot = command("/screenshot", method="GET")
