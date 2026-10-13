@@ -45,6 +45,7 @@ import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl, parseFol
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { PreviewDialog } from "./PreviewDialog";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
@@ -2245,16 +2246,16 @@ export function Preview() {
           </>
         )}
 
-        {confirmOpen && <section role="dialog" aria-modal="true" aria-label="最终执行确认" className="extension-section execution-confirmation">
+        {confirmOpen && <PreviewDialog label="最终执行确认" description="确认变更范围后，先创建备份，再执行移动。可返回审核。" busy={phase === "submitting" || savingPreviewDrop} onClose={() => setConfirmOpen(false)}>
           <h2 className="extension-section__title">确认本次变更</h2>
           <p>移动 {executionSummary.moveCount} 条；新建 {executionSummary.newFolders.length} 个目录；复用 {executionSummary.reusedCount} 个目标目录；其余 {plans.length - approvedPlans.length} 条保持原位。</p>
           <p>先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录。外部变化项会停止移动并写入失败原因。</p>
           <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
-          <button type="button" className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
-        </section>}
-        {editingPlan && <section role="dialog" aria-modal="true" aria-label="修改预览目录" className="extension-section execution-confirmation">
+          <button type="button" data-dialog-return className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
+        </PreviewDialog>}
+        {editingPlan && <PreviewDialog label="修改预览目录" description="搜索或输入目录，仅修改预览，不移动书签。" busy={savingPreviewDrop} onClose={() => setEditingPlan(null)}>
           <h2 className="extension-section__title">修改目录 · {editingPlan.bookmarkTitle}</h2>
-          <label>搜索已有目录或输入新路径<input autoFocus className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" /></label>
+          <label>搜索已有目录或输入新路径<input className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" /></label>
           <datalist id="preview-folder-choices">{existingFolders.map((folder) => <option key={folder.id} value={folder.path.join(" / ")} />)}</datalist>
           <p>仅修改预览，尚未移动书签；不存在的目录会在最终确认后创建。</p>
           <button type="button" className="extension-page__wide-primary" disabled={savingPreviewDrop || !folderDraft.trim()} onClick={() => {
@@ -2262,8 +2263,8 @@ export function Preview() {
             if (!path.length) { setError("请填写有效目录"); return; }
             void applyPreviewDrop(editingPlan, { path, key: path.join("/") } as PreviewFolderNode).then((saved) => { if (saved) setEditingPlan(null); });
           }}>确认修改</button>
-          <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => setEditingPlan(null)}>取消</button>
-        </section>}
+          <button type="button" data-dialog-return className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => setEditingPlan(null)}>取消</button>
+        </PreviewDialog>}
         {draggedPlan && (
           <div
             className="preview-drag-ghost"

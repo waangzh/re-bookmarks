@@ -532,7 +532,8 @@ input {
 .home-notice button { margin-left: 8px; text-decoration: underline; }
 .home-v2 .sidebar-current-page { flex-wrap: wrap; }
 .home-v2 .sidebar-suggestion-row span { overflow-wrap: anywhere; }
-.execution-confirmation { position: fixed; z-index: 100; inset: 15% 12px auto; max-width: 440px; margin: auto; padding: 18px; background: #fff; border: 2px solid #bfdbfe; border-radius: 12px; box-shadow: 0 0 0 100vmax #0f172a66; max-height: 75vh; overflow-y: auto; overflow-wrap: anywhere; }
+.preview-dialog-overlay { position: fixed; z-index: 99; inset: 0; background: #0f172a66; }
+.execution-confirmation { position: fixed; z-index: 100; inset: 15% 12px auto; max-width: 440px; margin: auto; padding: 18px; background: #fff; border: 2px solid #bfdbfe; border-radius: 12px; box-shadow: 0 12px 36px #0f172a33; max-height: 75vh; overflow-y: auto; overflow-wrap: anywhere; }
 .execution-confirmation p { font-size: 13px; line-height: 1.7; margin: 12px 0; }
 
 .sidebar-icon-button {
