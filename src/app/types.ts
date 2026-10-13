@@ -72,6 +72,9 @@ export type MovePlan = {
   reason?: string;
   source?: ClassificationResult["source"];
   keepInPlace?: boolean;
+  sourceFolderPath?: string[];
+  expectedTargetId?: string | null;
+  policyFingerprint?: string;
 };
 
 export type TokenUsage = {
@@ -251,6 +254,9 @@ export type OrganizeReport = {
   tokenUsage?: TokenUsage;
   undone?: boolean;
   skippedFolderCleanup?: FailedMove[];
+  keptCount?: number;
+  createdFolderCount?: number;
+  reusedFolderCount?: number;
 };
 
 export type PreviewPlanCache = {

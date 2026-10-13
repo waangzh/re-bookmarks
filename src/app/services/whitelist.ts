@@ -8,7 +8,11 @@ import {
   type BrowserBookmarkNode,
 } from "./bookmarks";
 import {
-  clearPreviewPlan,
+  getPreviewPlan,
+  getPreviewTask,
+  savePreviewPlan,
+  savePreviewTask,
+  whitelistFingerprint,
   getBookmarkWhitelist,
   saveBookmarkWhitelist,
   updatePendingRecommendations,
@@ -112,9 +116,15 @@ export { whitelistFingerprint } from "./storage";
 async function invalidateWhitelistDerivedData(entries: BookmarkWhitelistEntry[]) {
   const tree = await getBookmarkTree();
   const index = buildWhitelistIndex(tree, entries);
+  const [cache, task] = await Promise.all([getPreviewPlan(), getPreviewTask()]);
+  const revalidate = (plans: import("../types").MovePlan[]) => plans.map((plan) =>
+    index.protectedBookmarkIds.has(plan.bookmarkId) || isProtectedTargetPath(plan.toFolderPath, tree, index)
+      ? { ...plan, keepInPlace: true, reason: "白名单已变化，受影响项目保持原位" } : plan);
+  const fingerprint = whitelistFingerprint(entries);
   await Promise.all([
-    clearPreviewPlan(),
-    import("./previewTask").then(({ requestClearPreviewTask }) => requestClearPreviewTask()),
+    cache ? savePreviewPlan({ ...cache, whitelistFingerprint: fingerprint, movePlan: revalidate(cache.movePlan) }) : Promise.resolve(),
+    task?.status === "completed" ? savePreviewTask({ ...task, whitelistFingerprint: fingerprint, movePlan: revalidate(task.movePlan ?? []) })
+      : task ? import("./previewTask").then(({ requestClearPreviewTask }) => requestClearPreviewTask()) : Promise.resolve(),
     updatePendingRecommendations((recommendations) => recommendations.filter((item) =>
       !index.protectedBookmarkIds.has(item.bookmarkId) &&
       !isProtectedTargetPath(item.suggestedFolderPath, tree, index)

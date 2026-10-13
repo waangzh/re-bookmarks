@@ -40,11 +40,13 @@ import { useAppStore } from "../store/useAppStore";
 import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, resumePreviewTask, startPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
-import { getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
+import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
+
+import { getPlanChangeReason, getPlanSummary } from "../services/previewSafety";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -154,10 +156,10 @@ function ConfidenceSignal({ plan }: { plan: MovePlan }) {
   }
 
   const level = plan.confidence >= STRONG_MODEL_SIGNAL
-    ? { label: "较强", className: "text-green-600 bg-green-50" }
+    ? { label: "依据较充分", className: "text-green-600 bg-green-50" }
     : plan.confidence >= WEAK_MODEL_SIGNAL
-      ? { label: "一般", className: "text-blue-600 bg-blue-50" }
-      : { label: "较弱", className: "text-amber-600 bg-amber-50" };
+      ? { label: "需要确认", className: "text-blue-600 bg-blue-50" }
+      : { label: "依据不足", className: "text-amber-600 bg-amber-50" };
   const detail = `模型自评 ${plan.confidence.toFixed(2)}，仅作相对排序参考，不代表正确率`;
 
   return (
@@ -166,12 +168,12 @@ function ConfidenceSignal({ plan }: { plan: MovePlan }) {
       title={detail}
       aria-label={`${detail}，信号${level.label}`}
     >
-      模型信号·{level.label}
+      {level.label}
     </span>
   );
 }
 
-function buildPreviewRiskAnalysis(
+export function buildPreviewRiskAnalysis(
   plans: MovePlan[],
   bookmarks: BookmarkNode[],
   habitProfile: FolderHabitProfile | null
@@ -232,6 +234,7 @@ function buildPreviewRiskAnalysis(
       (
         plan.confidence >= STRONG_MODEL_SIGNAL &&
         targetExists &&
+        !possibleDuplicate &&
         habitMatches &&
         keepsTopLevel
       )
@@ -494,6 +497,8 @@ function getProgressPercent(progress: PreviewTaskProgress | undefined) {
 
 export function Preview() {
   const navigate = useNavigate();
+  const [existingFolders, setExistingFolders] = useState<BookmarkNode[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const { loadAll, loadSettings, settings } = useAppStore();
   const [phase, setPhase] = useState<PreviewPhase>("selection");
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
@@ -637,6 +642,7 @@ export function Preview() {
       getCurrentWhitelist(),
     ]);
     const urlBookmarks = filterAvailableBookmarks(bookmarks.filter((b) => b.url), protection.index);
+    setExistingFolders(await getAllBookmarkFolders());
     setAllBookmarks(urlBookmarks);
     setFolderHabitProfile(habitProfile);
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
@@ -648,15 +654,35 @@ export function Preview() {
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName !== "local" || !changes[STORAGE_KEYS.bookmarkWhitelist]) return;
       void loadSelectableBookmarks().then(() => {
-        setPlans([]);
-        setActiveTaskId(null);
-        setPhase((current) => current === "submitting" ? current : "selection");
-        setCacheMessage("白名单已更新，请重新生成分类预览");
+        void getPreviewPlan().then((cache) => { if (cache) setPlans(cache.movePlan); });
+        setCacheMessage("白名单已更新：受影响项保持原位，其余审核进度保留。");
       }).catch((error) => setError(error instanceof Error ? error.message : "读取白名单失败"));
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.bookmarks) return;
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const [bookmarks, folders] = await Promise.all([getAllBookmarks(), getAllBookmarkFolders()]);
+        if (!alive) return;
+        setAllBookmarks(bookmarks);
+        setExistingFolders(folders);
+        setPlans((previous) => previous.map((plan) => {
+          const reason = getPlanChangeReason(plan, bookmarks.find((item) => item.id === plan.bookmarkId), folders, settings);
+          return reason ? { ...plan, keepInPlace: true, reason } : plan;
+        }));
+        setCacheMessage("书签状态已更新；变化项保持原位，其他审核决定保留。可重新生成受影响项。");
+      } catch (cause) { if (alive) setError(cause instanceof Error ? cause.message : "刷新书签失败"); }
+    };
+    chrome.bookmarks.onChanged.addListener(refresh);
+    chrome.bookmarks.onMoved.addListener(refresh);
+    chrome.bookmarks.onRemoved.addListener(refresh);
+    return () => { alive = false; chrome.bookmarks.onChanged.removeListener(refresh); chrome.bookmarks.onMoved.removeListener(refresh); chrome.bookmarks.onRemoved.removeListener(refresh); };
+  }, [settings]);
 
   const restoreCompletedTask = (task: PreviewTaskCache) => {
     if (!task.movePlan?.length) return false;
@@ -999,6 +1025,8 @@ export function Preview() {
     (item) => !planDecisions[item.plan.bookmarkId]
   ).length;
   const pendingDecisionCount = pendingFrameworkCount + pendingAssignmentCount + pendingReviewCount;
+  const summary = getPlanSummary(plans, allBookmarks, existingFolders);
+  const executionSummary = getPlanSummary(approvedPlans, allBookmarks, existingFolders);
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -1202,7 +1230,7 @@ export function Preview() {
     }
     setPhase("submitting");
     try {
-      await executeMovePlans(approvedPlans, tokenUsage);
+      await executeMovePlans(plans.map((plan) => ({ ...plan, keepInPlace: planDecisions[plan.bookmarkId] !== "move" })), tokenUsage);
       await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadAll();
       navigate("/report");
@@ -1633,7 +1661,7 @@ export function Preview() {
           </div>
           {phase === "preview" && !loading && (
             <button
-              onClick={handleConfirm}
+              onClick={() => setConfirmOpen(true)}
               disabled={!approvedPlans.length || pendingDecisionCount > 0 || savingPreviewDrop}
               className="extension-page__primary-button"
             >
@@ -1898,6 +1926,17 @@ export function Preview() {
               </div>
             ) : (
               <div className="preview-risk-board">
+                <section className="extension-section" aria-label="本次整理建议">
+                  <h2 className="extension-section__title">本次整理建议</h2>
+                  <p>分析 {summary.total} 条 · 建议移动 {summary.moveCount} 条 · 保持原位 {summary.keepCount} 条</p>
+                  <p>预计新增 {summary.newFolders.length} 个目录 · 尚需 {pendingDecisionCount} 个审核决定</p>
+                  <p className="sidebar-muted-copy">先确认新文件夹，再审核需要判断的书签。审核数与条目数不能相加。</p>
+                </section>
+                <CollapsibleSection title="变更总览" hint={`${summary.crossTopLevelCount} 项跨一级目录变更`}>
+                  <p>新增：{summary.newFolders.map((path) => path.join(" / ")).join("、") || "无"}；复用 {summary.reusedCount} 个目标目录</p>
+                  {summary.moving.map((plan) => <div key={plan.bookmarkId} className="extension-compact-row"><span>{plan.bookmarkTitle}：{(allBookmarks.find((item) => item.id === plan.bookmarkId)?.path ?? plan.sourceFolderPath ?? []).join(" / ") || "根目录"} → {plan.toFolderPath.join(" / ")}{plan.source === "manual" ? "（人工修改）" : ""}<small>{plan.reason}</small></span></div>)}
+                  <p>会清理本次移动后变空的源目录及其空祖先、移动失败后留下的新建空目录；不会清理其他空目录。</p>
+                </CollapsibleSection>
                 <div className="preview-risk-overview" aria-label="整理风险概览">
                   <div>
                     <span>规则复用</span>
@@ -1912,7 +1951,7 @@ export function Preview() {
                     <strong>{assignmentRiskCount}</strong>
                   </div>
                   <div>
-                    <span>逐项异常</span>
+                    <span>需单独检查</span>
                     <strong>{riskAnalysis.review.length}</strong>
                   </div>
                 </div>
@@ -1921,7 +1960,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><ShieldCheck /></div>
                     <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>规则复用，无需逐项审核</strong>
+                      <strong tabIndex={0}>可直接接受 · 支持抽查</strong>
                       <span>
                         {riskAnalysis.auto.length} 个建议同时满足：复用现有目录、符合已有习惯且未跨一级目录
                       </span>
@@ -1955,7 +1994,7 @@ export function Preview() {
                   <div className="preview-risk-section__header">
                     <div className="preview-risk-section__icon"><FolderPlus /></div>
                     <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>1. 确认分类框架</strong>
+                      <strong tabIndex={0}>1. 新文件夹确认</strong>
                       <span>
                         {riskAnalysis.frameworkGroups.length} 个拟新增一级目录；先确认目录是否合理，再审核其中的书签分配
                       </span>
@@ -2098,8 +2137,12 @@ export function Preview() {
               </ul>
             </CollapsibleSection>
 
+            {pendingDecisionCount > 0 && <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop || loading} onClick={() => {
+              setFrameworkDecisions((previous) => Object.fromEntries(riskAnalysis.frameworkGroups.map((group) => [group.key, previous[group.key] ?? "keep"])));
+              setPlanDecisions((previous) => Object.fromEntries(plans.map((plan) => [plan.bookmarkId, previous[plan.bookmarkId] ?? "keep"])));
+            }}>其余未决项保持原位</button>}
             <button
-              onClick={handleConfirm}
+              onClick={() => setConfirmOpen(true)}
               disabled={!approvedPlans.length || pendingDecisionCount > 0 || loading || savingPreviewDrop}
               className="extension-page__wide-primary"
             >
@@ -2111,6 +2154,13 @@ export function Preview() {
           </>
         )}
 
+        {confirmOpen && <section role="dialog" aria-modal="true" aria-label="最终执行确认" className="extension-section execution-confirmation">
+          <h2 className="extension-section__title">确认本次变更</h2>
+          <p>移动 {executionSummary.moveCount} 条；新建 {executionSummary.newFolders.length} 个目录；复用 {executionSummary.reusedCount} 个目标目录；其余 {plans.length - approvedPlans.length} 条保持原位。</p>
+          <p>先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录。外部变化项会停止移动并写入失败原因。</p>
+          <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
+          <button type="button" className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
+        </section>}
         {draggedPlan && (
           <div
             className="preview-drag-ghost"

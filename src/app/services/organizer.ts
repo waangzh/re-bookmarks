@@ -16,6 +16,7 @@ import {
   type BrowserBookmarkNode,
   ensureFolderPath,
   getAllBookmarks,
+  flattenBookmarkTree,
   getBookmarkTree,
   getBookmark,
   getDefaultBookmarkParentId,
@@ -59,6 +60,8 @@ import {
   getCurrentWhitelist,
   isProtectedTargetPath,
 } from "./whitelist";
+
+import { classificationPolicyFingerprint, getPlanChangeReason } from "./previewSafety";
 
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
 type PreviewProgressReporter = (progress: PreviewTaskProgress) => void | Promise<void>;
@@ -538,7 +541,10 @@ export async function generateMovePlanPreviewForBookmarks(
     if (isProtectedTargetPath(plan.toFolderPath, folderTree, whitelist)) {
       return { ...plan, keepInPlace: true, reason: "目标文件夹在白名单中，已保持原位" };
     }
-    return plan;
+    return { ...plan, sourceFolderPath: bookmark.path,
+      expectedTargetId: collectFolderPaths(folderTree).find((folder) => JSON.stringify(folder.path) === JSON.stringify(plan.toFolderPath))?.id ?? null,
+      policyFingerprint: classificationPolicyFingerprint(settings),
+    };
   });
 
   return {
@@ -657,6 +663,7 @@ export async function executeMovePlans(
   options: { cleanupAllEmptyFolders?: boolean; reportKind?: OrganizeReport["kind"] } = {}
 ): Promise<OrganizeReport> {
   const [tree, settings] = await Promise.all([getBookmarkTree(), getSettings()]);
+  plans = [...new Map(plans.map((plan) => [plan.bookmarkId, plan])).values()];
   const effectivePlans = plans.map((plan) => ({ ...plan }));
   const backupStats = getBookmarkTreeStats(tree);
 
@@ -683,6 +690,10 @@ export async function executeMovePlans(
     if (plan.keepInPlace) continue;
     try {
       const currentProtection = await getCurrentWhitelist();
+      const nodes = flattenBookmarkTree(currentProtection.tree);
+      const liveSettings = await getSettings();
+      const changeReason = getPlanChangeReason(plan, nodes.find((node) => node.id === plan.bookmarkId), nodes.filter((node) => node.type === "folder"), liveSettings);
+      if (changeReason) throw new Error(changeReason);
       const protectionReason = currentProtection.index.reasonById.get(plan.bookmarkId);
       if (protectionReason || isProtectedTargetPath(plan.toFolderPath, currentProtection.tree, currentProtection.index)) {
         effectivePlans[planIndex] = {
@@ -690,6 +701,7 @@ export async function executeMovePlans(
           keepInPlace: true,
           reason: protectionReason ?? "目标文件夹在白名单中，已保持原位",
         };
+        failedItems.push({ bookmarkId: plan.bookmarkId, bookmarkTitle: plan.bookmarkTitle, reason: protectionReason ?? "目标目录已受保护，未执行" });
         continue;
       }
       const parentId = await ensureFolderPath(
@@ -748,6 +760,9 @@ export async function executeMovePlans(
     createdAt: Date.now(),
     movedCount,
     folderCount: uniqueFolderCount(effectivePlans.filter((plan) => !plan.keepInPlace)),
+    keptCount: effectivePlans.filter((plan) => plan.keepInPlace).length,
+    createdFolderCount: createdTargetFolders.length,
+    reusedFolderCount: new Set(effectivePlans.filter((plan) => !plan.keepInPlace && !failedItems.some((item) => item.bookmarkId === plan.bookmarkId)).map((plan) => JSON.stringify(plan.toFolderPath)).filter((path) => !createdTargetFolders.some((folder) => JSON.stringify(folder.path) === path))).size,
     removedFolders,
     failedItems,
     movePlan: effectivePlans,
@@ -823,7 +838,13 @@ export async function reapplyLastOrganize(): Promise<OrganizeReport | null> {
   const movePlan = backup.movePlan ?? [];
   if (movePlan.length === 0) return null;
 
-  return executeMovePlans(movePlan, undefined, {
+  const current = await getAllBookmarks();
+  const reapplyPlans = movePlan.map((plan) => {
+    const bookmark = current.find((item) => item.id === plan.bookmarkId);
+    return bookmark ? { ...plan, fromParentId: bookmark.parentId ?? "", sourceFolderPath: bookmark.path, bookmarkTitle: bookmark.title, bookmarkUrl: bookmark.url, policyFingerprint: undefined,
+      keepInPlace: plan.keepInPlace || JSON.stringify(bookmark.path) === JSON.stringify(plan.toFolderPath) } : plan;
+  });
+  return executeMovePlans(reapplyPlans, undefined, {
     cleanupAllEmptyFolders: true,
     reportKind: "reapply",
   });
