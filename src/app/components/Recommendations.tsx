@@ -1,6 +1,7 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
+import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
@@ -287,15 +288,7 @@ export function Recommendations() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">待处理推荐</h1>
-              <p className="extension-page__subtitle">{pendingRecommendations.length} 条建议待处理</p>
-            </div>
-          </div>
+          <PageHeading title="待处理推荐" subtitle="{pendingRecommendations.length} 条建议待处理" />
         </div>
 
         {error && (

@@ -1,8 +1,8 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import {
   AlertCircle,
-  ArrowLeft,
   Bot,
   Check,
   ChevronDown,
@@ -250,15 +250,7 @@ export function Options() {
     <div className="extension-page extension-page--settings">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">设置</h1>
-              <p className="extension-page__subtitle">AI、整理规则与隐私权限</p>
-            </div>
-          </div>
+          <PageHeading title="设置" subtitle="AI、整理规则与隐私权限" />
         </div>
 
         <section className="extension-section settings-section settings-section--provider settings-simple">

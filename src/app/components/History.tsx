@@ -1,6 +1,6 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
-import { ArrowLeft, ExternalLink, TrendingUp, Clock, AlertCircle, Search, Globe2 } from "lucide-react";
+import { ExternalLink, TrendingUp, Clock, AlertCircle, Search, Globe2 } from "lucide-react";
 import type { FrequentBookmark } from "../types";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { getFrequentBookmarks, hasHistoryPermission, requestHistoryPermission } from "../services/history";
@@ -109,15 +109,7 @@ export function History() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">常访问书签</h1>
-              <p className="extension-page__subtitle">按本地访问频率整理</p>
-            </div>
-          </div>
+          <PageHeading title="常访问书签" subtitle="按本地访问频率整理" />
         </div>
 
         {!enabled ? (

@@ -1,8 +1,7 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -191,15 +190,7 @@ export function ImportBookmarks() {
     <div className="extension-page extension-page--import">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">导入书签</h1>
-              <p className="extension-page__subtitle">导入浏览器导出的 HTML 书签文件，先预览再写入。</p>
-            </div>
-          </div>
+          <PageHeading title="导入书签" subtitle="导入浏览器导出的 HTML 书签文件，先预览再写入。" />
         </div>
 
         {message && (

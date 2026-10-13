@@ -21,13 +21,15 @@ type AppProps = {
 function AppRoutes({ defaultView = "popup" }: AppProps) {
   const location = useLocation();
   const { settings, loadSettings } = useAppStore();
-  const isPopupHome = defaultView === "popup" && location.pathname === "/";
+  const isPopupHome = defaultView === "popup" && ["/", "/home"].includes(location.pathname);
   const isPopupWindow = defaultView === "popup";
   const isSidebarWindow = defaultView === "sidebar";
 
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
 
   const home = settings.onboardingCompleted
     ? defaultView === "options"
@@ -41,10 +43,10 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
     <div
       className={
         isPopupWindow
-          ? `bookmark-popup-window bg-gray-50${isPopupHome ? " bookmark-popup-window--home" : ""}`
+          ? `remarks-app bookmark-popup-window bg-gray-50${isPopupHome ? " bookmark-popup-window--home" : ""}`
           : isSidebarWindow
-            ? "sidebar-shell bg-gray-50"
-            : "w-full min-w-[360px] min-h-screen bg-gray-50"
+            ? "remarks-app sidebar-shell bg-gray-50"
+            : "remarks-app w-full min-h-screen bg-gray-50"
       }
     >
       <Routes>
@@ -53,6 +55,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
           element={home}
         />
         <Route path="/options" element={<Options />} />
+        <Route path="/home" element={<SidebarHome compact={isPopupWindow} />} />
         <Route path="/preview" element={<Preview />} />
         <Route path="/report" element={<Report />} />
         <Route path="/recommendations" element={<Recommendations />} />

@@ -1,7 +1,7 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 import {
-  ArrowLeft,
   ArrowRight,
   CheckCircle,
   ChevronDown,
@@ -357,15 +357,7 @@ export function Report() {
       <div className="extension-page">
         <div className="extension-page__inner">
           <div className="extension-page__header">
-            <div className="extension-page__heading">
-              <Link to="/" className="extension-page__back" aria-label="返回">
-                <ArrowLeft className="extension-page__back-icon" />
-              </Link>
-              <div>
-                <h1 className="extension-page__title">整理报告</h1>
-                <p className="extension-page__subtitle">暂无最近整理结果</p>
-              </div>
-            </div>
+            <PageHeading title="整理报告" subtitle="暂无最近整理结果" />
           </div>
           <div className="extension-empty">
             <p>暂无整理报告</p>
@@ -380,15 +372,7 @@ export function Report() {
     <div className="extension-page extension-page--report">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">整理报告</h1>
-              <p className="extension-page__subtitle">最近 {Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作</p>
-            </div>
-          </div>
+          <PageHeading title="整理报告" subtitle="最近 {Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作" />
         </div>
 
         <section className="extension-section report-history">

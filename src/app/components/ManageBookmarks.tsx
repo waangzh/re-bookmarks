@@ -1,7 +1,7 @@
+import { PageHeading } from "./PageHeading";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import {
-  ArrowLeft,
   Plus,
   Search,
   Edit2,
@@ -2081,15 +2081,7 @@ export function ManageBookmarks() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">{pageTitle}</h1>
-              <p className="extension-page__subtitle">{pageSubtitle}</p>
-            </div>
-          </div>
+          <PageHeading title={pageTitle} subtitle={pageSubtitle} />
           {!taskMode && (
             <button onClick={() => setShowAddForm(true)} className="extension-page__primary-button">
               <Plus className="w-4 h-4" />

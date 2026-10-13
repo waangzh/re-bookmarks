@@ -1,9 +1,9 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   AlertTriangle,
   Archive,
-  ArrowLeft,
   Bookmark,
   ChevronDown,
   ChevronRight,
@@ -223,15 +223,7 @@ export function Backups() {
     <div className="extension-page extension-page--backups">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">书签备份</h1>
-              <p className="extension-page__subtitle">保存书签，随时恢复</p>
-            </div>
-          </div>
+          <PageHeading title="书签备份" subtitle="保存书签，随时恢复" />
           <div className="backup-header-actions">
             <Link to="/import" className="extension-page__wide-secondary backup-header-actions__link">
               <FileUp className="w-4 h-4" />

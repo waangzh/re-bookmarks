@@ -1,3 +1,4 @@
+import { PageHeading } from "./PageHeading";
 import {
   useEffect,
   useMemo,
@@ -9,7 +10,6 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router";
 import {
-  ArrowLeft,
   Folder,
   FolderPlus,
   ExternalLink,
@@ -1727,25 +1727,13 @@ export function Preview() {
     <div className="extension-page extension-page--preview">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">
-                {phase === "selection" ? "选择书签" : "风险预览"}
-              </h1>
-              <p className="extension-page__subtitle">
-                {loading
+          <PageHeading title={phase === "selection" ? "选择书签" : "风险预览"} subtitle={loading
                   ? "正在处理..."
                   : phase === "selection"
                     ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
                     : pendingDecisionCount
                       ? `${pendingDecisionCount} 个审核决定待完成`
-                      : `已批准移动 ${approvedPlans.length} 个书签`}
-              </p>
-            </div>
-          </div>
+                      : `已批准移动 ${approvedPlans.length} 个书签`} />
           {phase === "preview" && !loading && (
             <button
               onClick={() => setConfirmOpen(true)}

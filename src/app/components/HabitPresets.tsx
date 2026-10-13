@@ -1,7 +1,6 @@
+import { PageHeading } from "./PageHeading";
 import { useEffect, useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
-import { Link } from "react-router";
 import {
-  ArrowLeft,
   Ban,
   Bookmark,
   Check,
@@ -327,23 +326,8 @@ export function HabitPresets() {
   return (
     <div className="extension-page extension-page--habits">
       <div className="extension-page__inner habit-page-shell">
-        <div className="habit-brand-bar">
-          <span className="habit-brand-bar__mark">
-            <Bookmark className="w-4 h-4" />
-          </span>
-          <span>ReMarks</span>
-        </div>
-
         <div className="extension-page__header habit-page-hero">
-          <div className="extension-page__heading">
-            <Link to="/" className="extension-page__back" aria-label="返回">
-              <ArrowLeft className="extension-page__back-icon" />
-            </Link>
-            <div>
-              <h1 className="extension-page__title">分类偏好</h1>
-              <p className="extension-page__subtitle">查看和管理 ReMarks 学到的分类偏好</p>
-            </div>
-          </div>
+          <PageHeading title="分类偏好" subtitle="查看和管理 ReMarks 学到的分类偏好" />
         </div>
 
         <div className="extension-button-row habit-presets-actions">
