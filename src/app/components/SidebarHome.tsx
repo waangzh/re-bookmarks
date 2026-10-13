@@ -26,6 +26,7 @@ type CurrentPageState = {
   title: string;
   url: string;
   saved: boolean;
+  savedPaths: string[];
   related: BookmarkNode[];
 };
 
@@ -50,7 +51,7 @@ function MiniFavicon({ title, url }: { title: string; url?: string }) {
   );
 }
 
-async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<CurrentPageState | null> {
+export async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<CurrentPageState | null> {
   if (typeof chrome === "undefined" || !chrome.tabs?.query) return null;
 
   return new Promise((resolve) => {
@@ -68,15 +69,16 @@ async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<CurrentPageSta
 
       const currentUrl = sanitizeUrl(tab.url);
       const currentDomain = getDomain(tab.url);
-      const saved = bookmarks.some((bookmark) => bookmark.url && sanitizeUrl(bookmark.url) === currentUrl);
-      const related = bookmarks
+      const savedBookmarks = bookmarks.filter((bookmark) => bookmark.url && sanitizeUrl(bookmark.url) === currentUrl);
+      const related = currentDomain ? bookmarks
         .filter((bookmark) => bookmark.url && getDomain(bookmark.url) === currentDomain && sanitizeUrl(bookmark.url) !== currentUrl)
-        .slice(0, 3);
+        .slice(0, 3) : [];
 
       resolve({
         title: tab.title || currentDomain || "当前网页",
         url: tab.url,
-        saved,
+        saved: savedBookmarks.length > 0,
+        savedPaths: [...new Set(savedBookmarks.map((bookmark) => bookmark.path.join(" / ") || "根目录"))],
         related,
       });
     });
@@ -148,11 +150,22 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
 
   useEffect(() => {
     let alive = true;
-    void getCurrentPage(bookmarks).then((page) => {
-      if (alive) setCurrentPage(page);
-    });
+    let revision = 0;
+    const refresh = () => {
+      const request = ++revision;
+      void getCurrentPage(bookmarks).then((page) => { if (alive && request === revision) setCurrentPage(page); });
+    };
+    const tabs = typeof chrome === "undefined" ? undefined : chrome.tabs;
+    const windows = typeof chrome === "undefined" ? undefined : chrome.windows;
+    refresh();
+    tabs?.onActivated?.addListener(refresh);
+    tabs?.onUpdated?.addListener(refresh);
+    windows?.onFocusChanged?.addListener(refresh);
     return () => {
       alive = false;
+      tabs?.onActivated?.removeListener(refresh);
+      tabs?.onUpdated?.removeListener(refresh);
+      windows?.onFocusChanged?.removeListener(refresh);
     };
   }, [bookmarks]);
 
@@ -194,13 +207,14 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         <div className="sidebar-panel__head"><span><Globe2 className="w-4 h-4" />当前网页</span></div>
         {currentPage ? <>
           <div className="sidebar-current-page"><CheckCircle2 className="w-4 h-4" /><span>{currentPage.saved ? "本页已收藏（忽略 query / hash 匹配）" : "本页未收藏"}</span></div>
-          {!currentPage.saved && <button type="button" className="extension-page__wide-secondary" disabled={savingPage} onClick={() => {
+          {currentPage.saved && <p className="sidebar-muted-copy">所在目录：{currentPage.savedPaths.join("、")}</p>}
+          {!currentPage.saved && <button type="button" className="extension-page__wide-secondary" disabled={savingPage || !/^https?:\/\//i.test(currentPage.url)} onClick={() => {
             setSavingPage(true);
             void saveCurrentPage(currentPage.title, currentPage.url).then(async (result) => { setPageNotice(result.created ? "已收藏，归档建议可在任务中心处理" : "该完整 URL 已收藏，未重复创建"); await loadAll(); }).catch((cause) => setPageNotice(cause instanceof Error ? cause.message : "收藏失败")).finally(() => setSavingPage(false));
           }}>{savingPage ? "正在收藏…" : "收藏此页"}</button>}
           <p className="sidebar-muted-copy">状态按忽略 query / hash 匹配；创建时检查完整 URL。</p>
           {pageNotice && <p role="status">{pageNotice} <Link to="/recommendations">选择归档目录</Link></p>}
-          <Link to={`/manage?search=${encodeURIComponent(currentPage.title)}`} className="sidebar-muted-link">在书签管理中查看</Link>
+          <Link to={`/manage?search=${encodeURIComponent(sanitizeUrl(currentPage.url))}`} className="sidebar-muted-link">{currentPage.saved ? "查看或编辑此页书签" : "在书签管理中查看"}</Link>
           {currentPage.related.length > 0 && <><p className="sidebar-muted-copy">同网站书签</p><div className="sidebar-mini-list">{currentPage.related.map((bookmark) =>
             <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="sidebar-mini-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span></a>)}</div></>}
         </> : <p className="sidebar-muted-copy">打开网页后可查看收藏状态和同网站书签。</p>}
