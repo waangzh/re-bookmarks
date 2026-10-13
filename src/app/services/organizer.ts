@@ -61,6 +61,7 @@ import {
   isProtectedTargetPath,
 } from "./whitelist";
 
+import { matchFixedDomainRule } from "./fixedRules";
 import { classificationPolicyFingerprint, getPlanChangeReason } from "./previewSafety";
 
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
@@ -879,7 +880,13 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
   let classification = fallbackResult(bookmark.id, "分类依据不足，需要手动判断");
   let runtimeError: Pick<PendingRecommendation, "errorCode" | "reason"> | null = null;
 
-  if (!settings.provider.apiKey) {
+  const fixed = await matchFixedDomainRule(currentBookmark.url);
+  if (fixed) {
+    classification = fixed.invalid || (!settings.allowNestedFolders && fixed.rule.folderPath.length > 1) || fixed.rule.folderPath.length > settings.maxNestingLevel ? fallbackResult(bookmark.id, "固定规则目录已变化或受保护，请重新指定目录") : {
+      id: bookmark.id, category: fixed.rule.folderPath.join(" / "), categoryPath: fixed.rule.folderPath,
+      confidence: 1, source: "rule", decision: "existing_folder", reason: "使用你明确固定的域名规则（未调用 AI）",
+    };
+  } else if (!settings.provider.apiKey) {
     runtimeError = {
       errorCode: "missing_api_key",
       reason: "未配置 API Key，尚未进行内容分类。请完成 AI 设置后重试。",
@@ -933,6 +940,10 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
     ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath
     : currentFolderPath;
   const latestFolderPaths = getAvailableFolderPaths(latestTree, latestProtection.index);
+  if (latestBookmark.title !== currentBookmark.title || latestBookmark.url !== currentBookmark.url || latestBookmark.parentId !== currentBookmark.parentId || !isSameFolderPath(currentFolderPath, latestFolderPath)) {
+    classification = fallbackResult(bookmark.id, "分类期间书签已变化，请重新判断");
+    runtimeError = null;
+  }
 
   let kind: PendingRecommendation["kind"];
   let suggestedFolderPath: string[] = [];
@@ -982,6 +993,7 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
     createdAt: Date.now(),
     suggestedFolderPath,
     currentFolderPath: latestFolderPath,
+    expectedTargetId: collectFolderPaths(latestTree).find((folder) => JSON.stringify(folder.path) === JSON.stringify(suggestedFolderPath))?.id,
     confidence: classification.confidence,
     reason,
     kind,

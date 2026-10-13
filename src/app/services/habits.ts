@@ -610,7 +610,8 @@ export async function recordHabitFeedback(feedback: HabitFeedback): Promise<stri
       ? `已记住：减少新建“${suggestedFolderPath.join(" / ")}”`
       : `已记住：减少把 ${domain || "类似书签"} 归入“${suggestedFolderPath.join(" / ")}”`;
   }
-  return `已记住：${domain ? `${domain} 的书签` : "类似书签"}优先归入“${chosenFolderPath?.join(" / ")}”`;
+  const repeated = learning.domainPreferences.find((item) => item.domain === domain && samePath(item.folderPath, chosenFolderPath ?? []));
+  return repeated && repeated.count >= 2 ? `你多次将 ${domain} 归入“${chosenFolderPath?.join(" / ")}”，后续会优先参考` : "已记录你的分类修正；后续建议会参考，可在分类偏好中删除";
 }
 
 export { getFolderHabitProfile };

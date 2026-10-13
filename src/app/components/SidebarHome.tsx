@@ -13,6 +13,7 @@ import {
 import type { BookmarkLinkHealthReport, BookmarkNode, PreviewTaskCache } from "../types";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { countDuplicateGroups, getLinkHealthProblemResults } from "../services/bookmarkTasks";
+import { saveCurrentPage } from "../services/currentPage";
 import { getHomeTasks, getOrganizeAction } from "../services/homeTasks";
 import { getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
@@ -91,6 +92,8 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<string[]>([]);
   const [ignoredManualTaskLoaded, setIgnoredManualTaskLoaded] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [savingPage, setSavingPage] = useState(false);
+  const [pageNotice, setPageNotice] = useState("");
   const [ready, setReady] = useState(false);
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
 
@@ -191,6 +194,12 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         <div className="sidebar-panel__head"><span><Globe2 className="w-4 h-4" />当前网页</span></div>
         {currentPage ? <>
           <div className="sidebar-current-page"><CheckCircle2 className="w-4 h-4" /><span>{currentPage.saved ? "本页已收藏（忽略 query / hash 匹配）" : "本页未收藏"}</span></div>
+          {!currentPage.saved && <button type="button" className="extension-page__wide-secondary" disabled={savingPage} onClick={() => {
+            setSavingPage(true);
+            void saveCurrentPage(currentPage.title, currentPage.url).then(async (result) => { setPageNotice(result.created ? "已收藏，归档建议可在任务中心处理" : "该完整 URL 已收藏，未重复创建"); await loadAll(); }).catch((cause) => setPageNotice(cause instanceof Error ? cause.message : "收藏失败")).finally(() => setSavingPage(false));
+          }}>{savingPage ? "正在收藏…" : "收藏此页"}</button>}
+          <p className="sidebar-muted-copy">状态按忽略 query / hash 匹配；创建时检查完整 URL。</p>
+          {pageNotice && <p role="status">{pageNotice} <Link to="/recommendations">选择归档目录</Link></p>}
           <Link to={`/manage?search=${encodeURIComponent(currentPage.title)}`} className="sidebar-muted-link">在书签管理中查看</Link>
           {currentPage.related.length > 0 && <><p className="sidebar-muted-copy">同网站书签</p><div className="sidebar-mini-list">{currentPage.related.map((bookmark) =>
             <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="sidebar-mini-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span></a>)}</div></>}

@@ -12,6 +12,8 @@ export type BookmarkNode = {
 
 export type OrganizeMode = "quick" | "deep";
 
+export type FixedDomainRule = { id: string; domain: string; folderId: string; folderPath: string[]; createdAt: number };
+
 export type BookmarkWhitelistEntry = {
   type: "bookmark" | "folder";
   id: string;
@@ -108,6 +110,7 @@ export type PendingRecommendation = {
   createdAt: number;
   suggestedFolderPath: string[];
   currentFolderPath?: string[];
+  expectedTargetId?: string;
   confidence: number;
   reason?: string;
   kind?: PendingRecommendationKind;

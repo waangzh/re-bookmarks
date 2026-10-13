@@ -136,6 +136,7 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
         errorCode: undefined,
         reason: "已由用户指定目标目录",
         confidence: 1,
+        expectedTargetId: undefined,
       };
     })
   );
@@ -193,8 +194,10 @@ export async function acceptRecommendations(
 
     return {
       bookmarkId: recommendation.bookmarkId,
-      bookmarkTitle: bookmark?.title ?? recommendation.bookmarkTitle,
-      bookmarkUrl: bookmark?.url ?? recommendation.bookmarkUrl,
+      bookmarkTitle: recommendation.bookmarkTitle,
+      bookmarkUrl: recommendation.bookmarkUrl,
+      sourceFolderPath: recommendation.currentFolderPath,
+      expectedTargetId: recommendation.expectedTargetId,
       fromParentId: bookmark?.parentId ?? "",
       fromIndex: bookmark?.index,
       toFolderPath: recommendation.suggestedFolderPath,

@@ -23,6 +23,8 @@ export const STORAGE_KEYS = {
   linkHealthReport: "remarks.linkHealthReport",
   ignoredManualTaskBookmarkIds: "remarks.ignoredManualTaskBookmarkIds",
   bookmarkWhitelist: "remarks.bookmarkWhitelist",
+  fixedDomainRules: "remarks.fixedDomainRules",
+  previewReview: "remarks.previewReview",
 } as const;
 
 export const REPORT_HISTORY_LIMIT = 5;

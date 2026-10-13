@@ -31,6 +31,8 @@ import {
   saveEditedFolderHabitProfile,
 } from "../services/habits";
 
+import { FixedRules } from "./FixedRules";
+
 const emptyProfile = (): FolderHabitProfile => ({
   id: `habit-${Date.now()}`,
   createdAt: Date.now(),
@@ -381,6 +383,8 @@ export function HabitPresets() {
           </div>
         )}
 
+        <FixedRules />
+        <section className="extension-section"><h2 className="extension-section__title">偏好从哪里来</h2><p>明确固定规则用于本地生成建议；多次修正形成的习惯与书签画像推断只影响 AI 提示。明确拒绝目录与暂不处理分别记录，忽略不会生成负反馈。</p><p>下方可删除软偏好，点击保存后生效；固定规则可直接撤销。人工修正并不保证下一次一定命中。</p></section>
         <section className="extension-section habit-card habit-learning-card">
           <div className="habit-section-heading habit-section-heading--with-action">
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
@@ -388,7 +392,7 @@ export function HabitPresets() {
               <h2 className="extension-section__title">自动学习</h2>
               <p>来自你实际修改和拒绝建议的行为反馈</p>
             </div>
-            <span className="habit-learning-badge">后台生效</span>
+            <span className="habit-learning-badge">AI 参考</span>
           </div>
           <div className="habit-learning-signal-grid">
             <div><strong>{learnedCount}</strong><span>次行为反馈</span></div>

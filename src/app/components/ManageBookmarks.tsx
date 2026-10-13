@@ -269,6 +269,7 @@ function getDuplicateGroupKindLabel(group: DuplicateBookmarkGroup) {
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, loadReports, settings } = useAppStore();
   const [searchParams] = useSearchParams();
+  const [directoryFilter, setDirectoryFilter] = useState("");
   const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -465,10 +466,9 @@ export function ManageBookmarks() {
 
   const filteredBookmarks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return visibleTaskBookmarks;
-
-    return visibleTaskBookmarks.filter((bookmark) => bookmarkMatchesQuery(bookmark, query));
-  }, [searchQuery, visibleTaskBookmarks]);
+    return visibleTaskBookmarks.filter((bookmark) => (!query || bookmarkMatchesQuery(bookmark, query)) &&
+      (!directoryFilter || bookmark.path.join(" / ") === directoryFilter));
+  }, [searchQuery, visibleTaskBookmarks, directoryFilter]);
 
   const visibleManualTaskBookmarkIds = useMemo(() => {
     if (taskMode !== "unsorted") return [];
@@ -2185,12 +2185,14 @@ export function ManageBookmarks() {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签..."}
+              placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签标题、网址或文件夹"}
               className="extension-control extension-control--search"
             />
           </div>
         )}
 
+        {!taskMode && <label className="extension-field">按目录筛选<select className="extension-control" value={directoryFilter} onChange={(event) => setDirectoryFilter(event.target.value)}><option value="">全部目录</option>{[...new Set(bookmarks.map((bookmark) => bookmark.path.join(" / ")).filter(Boolean))].sort().map((path) => <option key={path} value={path}>{path}</option>)}</select></label>}
+        {(searchQuery || directoryFilter) && <button type="button" className="extension-text-button" onClick={() => { setSearchQuery(""); setDirectoryFilter(""); }}>清除搜索与筛选</button>}
         {taskMode === "invalid" ? (
           renderLinkHealthGroups()
         ) : taskMode === "unsorted" ? (

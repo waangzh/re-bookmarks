@@ -37,10 +37,10 @@ import type {
 } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan } from "../services/storage";
+import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan, getStorageValue, setStorageValue } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, resumePreviewTask, startPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
-import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl } from "../services/bookmarks";
+import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -499,6 +499,8 @@ export function Preview() {
   const navigate = useNavigate();
   const [existingFolders, setExistingFolders] = useState<BookmarkNode[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<MovePlan | null>(null);
+  const [folderDraft, setFolderDraft] = useState("");
   const { loadAll, loadSettings, settings } = useAppStore();
   const [phase, setPhase] = useState<PreviewPhase>("selection");
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
@@ -507,6 +509,7 @@ export function Preview() {
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
   const [frameworkDecisions, setFrameworkDecisions] = useState<Record<string, PreviewFrameworkDecision>>({});
+  const [reviewLoaded, setReviewLoaded] = useState(false);
   const [riskGroupExpansionOverrides, setRiskGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -944,6 +947,8 @@ export function Preview() {
   };
 
   const handleRegenerate = async () => {
+    setReviewLoaded(false);
+    await setStorageValue(STORAGE_KEYS.previewReview, null);
     setExpandedPreviewFolders(new Set());
     setRiskGroupExpansionOverrides({});
     setPlanDecisions({});
@@ -972,6 +977,28 @@ export function Preview() {
   };
 
   const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
+  useEffect(() => {
+    if (phase !== "preview" || loading || reviewLoaded || !plans.length) return;
+    let alive = true;
+    void getStorageValue<{ signatures: Record<string, string>; plans: Record<string, PreviewPlanDecision>; frameworks: Record<string, PreviewFrameworkDecision> } | null>(STORAGE_KEYS.previewReview, null).then((saved) => {
+      if (!alive) return;
+      if (saved) {
+        const valid = plans.filter((plan) => saved.signatures[plan.bookmarkId] === JSON.stringify(plan));
+        setPlanDecisions((previous) => ({ ...previous, ...Object.fromEntries(valid.filter((plan) => saved.plans[plan.bookmarkId]).map((plan) => [plan.bookmarkId, saved.plans[plan.bookmarkId]])) }));
+        if (valid.length === plans.length) setFrameworkDecisions(saved.frameworks);
+      }
+      setReviewLoaded(true);
+    });
+    return () => { alive = false; };
+  }, [phase, loading, plans, reviewLoaded]);
+  useEffect(() => {
+    if (!reviewLoaded || phase !== "preview" || loading || savingPreviewDrop) return;
+    const timer = window.setTimeout(() => {
+      void setStorageValue(STORAGE_KEYS.previewReview, { signatures: Object.fromEntries(plans.map((plan) => [plan.bookmarkId, JSON.stringify(plan)])), plans: planDecisions, frameworks: frameworkDecisions })
+        .catch(() => setError("审核决定保存失败，关闭后可能需要重新审核"));
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [plans, planDecisions, frameworkDecisions, phase, loading, reviewLoaded, savingPreviewDrop]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
   const previewFolderLookup = useMemo(() => collectPreviewFolderLookup(previewTree), [previewTree]);
   const riskAnalysis = useMemo(
@@ -1138,13 +1165,15 @@ export function Preview() {
   const applyPreviewDrop = async (sourcePlan: MovePlan, targetFolder: PreviewFolderNode) => {
     const targetPath = targetFolder.path;
     const previousPlans = plans;
+    const previousDecisions = planDecisions;
     const nextPlans = plans.map((plan) =>
       plan.bookmarkId === sourcePlan.bookmarkId
         ? {
             ...plan,
             toFolderPath: targetPath,
+            expectedTargetId: existingFolders.find((folder) => JSON.stringify(folder.path) === JSON.stringify(targetPath))?.id ?? null,
             confidence: 1,
-            reason: `手动拖动到预览文件夹：${targetPath.join(" / ")}`,
+            reason: `人工修改预览目录：${targetPath.join(" / ")}`,
             source: "manual" as const,
             keepInPlace: false,
           }
@@ -1189,10 +1218,13 @@ export function Preview() {
         chosenFolderPath: targetPath,
       }).catch(() => null);
       setCacheMessage(learningNotice ?? "已更新预览计划，确认整理前不会移动书签");
+      return true;
     } catch (err) {
       setPlans(previousPlans);
+      setPlanDecisions(previousDecisions);
       setCacheMessage("");
       setError(err instanceof Error ? err.message : "保存手动调整失败");
+      return false;
     } finally {
       setSavingPreviewDrop(false);
     }
@@ -1517,7 +1549,7 @@ export function Preview() {
           {options.showDecision && existingFolders.length > 0 && (
             <label className="preview-inline-folder-edit">
               <span>修改目录</span>
-              <select value={plan.toFolderPath.join(" / ")} onChange={(event) => {
+              <select disabled={savingPreviewDrop} aria-label={`${plan.bookmarkTitle} 的目标目录`} value={plan.toFolderPath.join(" / ")} onChange={(event) => {
                 const target = existingFolders.find((folder) => folder.path.join(" / ") === event.target.value);
                 if (!target) return;
                 void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
@@ -1527,6 +1559,7 @@ export function Preview() {
             </label>
           )}
           <p>{reasons.join("；")}</p>
+          <button type="button" className="extension-text-button" disabled={savingPreviewDrop} onClick={() => { setEditingPlan(plan); setFolderDraft(plan.toFolderPath.join(" / ")); }}>搜索或输入目录</button>
         </div>
         {options.showDecision && (
           <div className="preview-risk-item__actions" aria-label={`${plan.bookmarkTitle} 的处理方式`}>
@@ -2172,6 +2205,18 @@ export function Preview() {
           <p>先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录。外部变化项会停止移动并写入失败原因。</p>
           <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
           <button type="button" className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
+        </section>}
+        {editingPlan && <section role="dialog" aria-modal="true" aria-label="修改预览目录" className="extension-section execution-confirmation">
+          <h2 className="extension-section__title">修改目录 · {editingPlan.bookmarkTitle}</h2>
+          <label>搜索已有目录或输入新路径<input autoFocus className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" /></label>
+          <datalist id="preview-folder-choices">{existingFolders.map((folder) => <option key={folder.id} value={folder.path.join(" / ")} />)}</datalist>
+          <p>仅修改预览，尚未移动书签；不存在的目录会在最终确认后创建。</p>
+          <button type="button" className="extension-page__wide-primary" disabled={savingPreviewDrop || !folderDraft.trim()} onClick={() => {
+            const path = parseFolderPath(folderDraft, settings.maxNestingLevel);
+            if (!path.length) { setError("请填写有效目录"); return; }
+            void applyPreviewDrop(editingPlan, { path, key: path.join("/") } as PreviewFolderNode).then((saved) => { if (saved) setEditingPlan(null); });
+          }}>确认修改</button>
+          <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => setEditingPlan(null)}>取消</button>
         </section>}
         {draggedPlan && (
           <div
