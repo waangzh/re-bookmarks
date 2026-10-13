@@ -336,7 +336,7 @@ export function ManageBookmarks() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations])) void loadManagedBookmarks();
+      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations] || changes[STORAGE_KEYS.folderHabitProfile] || changes[STORAGE_KEYS.fixedDomainRules])) void loadManagedBookmarks();
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);

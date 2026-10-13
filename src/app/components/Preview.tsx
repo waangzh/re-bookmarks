@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type {
   BookmarkNode,
+  FixedDomainRule,
   FolderHabitProfile,
   MovePlan,
   OrganizeMode,
@@ -37,7 +38,7 @@ import type {
 } from "../types";
 import { executeMovePlans } from "../services/organizer";
 import { useAppStore } from "../store/useAppStore";
-import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getPreviewPlan, savePreviewPlan, getStorageValue, setStorageValue } from "../services/storage";
+import { STORAGE_KEYS, clearPreviewPlan, getFolderHabitProfile, getStoredFolderHabitProfile, getPreviewPlan, savePreviewPlan, getStorageValue, setStorageValue } from "../services/storage";
 import { getPreviewTask, requestClearPreviewTask, resumePreviewTask, startPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
@@ -47,6 +48,8 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
+import { getFixedDomainRules } from "../services/fixedRules";
+import { getPreferenceConflict, getPreferenceFingerprint } from "../services/preferenceSafety";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -176,7 +179,9 @@ function ConfidenceSignal({ plan }: { plan: MovePlan }) {
 export function buildPreviewRiskAnalysis(
   plans: MovePlan[],
   bookmarks: BookmarkNode[],
-  habitProfile: FolderHabitProfile | null
+  habitProfile: FolderHabitProfile | null,
+  fixedRules: FixedDomainRule[] = [],
+  preferenceProfile: FolderHabitProfile | null = habitProfile
 ) {
   const bookmarkById = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
   const existingPathCounts = new Map<string, number>();
@@ -212,6 +217,7 @@ export function buildPreviewRiskAnalysis(
     const crossesTopLevel = Boolean(sourcePath[0] && targetPath[0] && sourcePath[0] !== targetPath[0]);
     const createsTopLevel = Boolean(targetPath[0] && !existingTopLevels.has(targetPath[0]));
     const possibleDuplicate = /重复|duplicate/i.test(plan.reason ?? "");
+    const preferenceConflict = getPreferenceConflict(plan, preferenceProfile, fixedRules);
     const keepsOriginalPosition = Boolean(
       plan.keepInPlace ||
       (sourcePath.length > 0 && isSamePath(sourcePath, targetPath))
@@ -223,7 +229,7 @@ export function buildPreviewRiskAnalysis(
         level: "keep",
         sourcePath,
         reasons: [
-          plan.keepInPlace ? "置信度不足，按当前默认策略不移动" : "目标与原目录一致",
+          plan.keepInPlace ? plan.reason || "当前计划保持原位" : "目标与原目录一致",
         ],
       });
       continue;
@@ -235,6 +241,7 @@ export function buildPreviewRiskAnalysis(
         plan.confidence >= STRONG_MODEL_SIGNAL &&
         targetExists &&
         !possibleDuplicate &&
+        !preferenceConflict &&
         habitMatches &&
         keepsTopLevel
       )
@@ -253,6 +260,7 @@ export function buildPreviewRiskAnalysis(
     }
 
     const reviewReasons = [
+      preferenceConflict ?? "",
       crossesTopLevel ? "将跨一级目录移动" : "",
       possibleDuplicate ? "检测到可能重复；本次不会删除" : "",
       plan.confidence < WEAK_MODEL_SIGNAL ? "模型提供的分类依据较弱" : "",
@@ -505,6 +513,8 @@ export function Preview() {
   const [phase, setPhase] = useState<PreviewPhase>("selection");
   const [allBookmarks, setAllBookmarks] = useState<BookmarkNode[]>([]);
   const [folderHabitProfile, setFolderHabitProfile] = useState<FolderHabitProfile | null>(null);
+  const [preferenceProfile, setPreferenceProfile] = useState<FolderHabitProfile | null>(null);
+  const [fixedRules, setFixedRules] = useState<FixedDomainRule[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
@@ -639,15 +649,19 @@ export function Preview() {
   }, [modelMenuOpen]);
 
   const loadSelectableBookmarks = async () => {
-    const [bookmarks, habitProfile, protection] = await Promise.all([
+    const [bookmarks, habitProfile, protection, rules, storedProfile] = await Promise.all([
       getAllBookmarks(),
       getFolderHabitProfile(),
       getCurrentWhitelist(),
+      getFixedDomainRules(),
+      getStoredFolderHabitProfile(),
     ]);
     const urlBookmarks = filterAvailableBookmarks(bookmarks.filter((b) => b.url), protection.index);
     setExistingFolders(await getAllBookmarkFolders());
     setAllBookmarks(urlBookmarks);
     setFolderHabitProfile(habitProfile);
+    setFixedRules(rules);
+    setPreferenceProfile(storedProfile);
     setSelectedIds(new Set(urlBookmarks.map((b) => b.id)));
     return urlBookmarks;
   };
@@ -655,10 +669,10 @@ export function Preview() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName !== "local" || !changes[STORAGE_KEYS.bookmarkWhitelist]) return;
+      if (areaName !== "local" || !(changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.folderHabitProfile] || changes[STORAGE_KEYS.fixedDomainRules])) return;
       void loadSelectableBookmarks().then(() => {
         void getPreviewPlan().then((cache) => { if (cache) setPlans(cache.movePlan); });
-        setCacheMessage("白名单已更新：受影响项保持原位，其余审核进度保留。");
+        setCacheMessage("保护或分类偏好已更新：重新校验受影响项，其余审核进度保留。");
       }).catch((error) => setError(error instanceof Error ? error.message : "读取白名单失败"));
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
@@ -988,27 +1002,28 @@ export function Preview() {
       if (!alive) return;
       const saved = parsePreviewReview(value);
       if (saved) {
-        const valid = plans.filter((plan) => saved.signatures[plan.bookmarkId] === JSON.stringify(plan));
+        const valid = plans.filter((plan) => saved.signatures[plan.bookmarkId] === JSON.stringify(plan) &&
+          !(plan.preferenceFingerprint === undefined && getPreferenceConflict(plan, preferenceProfile, fixedRules)));
         setPlanDecisions((previous) => ({ ...previous, ...Object.fromEntries(valid.filter((plan) => saved.plans[plan.bookmarkId]).map((plan) => [plan.bookmarkId, saved.plans[plan.bookmarkId]])) }));
         if (valid.length === plans.length) setFrameworkDecisions(saved.frameworks);
       }
       setReviewLoaded(true);
     });
     return () => { alive = false; };
-  }, [phase, loading, plans, reviewLoaded]);
+  }, [phase, loading, plans, reviewLoaded, folderHabitProfile, preferenceProfile, fixedRules]);
   useEffect(() => {
     if (phase !== "preview" || loading || !plans.length) return;
     setPlans((previous) => {
       let changed = false;
       const next = previous.map((plan) => {
-        const reason = getPlanChangeReason(plan, allBookmarks.find((bookmark) => bookmark.id === plan.bookmarkId), existingFolders, settings);
+        const reason = getPlanChangeReason(plan, allBookmarks.find((bookmark) => bookmark.id === plan.bookmarkId), existingFolders, settings, preferenceProfile, fixedRules);
         if (!reason || (plan.keepInPlace && plan.reason === reason)) return plan;
         changed = true;
         return { ...plan, keepInPlace: true, reason };
       });
       return changed ? next : previous;
     });
-  }, [phase, loading, allBookmarks, existingFolders, settings, plans]);
+  }, [phase, loading, allBookmarks, existingFolders, settings, plans, folderHabitProfile, preferenceProfile, fixedRules]);
   useEffect(() => {
     if (!reviewLoaded || phase !== "preview" || loading || savingPreviewDrop) return;
     const timer = window.setTimeout(() => {
@@ -1020,8 +1035,8 @@ export function Preview() {
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
   const previewFolderLookup = useMemo(() => collectPreviewFolderLookup(previewTree), [previewTree]);
   const riskAnalysis = useMemo(
-    () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile),
-    [plans, allBookmarks, folderHabitProfile]
+    () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile, fixedRules, preferenceProfile),
+    [plans, allBookmarks, folderHabitProfile, fixedRules]
   );
   const approvedFrameworkItems = riskAnalysis.frameworkGroups.flatMap((group) =>
     frameworkDecisions[group.key] === "approve"
@@ -1092,6 +1107,8 @@ export function Preview() {
         const frameworkDecision = frameworkDecisionByBookmarkId.get(item.plan.bookmarkId);
         if (item.level === "keep" || frameworkDecision === "keep") {
           next[item.plan.bookmarkId] = "keep";
+        } else if (item.plan.preferenceFingerprint === undefined && getPreferenceConflict(item.plan, preferenceProfile, fixedRules)) {
+          // 旧快照没有记录偏好上下文，冲突项必须在当前页面重新决定。
         } else if (previous[item.plan.bookmarkId]) {
           next[item.plan.bookmarkId] = previous[item.plan.bookmarkId];
         } else if (item.level === "auto") {
@@ -1100,7 +1117,7 @@ export function Preview() {
       }
       return next;
     });
-  }, [actionableRiskItems, frameworkDecisionByBookmarkId]);
+  }, [actionableRiskItems, frameworkDecisionByBookmarkId, folderHabitProfile, preferenceProfile, fixedRules]);
 
   useEffect(() => {
     previewFolderLookupRef.current = previewFolderLookup;
@@ -1190,6 +1207,8 @@ export function Preview() {
             ...plan,
             toFolderPath: targetPath,
             expectedTargetId: existingFolders.find((folder) => JSON.stringify(folder.path) === JSON.stringify(targetPath))?.id ?? null,
+            preferenceFingerprint: getPreferenceFingerprint({ ...plan, toFolderPath: targetPath, source: "manual",
+              expectedTargetId: existingFolders.find((folder) => JSON.stringify(folder.path) === JSON.stringify(targetPath))?.id ?? null }, preferenceProfile, fixedRules),
             confidence: 1,
             reason: `人工修改预览目录：${targetPath.join(" / ")}`,
             source: "manual" as const,
@@ -1280,7 +1299,8 @@ export function Preview() {
     }
     setPhase("submitting");
     try {
-      await executeMovePlans(plans.map((plan) => ({ ...plan, keepInPlace: planDecisions[plan.bookmarkId] !== "move" })), tokenUsage);
+      await executeMovePlans(plans.map((plan) => ({ ...plan, keepInPlace: planDecisions[plan.bookmarkId] !== "move",
+        preferenceFingerprint: plan.preferenceFingerprint ?? getPreferenceFingerprint(plan, preferenceProfile, fixedRules) })), tokenUsage);
       await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadAll();
       navigate("/report");
@@ -1492,6 +1512,8 @@ export function Preview() {
   );
 
   const setPlanDecision = (bookmarkIds: string[], decision: PreviewPlanDecision) => {
+    if (decision === "move") setPlans((previous) => previous.map((plan) => bookmarkIds.includes(plan.bookmarkId) && plan.preferenceFingerprint === undefined
+      ? { ...plan, preferenceFingerprint: getPreferenceFingerprint(plan, preferenceProfile, fixedRules) } : plan));
     setPlanDecisions((previous) => {
       const next = { ...previous };
       for (const bookmarkId of bookmarkIds) next[bookmarkId] = decision;

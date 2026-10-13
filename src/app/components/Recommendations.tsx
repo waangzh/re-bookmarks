@@ -61,7 +61,7 @@ export function Recommendations() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations])) void loadRecommendations();
+      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations] || changes[STORAGE_KEYS.folderHabitProfile] || changes[STORAGE_KEYS.fixedDomainRules])) void loadRecommendations();
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);

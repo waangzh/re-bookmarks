@@ -9,7 +9,9 @@ import {
   flattenBookmarkTree,
 } from "./bookmarks";
 import { createPendingRecommendation, executeMovePlans } from "./organizer";
-import { getSettings, getPendingRecommendations, updatePendingRecommendations } from "./storage";
+import { getStoredFolderHabitProfile, getSettings, getPendingRecommendations, updatePendingRecommendations } from "./storage";
+import { getFixedDomainRules } from "./fixedRules";
+import { getPreferenceConflict, getPreferenceFingerprint } from "./preferenceSafety";
 import { ensureRequiredHostPermission } from "./hostPermissions";
 import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
 
@@ -37,6 +39,7 @@ export function isActionableRecommendation(recommendation: PendingRecommendation
 
 export function isBatchSafeRecommendation(recommendation: PendingRecommendation) {
   if (getRecommendationKind(recommendation) !== "move" || !isActionableRecommendation(recommendation)) return false;
+  if (recommendation.requiresIndividualReview) return false;
   if (!recommendation.currentFolderPath || !recommendation.sourceParentId || !recommendation.expectedTargetId) return false;
   if (recommendation.confidence < 0.7 || /重复|duplicate|冲突/i.test(recommendation.reason ?? "")) return false;
   const sourceTop = recommendation.currentFolderPath[0];
@@ -80,10 +83,21 @@ export async function getActivePendingRecommendations() {
   const recommendations = await getPendingRecommendations();
   if (!hasChromeBookmarks() || recommendations.length === 0) return recommendations;
 
-  const protection = await getCurrentWhitelist();
+  const [protection, profile, rules] = await Promise.all([getCurrentWhitelist(), getStoredFolderHabitProfile(), getFixedDomainRules()]);
+  const withPreferences = (recommendation: PendingRecommendation): PendingRecommendation => {
+    const plan = { bookmarkUrl: recommendation.bookmarkUrl, toFolderPath: recommendation.suggestedFolderPath,
+      expectedTargetId: recommendation.expectedTargetId, source: recommendation.source };
+    const conflict = getPreferenceConflict(plan, profile, rules);
+    const fingerprint = getPreferenceFingerprint(plan, profile, rules);
+    const changed = recommendation.preferenceFingerprint !== undefined && recommendation.preferenceFingerprint !== fingerprint;
+    return { ...recommendation, preferenceFingerprint: fingerprint,
+      requiresIndividualReview: recommendation.requiresIndividualReview || Boolean(conflict) || changed,
+      reason: conflict && !recommendation.reason?.includes(conflict) ? [recommendation.reason, conflict].filter(Boolean).join("；")
+        : changed ? "相关明确偏好已变化，请逐条确认" : recommendation.reason };
+  };
   const checks = await Promise.all(
     recommendations.map(async (recommendation) => ({
-      recommendation,
+      recommendation: withPreferences(recommendation),
       active: await bookmarkExists(recommendation.bookmarkId) &&
         !protection.index.protectedBookmarkIds.has(recommendation.bookmarkId) &&
         !isProtectedTargetPath(recommendation.suggestedFolderPath, protection.tree, protection.index),
@@ -99,7 +113,7 @@ export async function getActivePendingRecommendations() {
     );
     return updatePendingRecommendations((latestRecommendations) =>
       latestRecommendations.filter((recommendation) => !removedRecommendationIds.has(recommendation.id))
-    );
+    ).then((latest) => latest.map(withPreferences));
   }
 
   return activeRecommendations;
@@ -141,6 +155,7 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
   if (isProtectedTargetPath(safeFolderPath, tree, protection.index)) throw new Error("目标目录受保护，请选择其他目录");
   const nodes = flattenBookmarkTree(tree);
   const target = nodes.find((node) => node.type === "folder" && pathKey(node.path) === pathKey(safeFolderPath));
+  const [profile, rules] = await Promise.all([getStoredFolderHabitProfile(), getFixedDomainRules()]);
   const existingPathKeys = collectFolderPathKeys(tree);
   let matched = false;
   const next = await updatePendingRecommendations((recommendations) =>
@@ -157,6 +172,8 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
         currentFolderPath: bookmark.path,
         sourceParentId: bookmark.parentId,
         source: "manual" as const,
+        preferenceFingerprint: getPreferenceFingerprint({ bookmarkUrl: bookmark.url, toFolderPath: safeFolderPath, expectedTargetId: target?.id, source: "manual" }, profile, rules),
+        requiresIndividualReview: false,
         suggestedFolderPath: safeFolderPath,
         kind: existingPathKeys.has(pathKey(safeFolderPath)) ? "move" as const : "create_folder" as const,
         errorCode: undefined,
@@ -229,6 +246,8 @@ export async function acceptRecommendations(
       bookmarkUrl: recommendation.bookmarkUrl,
       sourceFolderPath: recommendation.currentFolderPath,
       expectedTargetId: recommendation.expectedTargetId,
+      preferenceFingerprint: recommendation.preferenceFingerprint,
+      source: recommendation.source,
       fromParentId: recommendation.sourceParentId ?? bookmark?.parentId ?? "",
       fromIndex: bookmark?.index,
       toFolderPath: recommendation.suggestedFolderPath,

@@ -47,6 +47,7 @@ import { getBookmarkTreeStats, saveBackupToHistory } from "./backups";
 import {
   getLastBackup,
   getFolderHabitProfile,
+  getStoredFolderHabitProfile,
   getSettings,
   saveLastBackup,
   saveReportToHistory,
@@ -61,7 +62,8 @@ import {
   isProtectedTargetPath,
 } from "./whitelist";
 
-import { matchFixedDomainRule } from "./fixedRules";
+import { getFixedDomainRules, matchFixedDomainRule } from "./fixedRules";
+import { getPreferenceConflict, getPreferenceFingerprint } from "./preferenceSafety";
 import { classificationPolicyFingerprint, getPlanChangeReason } from "./previewSafety";
 
 type PreviewProgressUpdate = Omit<PreviewTaskProgress, "startedAt" | "updatedAt">;
@@ -411,11 +413,13 @@ export async function generateMovePlanPreviewForBookmarks(
   organizeMode: OrganizeMode = "quick",
   options: { signal?: AbortSignal; onProgress?: PreviewProgressReporter; progressStartedAt?: number; model?: string } = {}
 ): Promise<{ movePlans: MovePlan[]; tokenUsage?: TokenUsage }> {
-  const [settings, habitProfile, folderTree, whitelistEntries] = await Promise.all([
+  const [settings, habitProfile, folderTree, whitelistEntries, fixedRules, preferenceProfile] = await Promise.all([
     getSettings(),
     getFolderHabitProfile(),
     getBookmarkTree(),
     getBookmarkWhitelist(),
+    getFixedDomainRules(),
+    getStoredFolderHabitProfile(),
   ]);
   const whitelist = buildWhitelistIndex(folderTree, whitelistEntries);
   urlBookmarks = filterAvailableBookmarks(urlBookmarks, whitelist);
@@ -542,10 +546,11 @@ export async function generateMovePlanPreviewForBookmarks(
     if (isProtectedTargetPath(plan.toFolderPath, folderTree, whitelist)) {
       return { ...plan, keepInPlace: true, reason: "目标文件夹在白名单中，已保持原位" };
     }
-    return { ...plan, sourceFolderPath: bookmark.path,
+    const snapshot = { ...plan, sourceFolderPath: bookmark.path,
       expectedTargetId: collectFolderPaths(folderTree).find((folder) => JSON.stringify(folder.path) === JSON.stringify(plan.toFolderPath))?.id ?? null,
       policyFingerprint: classificationPolicyFingerprint(settings),
     };
+    return { ...snapshot, preferenceFingerprint: getPreferenceFingerprint(snapshot, preferenceProfile, fixedRules) };
   });
 
   return {
@@ -695,9 +700,12 @@ export async function executeMovePlans(
     try {
       const currentProtection = await getCurrentWhitelist();
       const nodes = flattenBookmarkTree(currentProtection.tree);
-      const liveSettings = await getSettings();
-      const changeReason = getPlanChangeReason(plan, nodes.find((node) => node.id === plan.bookmarkId), nodes.filter((node) => node.type === "folder"), liveSettings);
+      const [liveSettings, liveProfile, liveRules] = await Promise.all([getSettings(), getStoredFolderHabitProfile(), getFixedDomainRules()]);
+      const changeReason = getPlanChangeReason(plan, nodes.find((node) => node.id === plan.bookmarkId), nodes.filter((node) => node.type === "folder"), liveSettings, liveProfile, liveRules);
       if (changeReason) throw new Error(changeReason);
+      if (plan.preferenceFingerprint === undefined && getPreferenceConflict(plan, liveProfile, liveRules)) {
+        throw new Error("旧建议与明确偏好冲突，请重新审核或手动指定目录");
+      }
       const protectionReason = currentProtection.index.reasonById.get(plan.bookmarkId);
       if (protectionReason || isProtectedTargetPath(plan.toFolderPath, currentProtection.tree, currentProtection.index)) {
         effectivePlans[planIndex] = {
@@ -1028,6 +1036,13 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
     kind,
     errorCode: runtimeError?.errorCode,
   };
+  const [currentProfile, currentRules] = await Promise.all([getStoredFolderHabitProfile(), getFixedDomainRules()]);
+  const preferencePlan = { bookmarkUrl: recommendation.bookmarkUrl, toFolderPath: suggestedFolderPath,
+    expectedTargetId: recommendation.expectedTargetId, source: recommendation.source };
+  const conflict = getPreferenceConflict(preferencePlan, currentProfile, currentRules);
+  recommendation.preferenceFingerprint = getPreferenceFingerprint(preferencePlan, currentProfile, currentRules);
+  recommendation.requiresIndividualReview = Boolean(conflict);
+  if (conflict) recommendation.reason = appendReason(recommendation.reason, conflict);
 
   await updatePendingRecommendations((recommendations) => [
     recommendation,

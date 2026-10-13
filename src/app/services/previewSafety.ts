@@ -1,4 +1,5 @@
-import type { BookmarkNode, MovePlan, Settings } from "../types";
+import type { BookmarkNode, FixedDomainRule, FolderHabitProfile, MovePlan, Settings } from "../types";
+import { getPreferenceFingerprint } from "./preferenceSafety";
 
 const key = (path: string[]) => JSON.stringify(path);
 
@@ -10,11 +11,14 @@ export function classificationPolicyFingerprint(settings: Settings) {
   return (hash >>> 0).toString(16);
 }
 
-export function getPlanChangeReason(plan: MovePlan, bookmark: BookmarkNode | undefined, folders: BookmarkNode[], settings: Settings) {
+export function getPlanChangeReason(plan: MovePlan, bookmark: BookmarkNode | undefined, folders: BookmarkNode[], settings: Settings,
+  profile?: FolderHabitProfile | null, rules?: FixedDomainRule[]) {
   if (!bookmark) return "书签已不存在，请重新生成受影响项";
   if (bookmark.parentId !== plan.fromParentId || bookmark.title !== plan.bookmarkTitle || bookmark.url !== plan.bookmarkUrl ||
     (plan.sourceFolderPath && key(bookmark.path) !== key(plan.sourceFolderPath))) return "书签位置、标题或 URL 已变化，请重新审核";
   if (plan.policyFingerprint && plan.policyFingerprint !== classificationPolicyFingerprint(settings)) return "分类规则已变化，请重新生成建议";
+  if (plan.preferenceFingerprint !== undefined && profile !== undefined && rules !== undefined &&
+    plan.preferenceFingerprint !== getPreferenceFingerprint(plan, profile, rules)) return "相关明确偏好已变化，请重新审核受影响项";
   if (plan.expectedTargetId) {
     const target = folders.find((folder) => folder.id === plan.expectedTargetId);
     if (!target || key(target.path) !== key(plan.toFolderPath)) return "原目标目录已删除、移动或重命名，请重新选择";

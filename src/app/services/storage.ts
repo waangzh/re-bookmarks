@@ -338,6 +338,17 @@ export async function getFolderHabitProfile(): Promise<FolderHabitProfile | null
   return profile.whitelistFingerprint === whitelistFingerprint(entries) ? profile : null;
 }
 
+// 本地安全校验读取持久记录；不会将失效画像作为 AI 提示使用。
+export async function getStoredFolderHabitProfile(): Promise<FolderHabitProfile | null> {
+  if (!hasChromeStorage()) return null;
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(STORAGE_KEYS.folderHabitProfile, (result) => {
+      if (chrome.runtime.lastError) { reject(new Error("无法读取明确分类偏好，请重试")); return; }
+      resolve((result[STORAGE_KEYS.folderHabitProfile] as FolderHabitProfile | undefined) ?? null);
+    });
+  });
+}
+
 export function saveFolderHabitProfile(profile: FolderHabitProfile): Promise<void> {
   return setStorageValue(STORAGE_KEYS.folderHabitProfile, profile);
 }

@@ -1,9 +1,21 @@
 import type { FixedDomainRule } from "../types";
 import { getAllBookmarkFolders } from "./bookmarks";
-import { getStorageValue, setStorageValue, STORAGE_KEYS } from "./storage";
+import { setStorageValue, STORAGE_KEYS } from "./storage";
 import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
 
-export function getFixedDomainRules() { return getStorageValue<FixedDomainRule[]>(STORAGE_KEYS.fixedDomainRules, []); }
+export async function getFixedDomainRules(): Promise<FixedDomainRule[]> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return [];
+  return new Promise((resolve, reject) => chrome.storage.local.get(STORAGE_KEYS.fixedDomainRules, (result) => {
+    if (chrome.runtime.lastError) { reject(new Error("无法读取固定归档规则，请重试")); return; }
+    const value: unknown = result[STORAGE_KEYS.fixedDomainRules];
+    if (value === undefined) { resolve([]); return; }
+    if (!Array.isArray(value) || !value.every((entry) => entry && typeof entry === "object" &&
+      typeof entry.id === "string" && typeof entry.domain === "string" && typeof entry.folderId === "string" &&
+      Array.isArray(entry.folderPath) && entry.folderPath.length && entry.folderPath.every((part: unknown) => typeof part === "string") &&
+      typeof entry.createdAt === "number")) { reject(new Error("固定归档规则格式异常，请检查分类偏好")); return; }
+    resolve(value as FixedDomainRule[]);
+  }));
+}
 export function normalizeRuleDomain(value: string) {
   try {
     const url = new URL(value.includes("://") ? value : "https://" + value);

@@ -77,6 +77,7 @@ export type MovePlan = {
   sourceFolderPath?: string[];
   expectedTargetId?: string | null;
   policyFingerprint?: string;
+  preferenceFingerprint?: string;
   executionStatus?: "pending" | "moved" | "unchanged" | "failed" | "kept";
   executedTargetParentId?: string;
 };
@@ -114,6 +115,8 @@ export type PendingRecommendation = {
   currentFolderPath?: string[];
   sourceParentId?: string;
   source?: ClassificationResult["source"];
+  preferenceFingerprint?: string;
+  requiresIndividualReview?: boolean;
   expectedTargetId?: string;
   confidence: number;
   reason?: string;
