@@ -344,10 +344,10 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     }
   };
 
-  const completeOnboarding = async (destination: "home" | "preview") => {
+  const completeOnboarding = async (destination: "home" | "preview" | "local") => {
     await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
     await saveSettings({ ...draft, onboardingCompleted: true });
-    navigate(destination === "preview" ? "/preview" : "/", { replace: true });
+    navigate(destination === "preview" ? "/preview" : destination === "local" ? "/manage" : "/", { replace: true });
   };
 
   return (
@@ -388,8 +388,10 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
               <span>预计可整理 <strong>{stats.organizable}</strong> 项</span>
             </div>
             <button className="onboarding__primary" type="button" onClick={() => setStep(2)} disabled={loading}>
-              继续连接 AI <ArrowRight aria-hidden="true" />
+              连接 AI 整理 <ArrowRight aria-hidden="true" />
             </button>
+            <button className="onboarding__later" type="button" disabled={loading} onClick={() => void completeOnboarding("local").catch((error) => setMessage(error instanceof Error ? error.message : "保存失败，请重试"))}>先检查书签 · 无需 API Key</button>
+            {message && <p role="alert">{message}</p>}
           </section>
         )}
 

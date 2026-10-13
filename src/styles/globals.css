@@ -517,6 +517,22 @@ input {
   color: #0f172a;
 }
 
+.home-v2 { align-content: start; gap: 14px; }
+.home-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 700; font-size: 16px; }
+.home-heading > span { display: flex; align-items: center; gap: 8px; }
+.home-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #dbe8fb; border-radius: 10px; background: #fff; padding: 14px 0; }
+.home-stats a { display: grid; gap: 4px; text-align: center; text-decoration: none; color: #475569; font-size: 12px; }
+.home-stats a + a { border-left: 1px solid #e2e8f0; }
+.home-stats strong { font-size: 25px; color: #1e3a8a; font-variant-numeric: tabular-nums; }
+.home-skeleton { background: #eff6ff; border-radius: 5px; margin: 0 15px; color: #64748b; }
+.home-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #dbe8fb; padding-top: 12px; }
+.home-nav a { padding: 8px 0; text-align: center; text-decoration: none; color: #475569; font-size: 13px; }
+.home-nav a:hover, .home-nav a[aria-current] { color: #1d4ed8; background: #eff6ff; border-radius: 8px; }
+.home-notice { overflow-wrap: anywhere; color: #92400e; background: #fffbeb; padding: 10px; font-size: 12px; }
+.home-notice button { margin-left: 8px; text-decoration: underline; }
+.home-v2 .sidebar-current-page { flex-wrap: wrap; }
+.home-v2 .sidebar-suggestion-row span { overflow-wrap: anywhere; }
+
 .sidebar-icon-button {
   display: grid;
   place-items: center;

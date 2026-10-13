@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { HashRouter, Routes, Route, useLocation } from "react-router";
-import { Popup } from "./components/Popup";
 import { SidebarHome } from "./components/SidebarHome";
 import { Options } from "./components/Options";
 import { Preview } from "./components/Preview";
@@ -12,6 +11,7 @@ import { HabitPresets } from "./components/HabitPresets";
 import { Backups } from "./components/Backups";
 import { ImportBookmarks } from "./components/ImportBookmarks";
 import { Onboarding } from "./components/Onboarding";
+import { MoreTools } from "./components/MoreTools";
 import { useAppStore } from "./store/useAppStore";
 
 type AppProps = {
@@ -34,7 +34,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
       ? <Options />
       : defaultView === "sidebar"
         ? <SidebarHome />
-        : <Popup />
+        : <SidebarHome compact />
     : <Onboarding defaultView={defaultView} />;
 
   return (
@@ -61,6 +61,8 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
         <Route path="/habits" element={<HabitPresets />} />
         <Route path="/backups" element={<Backups />} />
         <Route path="/import" element={<ImportBookmarks />} />
+        <Route path="/more" element={<MoreTools />} />
+        <Route path="/tasks" element={<SidebarHome showAllTasks />} />
       </Routes>
     </div>
   );
