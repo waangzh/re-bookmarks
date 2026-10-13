@@ -179,7 +179,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       <Link to="/manage?search=1" className="sidebar-search-link"><Search className="w-4 h-4" /><span>搜索书签标题、网址或文件夹</span></Link>
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       <section className="home-stats" aria-label="书签状态" aria-busy={busy}>
-        {[{ label: "书签总数", count: bookmarks.length, to: "/manage" }, { label: "待处理", count: model.pendingCount, to: "/recommendations" }, { label: "需复查", count: reviewCount, to: "/tasks" }].map((item) =>
+        {[{ label: "书签总数", count: bookmarks.length, to: "/manage" }, { label: "待处理", count: model.pendingCount, to: "/manage?task=unsorted" }, { label: "需复查", count: reviewCount, to: "/tasks" }].map((item) =>
           <Link key={item.label} to={item.to}><span>{item.label}</span><strong className={busy ? "home-skeleton" : ""}>{busy ? "…" : item.count}</strong></Link>)}
       </section>
       <section className="sidebar-panel">

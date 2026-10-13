@@ -1020,6 +1020,8 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
     createdAt: Date.now(),
     suggestedFolderPath,
     currentFolderPath: latestFolderPath,
+    sourceParentId: latestBookmark.parentId,
+    source: classification.source,
     expectedTargetId: collectFolderPaths(latestTree).find((folder) => JSON.stringify(folder.path) === JSON.stringify(suggestedFolderPath))?.id,
     confidence: classification.confidence,
     reason,

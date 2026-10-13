@@ -16,5 +16,5 @@ test("归档去重、忽略手动项、排除不存在的推荐并按优先级�
     ignoredIds: ["b"], task: null, hasPreview: true, failedCount: 2, duplicateGroups: 3, linkProblems: 1,
   });
   assert.equal(result.pendingCount, 1);
-  assert.deepEqual(result.tasks.map((item) => item.to), ["/preview", "/report", "/recommendations", "/manage?task=duplicate", "/manage?task=invalid"]);
+  assert.deepEqual(result.tasks.map((item) => item.to), ["/preview", "/report", "/manage?task=unsorted", "/manage?task=duplicate", "/manage?task=invalid"]);
 });

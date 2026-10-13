@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ArrowLeft, Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
 import type { PendingRecommendation } from "../types";
-import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
@@ -61,7 +61,7 @@ export function Recommendations() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName === "local" && changes[STORAGE_KEYS.bookmarkWhitelist]) void loadRecommendations();
+      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations])) void loadRecommendations();
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
@@ -90,9 +90,10 @@ export function Recommendations() {
     [sortedRecommendations]
   );
 
-  const batchRecommendations = actionableRecommendations.filter((recommendation) => getRecommendationKind(recommendation) === "move");
+  const batchRecommendations = actionableRecommendations.filter(isBatchSafeRecommendation);
 
   const handleEditStart = (recommendation: PendingRecommendation) => {
+    setConfirmCreateFolderId(null);
     setEditingRecommendationId(recommendation.id);
     setRecommendationPathDraft(recommendation.suggestedFolderPath.join(" / "));
     setError("");
@@ -340,7 +341,7 @@ export function Recommendations() {
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
-                  归档已有目录项（{batchRecommendations.length}）
+                  归档安全候选项（{batchRecommendations.length}）
                 </button>
                 <button
                   type="button"
@@ -400,7 +401,7 @@ export function Recommendations() {
                         <p className="extension-list__meta">{formatTime(rec.createdAt)} · 当前：{rec.currentFolderPath?.join(" / ") || "根目录"}</p>
                       </div>
                       <span className={["recommendation-kind", "recommendation-kind--" + kind].join(" ")}>
-                        {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : "建议归档"}
+                        {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : isBatchSafeRecommendation(rec) ? "可批量确认" : "需单独确认"}
                       </span>
                     </div>
 
@@ -420,7 +421,7 @@ export function Recommendations() {
                       <div className={["extension-folder-target", isNewFolder ? "extension-folder-target--new" : ""].filter(Boolean).join(" ")}>
                         {isNewFolder ? <FolderPlus className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
                         <span>{isNewFolder ? "建议新建：" : "建议归档："}{rec.suggestedFolderPath.join(" / ")}</span>
-                        <b>{Math.round(rec.confidence * 100)}%</b>
+                        <b title="依据仅作相对参考，不代表分类正确率">{getRecommendationSignalLabel(rec)}</b>
                       </div>
                     ) : (
                       <div className={["recommendation-state", hasError ? "recommendation-state--error" : ""].filter(Boolean).join(" ")}>
@@ -456,12 +457,6 @@ export function Recommendations() {
                         </>
                       ) : (
                         <>
-                          {hasError && rec.errorCode === "missing_api_key" ? (
-                            <Link to="/options" className="extension-page__wide-secondary">
-                              <Edit2 className="w-4 h-4" />
-                              检查设置
-                            </Link>
-                          ) : (
                             <button
                               onClick={() => handleEditStart(rec)}
                               disabled={Boolean(busyId) || Boolean(bulkAction) || Boolean(editingRecommendationId)}
@@ -470,7 +465,6 @@ export function Recommendations() {
                               <Edit2 className="w-4 h-4" />
                               {isActionable ? "修改目录" : "指定目录"}
                             </button>
-                          )}
                           {isActionable ? (
                             <button
                               onClick={() => void handleAccept(rec)}

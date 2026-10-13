@@ -28,7 +28,7 @@ export function getHomeTasks(input: {
   else if (input.task?.status === "failed") tasks.push({ label: "上次生成未完成 · 查看原因并重试", to: "/preview" });
   else if (input.hasPreview) tasks.push({ label: "继续审核已保存的整理方案", to: "/preview" });
   if (input.failedCount) tasks.push({ label: `${input.failedCount} 项整理失败需要复查`, to: "/report" });
-  if (pendingCount) tasks.push({ label: `${pendingCount} 个书签待归档`, to: "/recommendations" });
+  if (pendingCount) tasks.push({ label: `${pendingCount} 个书签待归档`, to: "/manage?task=unsorted" });
   if (input.duplicateGroups) tasks.push({ label: `${input.duplicateGroups} 组疑似重复链接`, to: "/manage?task=duplicate" });
   if (input.linkProblems) tasks.push({ label: `${input.linkProblems} 个链接需要复查`, to: "/manage?task=invalid" });
   return { pendingCount, tasks };

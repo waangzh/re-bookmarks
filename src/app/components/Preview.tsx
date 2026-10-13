@@ -899,6 +899,10 @@ export function Preview() {
 
   // 开始分类
   const handleStartClassify = async () => {
+    if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
+      setError("请先连接并授权 AI 服务；本地搜索和手动归档无需 AI");
+      return;
+    }
     if (selectedIds.size === 0) {
       setError("请至少选择一个书签");
       return;
@@ -1788,6 +1792,10 @@ export function Preview() {
               </button>
             </div>
 
+            {(!settings.provider.apiKey.trim() || !settings.provider.enabled) && <div className="extension-notice extension-notice--blue">
+              <p>{settings.provider.apiKey.trim() ? "尚未授权向 AI 发送分类数据。" : "尚未连接 AI 服务。"} <Link to="/options">连接与授权</Link>，或 <Link to="/manage?task=unsorted">先使用本地归档</Link>。</p>
+            </div>}
+            <CollapsibleSection title="AI 服务与模型（可选）" hint={selectedModel || settings.provider.model}>
             <section
               className={`organize-model-picker${modelMenuOpen ? " is-open" : ""}`}
               aria-labelledby="organize-model-title"
@@ -1904,6 +1912,7 @@ export function Preview() {
                 )}
               </p>
             </section>
+            </CollapsibleSection>
 
             {isDeepSelectionTooLarge && (
               <div className="extension-notice extension-notice--amber">
@@ -1925,7 +1934,7 @@ export function Preview() {
 
             <button
               onClick={handleStartClassify}
-              disabled={selectedIds.size === 0 || isDeepSelectionTooLarge}
+              disabled={selectedIds.size === 0 || isDeepSelectionTooLarge || !settings.provider.apiKey.trim() || !settings.provider.enabled}
               className="extension-page__wide-primary"
             >
               <Check className="w-5 h-5" />

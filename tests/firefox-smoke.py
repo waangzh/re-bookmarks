@@ -79,6 +79,20 @@ for(const title of ['有效项','后续改名']) nodes.push(await browser.bookma
 return {group,source,target,nodes};})()""")
 until("(async()=>{const state=await browser.storage.local.get('remarks.pendingRecommendations');return (state['remarks.pendingRecommendations']||[]).length>=2})()")
 results.append("真实新增书签事件进入待处理推荐")
+command("/url", {"url": base + "sidebar/index.html#/manage?task=unsorted"})
+until("!!document.querySelector('.bookmark-unsorted-card--recommendation')")
+assert evaluate("document.body.innerText.includes('有效项')")
+evaluate("Array.from(document.querySelectorAll('.bookmark-unsorted-card--recommendation')).find(card=>card.textContent.includes('有效项')).querySelector('[aria-label=\"编辑推荐分类\"]').click()")
+until("!!document.querySelector('.bookmark-recommendation-edit input')")
+target_path = fixture["group"]["title"] + " / " + fixture["target"]["title"]
+evaluate("(()=>{const input=document.querySelector('.bookmark-recommendation-edit input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input," + json.dumps(target_path) + ");input.dispatchEvent(new Event('input',{bubbles:true}));})()")
+evaluate("document.querySelector('[aria-label=\"保存推荐分类\"]').click()")
+until("document.body.innerText.includes('你已指定')")
+evaluate("Array.from(document.querySelectorAll('.bookmark-unsorted-card--recommendation')).find(card=>card.textContent.includes('有效项')).querySelector('[aria-label=\"归档书签\"]').click()")
+until("(async()=>{const nodes=await browser.bookmarks.get(" + json.dumps(fixture["nodes"][0]["id"]) + ");return nodes[0].parentId===" + json.dumps(fixture["target"]["id"]) + "})()")
+results.append("无 API Key 失败建议可直接指定目录并经备份归档")
+# Return this isolated fixture to the source for the independent preview scenario.
+evaluate("browser.bookmarks.move(" + json.dumps(fixture["nodes"][0]["id"]) + ",{parentId:" + json.dumps(fixture["source"]["id"]) + "})")
 plans = [{"bookmarkId": item["id"], "bookmarkTitle": item["title"], "bookmarkUrl": item["url"],
           "fromParentId": fixture["source"]["id"], "sourceFolderPath": [fixture["group"]["title"], fixture["source"]["title"]],
           "toFolderPath": [fixture["group"]["title"], fixture["target"]["title"]],
@@ -113,6 +127,18 @@ until("document.body.innerText.includes('失败明细')")
 undo = evaluate("browser.storage.local.get('remarks.lastReport')")["remarks.lastReport"]
 assert undo["movedCount"] == 1 and len(undo["failedItems"]) == 1, undo
 results.append("真实撤销保留后续改名，只移回仍符合快照的项")
+# Test safe backup recovery through the actual backup UI, retaining a later bookmark.
+evaluate("browser.bookmarks.create({parentId:" + json.dumps(fixture["group"]["id"]) + ",title:'备份后新增',url:'https://example.invalid/after-backup'})")
+command("/url", {"url": base + "sidebar/index.html#/backups"})
+until("Array.from(document.querySelectorAll('button')).some(button=>button.textContent.includes('恢复'))")
+evaluate("Array.from(document.querySelectorAll('button')).find(button=>button.textContent.includes('恢复')).click()")
+command("/alert/accept", {})
+until("document.body.innerText.includes('恢复完成') || document.body.innerText.includes('已恢复')")
+restored = evaluate("browser.bookmarks.get(" + json.dumps(fixture["nodes"][1]["id"]) + ")")
+assert restored[0]["title"] == fixture["nodes"][1]["title"]
+tree_text = evaluate("browser.bookmarks.getTree().then(tree=>JSON.stringify(tree))")
+assert "after-backup" in tree_text
+results.append("真实安全恢复保留备份后新增书签并恢复备份内的标题")
 permission = evaluate("browser.permissions.contains({permissions:['history']})")
 assert permission is False
 results.append("未启用历史时没有 history 授权")

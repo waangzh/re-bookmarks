@@ -43,7 +43,7 @@ import {
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
-import { acceptRecommendation, acceptRecommendations, getRecommendationKind, isActionableRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
+import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
 import {
   STORAGE_KEYS,
@@ -336,11 +336,30 @@ export function ManageBookmarks() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName === "local" && changes[STORAGE_KEYS.bookmarkWhitelist]) void loadManagedBookmarks();
+      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations])) void loadManagedBookmarks();
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [loadManagedBookmarks]);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.bookmarks) return;
+    const refresh = () => { void loadManagedBookmarks().catch((error) => setMessage(error instanceof Error ? error.message : "刷新书签失败")); };
+    chrome.bookmarks.onCreated.addListener(refresh);
+    chrome.bookmarks.onRemoved.addListener(refresh);
+    chrome.bookmarks.onChanged.addListener(refresh);
+    chrome.bookmarks.onMoved.addListener(refresh);
+    return () => {
+      chrome.bookmarks.onCreated.removeListener(refresh);
+      chrome.bookmarks.onRemoved.removeListener(refresh);
+      chrome.bookmarks.onChanged.removeListener(refresh);
+      chrome.bookmarks.onMoved.removeListener(refresh);
+    };
+  }, [loadManagedBookmarks]);
+
+  useEffect(() => {
+    void loadManagedBookmarks().catch((error) => setMessage(error instanceof Error ? error.message : "刷新任务失败"));
+  }, [taskMode, loadManagedBookmarks]);
 
   useEffect(() => {
     void getLinkHealthReport().then((report) => {
@@ -533,7 +552,7 @@ export function ManageBookmarks() {
   }, [pendingRecommendations, searchQuery, taskMode, whitelistIndex]);
 
   const actionablePendingRecommendations = useMemo(
-    () => filteredPendingRecommendations.filter(isActionableRecommendation),
+    () => filteredPendingRecommendations.filter(isBatchSafeRecommendation),
     [filteredPendingRecommendations]
   );
 
@@ -1100,6 +1119,7 @@ export function ManageBookmarks() {
   };
 
   const handleAcceptRecommendation = async (recommendation: PendingRecommendation) => {
+    if (getRecommendationKind(recommendation) === "create_folder" && !confirm(`将创建文件夹“${recommendation.suggestedFolderPath.join(" / ")}”并归档此书签。执行前会创建完整备份，是否继续？`)) return;
     setBusyRecommendationId(recommendation.id);
     setMessage("");
     try {
@@ -1575,7 +1595,7 @@ export function ManageBookmarks() {
               <div className={["bookmark-unsorted-target", isNewFolder ? "bookmark-unsorted-target--new" : ""].filter(Boolean).join(" ")}>
                 <Folder className="w-4 h-4" />
                 <span>{isNewFolder ? "建议新建：" : "建议归档："}{recommendation.suggestedFolderPath.join(" / ")}</span>
-                <b>{Math.round(recommendation.confidence * 100)}%</b>
+                <b title="依据仅作相对参考，不代表分类正确率">{getRecommendationSignalLabel(recommendation)}</b>
               </div>
             ) : (
               <div className={["bookmark-unsorted-target", hasError ? "bookmark-unsorted-target--error" : "bookmark-unsorted-target--manual"].join(" ")}>
@@ -1703,7 +1723,7 @@ export function ManageBookmarks() {
           <section className="bookmark-unsorted-section">
             <div className="bookmark-unsorted-section__head">
               <div>
-                <h3>待确认 AI 推荐</h3>
+                <h3>待归档建议</h3>
                 <p>接受前会自动备份；忽略只移除推荐且不记录偏好；分类不合适时可明确反馈。</p>
               </div>
               <div className="bookmark-unsorted-section__tools">
@@ -1715,7 +1735,7 @@ export function ManageBookmarks() {
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
-                  {bulkRecommendationAction === "accept" ? "归档中" : "归档可执行项"}
+                  {bulkRecommendationAction === "accept" ? "归档中" : "归档安全候选项"}
                 </button>
                 <button
                   type="button"

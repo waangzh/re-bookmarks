@@ -112,6 +112,8 @@ export type PendingRecommendation = {
   createdAt: number;
   suggestedFolderPath: string[];
   currentFolderPath?: string[];
+  sourceParentId?: string;
+  source?: ClassificationResult["source"];
   expectedTargetId?: string;
   confidence: number;
   reason?: string;

@@ -1,4 +1,4 @@
-export function setupBrowser({ failBackup = false, failBackupAfter = Infinity, failMoveId, tree } = {}) {
+export function setupBrowser({ failBackup = false, failBackupAfter = Infinity, failStorageKey, failMoveId, tree } = {}) {
   const bookmark = (id, title) => ({ id, parentId: "source", title, url: "https://" + id + ".test/", index: 0 });
   const currentTree = tree ?? [{ id: "0", title: "", children: [{ id: "root", parentId: "0", title: "书签栏", children: [
     { id: "dev", parentId: "root", title: "开发", children: [
@@ -20,7 +20,7 @@ export function setupBrowser({ failBackup = false, failBackupAfter = Infinity, f
     runtime,
     storage: { onChanged: events(), local: {
       get: (key, cb) => cb({ [key]: values[key] }),
-      set: (data, cb) => { if (data["remarks.lastBackup"] && (failBackup || ++backupWrites > failBackupAfter)) return complete(cb, "备份写入失败"); Object.assign(values, structuredClone(data)); complete(cb); },
+      set: (data, cb) => { if (failStorageKey && failStorageKey in data) return complete(cb, "模拟存储写入失败"); if (data["remarks.lastBackup"] && (failBackup || ++backupWrites > failBackupAfter)) return complete(cb, "备份写入失败"); Object.assign(values, structuredClone(data)); complete(cb); },
       remove: (key, cb) => { delete values[key]; complete(cb); },
     } },
     bookmarks: {

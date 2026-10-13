@@ -3,10 +3,10 @@ import {
   type BrowserBookmarkNode,
   getBookmark,
   getBookmarkRootFolderIds,
-  getBookmarkTree,
   isBookmarkFolder,
   isRootFolder,
   normalizeFolderPath,
+  flattenBookmarkTree,
 } from "./bookmarks";
 import { createPendingRecommendation, executeMovePlans } from "./organizer";
 import { getSettings, getPendingRecommendations, updatePendingRecommendations } from "./storage";
@@ -33,6 +33,20 @@ export function getRecommendationKind(recommendation: PendingRecommendation) {
 export function isActionableRecommendation(recommendation: PendingRecommendation) {
   const kind = getRecommendationKind(recommendation);
   return (kind === "move" || kind === "create_folder") && recommendation.suggestedFolderPath.length > 0;
+}
+
+export function isBatchSafeRecommendation(recommendation: PendingRecommendation) {
+  if (getRecommendationKind(recommendation) !== "move" || !isActionableRecommendation(recommendation)) return false;
+  if (!recommendation.currentFolderPath || !recommendation.sourceParentId || !recommendation.expectedTargetId) return false;
+  if (recommendation.confidence < 0.7 || /重复|duplicate|冲突/i.test(recommendation.reason ?? "")) return false;
+  const sourceTop = recommendation.currentFolderPath[0];
+  return recommendation.source === "manual" || !sourceTop || sourceTop === recommendation.suggestedFolderPath[0];
+}
+
+export function getRecommendationSignalLabel(recommendation: PendingRecommendation) {
+  if (recommendation.source === "manual") return "你已指定";
+  if (recommendation.source === "rule") return "固定规则";
+  return recommendation.confidence >= 0.9 ? "依据较充分" : recommendation.confidence >= 0.7 ? "需要确认" : "依据不足";
 }
 
 function pathKey(path: string[]) {
@@ -122,21 +136,33 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
     throw new Error("请填写目标文件夹");
   }
 
-  const tree = await getBookmarkTree();
+  const protection = await getCurrentWhitelist();
+  const tree = protection.tree;
+  if (isProtectedTargetPath(safeFolderPath, tree, protection.index)) throw new Error("目标目录受保护，请选择其他目录");
+  const nodes = flattenBookmarkTree(tree);
+  const target = nodes.find((node) => node.type === "folder" && pathKey(node.path) === pathKey(safeFolderPath));
   const existingPathKeys = collectFolderPathKeys(tree);
   let matched = false;
   const next = await updatePendingRecommendations((recommendations) =>
     recommendations.map((recommendation) => {
       if (recommendation.id !== id) return recommendation;
       matched = true;
+      const bookmark = nodes.find((node) => node.id === recommendation.bookmarkId && node.type === "url");
+      if (!bookmark) throw new Error("书签已不存在");
+      if (protection.index.protectedBookmarkIds.has(bookmark.id)) throw new Error("书签已受保护，不能修改归档建议");
       return {
         ...recommendation,
+        bookmarkTitle: bookmark.title,
+        bookmarkUrl: bookmark.url,
+        currentFolderPath: bookmark.path,
+        sourceParentId: bookmark.parentId,
+        source: "manual" as const,
         suggestedFolderPath: safeFolderPath,
         kind: existingPathKeys.has(pathKey(safeFolderPath)) ? "move" as const : "create_folder" as const,
         errorCode: undefined,
         reason: "已由用户指定目标目录",
         confidence: 1,
-        expectedTargetId: undefined,
+        expectedTargetId: target?.id,
       };
     })
   );
@@ -175,8 +201,13 @@ async function removeCompletedRecommendations(ids: Set<string>) {
 }
 
 export async function acceptRecommendations(
-  recommendations: PendingRecommendation[]
+  recommendations: PendingRecommendation[],
+  options: { individual?: boolean } = {}
 ): Promise<OrganizeReport> {
+  if (options.individual && recommendations.length !== 1) throw new Error("单独确认每次只能处理一条建议");
+  if (!options.individual && recommendations.some((recommendation) => !isBatchSafeRecommendation(recommendation))) {
+    throw new Error("批量归档只接受已存在目录且无风险冲突的建议；其余项目请逐条确认");
+  }
   const actionableRecommendations = recommendations.filter(isActionableRecommendation);
   if (actionableRecommendations.length === 0) {
     throw new Error("没有可执行的归档建议；需要判断或分类失败的项目会保持原位");
@@ -198,7 +229,7 @@ export async function acceptRecommendations(
       bookmarkUrl: recommendation.bookmarkUrl,
       sourceFolderPath: recommendation.currentFolderPath,
       expectedTargetId: recommendation.expectedTargetId,
-      fromParentId: bookmark?.parentId ?? "",
+      fromParentId: recommendation.sourceParentId ?? bookmark?.parentId ?? "",
       fromIndex: bookmark?.index,
       toFolderPath: recommendation.suggestedFolderPath,
       confidence: recommendation.confidence,
@@ -222,5 +253,5 @@ export async function acceptRecommendations(
 }
 
 export function acceptRecommendation(recommendation: PendingRecommendation) {
-  return acceptRecommendations([recommendation]);
+  return acceptRecommendations([recommendation], { individual: true });
 }
