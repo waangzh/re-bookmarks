@@ -52,6 +52,7 @@ export function Recommendations() {
   const [operationNotice, setOperationNotice] = useState("");
   const [dismissNotice, setDismissNotice] = useState("");
   const [learningNotice, setLearningNotice] = useState("");
+  const [confirmCreateFolderId, setConfirmCreateFolderId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadRecommendations();
@@ -88,6 +89,8 @@ export function Recommendations() {
     () => sortedRecommendations.filter(isActionableRecommendation),
     [sortedRecommendations]
   );
+
+  const batchRecommendations = actionableRecommendations.filter((recommendation) => getRecommendationKind(recommendation) === "move");
 
   const handleEditStart = (recommendation: PendingRecommendation) => {
     setEditingRecommendationId(recommendation.id);
@@ -128,6 +131,11 @@ export function Recommendations() {
   };
 
   const handleAccept = async (recommendation: PendingRecommendation) => {
+    if (getRecommendationKind(recommendation) === "create_folder" && confirmCreateFolderId !== recommendation.id) {
+      setConfirmCreateFolderId(recommendation.id);
+      return;
+    }
+    setConfirmCreateFolderId(null);
     setBusyId(recommendation.id);
     setError("");
     setOperationNotice("");
@@ -228,7 +236,7 @@ export function Recommendations() {
     setLearningNotice("");
 
     try {
-      const report = await acceptRecommendations(actionableRecommendations);
+      const report = await acceptRecommendations(batchRecommendations);
       await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
       if (report.failedItems.length > 0) {
         const failedTitles = report.failedItems.slice(0, 3).map((item) => item.bookmarkTitle);
@@ -236,7 +244,7 @@ export function Recommendations() {
           `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败：${failedTitles.join("、")}${report.failedItems.length > 3 ? " 等" : ""}。详情已写入整理报告。`
         );
       } else {
-        setOperationNotice(`已归档 ${actionableRecommendations.length} 条建议；操作前备份和整理报告已保存，可尝试移回原文件夹（不恢复原排序）。`);
+        setOperationNotice(`已归档 ${batchRecommendations.length} 条已有目录建议；新建目录项目需单独确认。`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "一键接受失败");
@@ -328,11 +336,11 @@ export function Recommendations() {
                 <button
                   type="button"
                   onClick={() => void handleAcceptAll()}
-                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || actionableRecommendations.length === 0}
+                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || batchRecommendations.length === 0}
                   className="extension-page__wide-primary"
                 >
                   <Check className="w-4 h-4" />
-                  归档可执行项（{actionableRecommendations.length}）
+                  归档已有目录项（{batchRecommendations.length}）
                 </button>
                 <button
                   type="button"
@@ -389,7 +397,7 @@ export function Recommendations() {
                           )}
                         </div>
                         {rec.bookmarkUrl && <p className="extension-list__url">{rec.bookmarkUrl}</p>}
-                        <p className="extension-list__meta">{formatTime(rec.createdAt)}</p>
+                        <p className="extension-list__meta">{formatTime(rec.createdAt)} · 当前：{rec.currentFolderPath?.join(" / ") || "根目录"}</p>
                       </div>
                       <span className={["recommendation-kind", "recommendation-kind--" + kind].join(" ")}>
                         {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : "建议归档"}
@@ -470,7 +478,7 @@ export function Recommendations() {
                               className="extension-page__wide-primary"
                             >
                               <Check className="w-4 h-4" />
-                              {isNewFolder ? "创建并归档" : "归档"}
+                              {isNewFolder ? (confirmCreateFolderId === rec.id ? "确认创建并归档" : "将创建目录") : "归档"}
                             </button>
                           ) : (
                             <button

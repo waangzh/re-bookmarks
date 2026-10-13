@@ -8000,3 +8000,6 @@ input {
     display: none;
   }
 }
+
+.preview-inline-folder-edit { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 12px; }
+.preview-inline-folder-edit select { min-width: 0; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; background: #fff; }

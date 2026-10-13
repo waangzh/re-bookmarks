@@ -1514,6 +1514,18 @@ export function Preview() {
               {plan.toFolderPath.join(" / ") || "保持原位"}
             </span>
           </div>
+          {options.showDecision && existingFolders.length > 0 && (
+            <label className="preview-inline-folder-edit">
+              <span>修改目录</span>
+              <select value={plan.toFolderPath.join(" / ")} onChange={(event) => {
+                const target = existingFolders.find((folder) => folder.path.join(" / ") === event.target.value);
+                if (!target) return;
+                void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
+              }}>
+                {existingFolders.filter((folder) => folder.type === "folder").map((folder) => <option key={folder.id} value={folder.path.join(" / ")}>{folder.path.join(" / ")}</option>)}
+              </select>
+            </label>
+          )}
           <p>{reasons.join("；")}</p>
         </div>
         {options.showDecision && (
