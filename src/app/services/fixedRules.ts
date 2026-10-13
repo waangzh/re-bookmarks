@@ -2,6 +2,7 @@ import type { FixedDomainRule } from "../types";
 import { getAllBookmarkFolders } from "./bookmarks";
 import { setStorageValue, STORAGE_KEYS } from "./storage";
 import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
+import { withStorageMutation } from "./storageMutation";
 
 export async function getFixedDomainRules(): Promise<FixedDomainRule[]> {
   if (typeof chrome === "undefined" || !chrome.storage?.local) return [];
@@ -24,21 +25,25 @@ export function normalizeRuleDomain(value: string) {
   } catch { throw new Error("请输入完整域名，例如 docs.example.com；不含路径或参数"); }
 }
 export async function saveFixedDomainRule(domainInput: string, folderId: string) {
-  const domain = normalizeRuleDomain(domainInput);
-  const folders = await getAllBookmarkFolders();
-  const folder = folders.find((item) => item.id === folderId);
-  if (!folder) throw new Error("请选择现有目录");
-  const protection = await getCurrentWhitelist();
-  if (isProtectedTargetPath(folder.path, protection.tree, protection.index)) throw new Error("不能将规则指向受保护目录");
-  const rules = await getFixedDomainRules();
-  const next = [...rules.filter((rule) => rule.domain !== domain), { id: "fixed-" + Date.now(), domain, folderId, folderPath: folder.path, createdAt: Date.now() }];
-  await setStorageValue(STORAGE_KEYS.fixedDomainRules, next);
-  return next;
+  return withStorageMutation("fixed-domain-rules", async () => {
+    const domain = normalizeRuleDomain(domainInput);
+    const folders = await getAllBookmarkFolders();
+    const folder = folders.find((item) => item.id === folderId);
+    if (!folder) throw new Error("请选择现有目录");
+    const protection = await getCurrentWhitelist();
+    if (isProtectedTargetPath(folder.path, protection.tree, protection.index)) throw new Error("不能将规则指向受保护目录");
+    const rules = await getFixedDomainRules();
+    const next = [...rules.filter((rule) => rule.domain !== domain), { id: "fixed-" + (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`), domain, folderId, folderPath: folder.path, createdAt: Date.now() }];
+    await setStorageValue(STORAGE_KEYS.fixedDomainRules, next);
+    return next;
+  });
 }
 export async function removeFixedDomainRule(id: string) {
-  const next = (await getFixedDomainRules()).filter((rule) => rule.id !== id);
-  await setStorageValue(STORAGE_KEYS.fixedDomainRules, next);
-  return next;
+  return withStorageMutation("fixed-domain-rules", async () => {
+    const next = (await getFixedDomainRules()).filter((rule) => rule.id !== id);
+    await setStorageValue(STORAGE_KEYS.fixedDomainRules, next);
+    return next;
+  });
 }
 export async function matchFixedDomainRule(url: string) {
   let domain: string;

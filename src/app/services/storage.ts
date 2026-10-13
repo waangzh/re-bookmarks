@@ -9,6 +9,7 @@ import type {
   PreviewTaskCache,
   Settings,
 } from "../types";
+import { withStorageMutation } from "./storageMutation";
 
 export const STORAGE_KEYS = {
   settings: "remarks.settings",
@@ -126,30 +127,33 @@ export function saveSettings(settings: Settings): Promise<void> {
   return setStorageValue(STORAGE_KEYS.settings, mergeSettings(settings));
 }
 
-export function getPendingRecommendations(): Promise<PendingRecommendation[]> {
-  return getStorageValue<PendingRecommendation[]>(STORAGE_KEYS.pendingRecommendations, []);
+export async function getPendingRecommendations(): Promise<PendingRecommendation[]> {
+  if (!hasChromeStorage()) return [];
+  return new Promise((resolve, reject) => chrome.storage.local.get(STORAGE_KEYS.pendingRecommendations, (result) => {
+    if (chrome.runtime.lastError) { reject(new Error("读取待归档建议失败，请重试")); return; }
+    const value: unknown = result[STORAGE_KEYS.pendingRecommendations];
+    if (value === undefined) { resolve([]); return; }
+    if (!Array.isArray(value) || value.some((entry) => !entry || typeof entry.id !== "string" ||
+      typeof entry.bookmarkId !== "string" || typeof entry.bookmarkTitle !== "string" || !Array.isArray(entry.suggestedFolderPath) ||
+      entry.suggestedFolderPath.some((part: unknown) => typeof part !== "string"))) {
+      reject(new Error("待归档建议格式异常，已保留原数据")); return;
+    }
+    resolve(value as PendingRecommendation[]);
+  }));
 }
 
 export function savePendingRecommendations(recommendations: PendingRecommendation[]): Promise<void> {
   return setStorageValue(STORAGE_KEYS.pendingRecommendations, recommendations);
 }
 
-let pendingRecommendationUpdateQueue: Promise<void> = Promise.resolve();
-
 export function updatePendingRecommendations(
   update: (recommendations: PendingRecommendation[]) => PendingRecommendation[]
 ): Promise<PendingRecommendation[]> {
-  const operation = pendingRecommendationUpdateQueue.then(async () => {
+  return withStorageMutation("pending-recommendations", async () => {
     const nextRecommendations = update(await getPendingRecommendations());
     await savePendingRecommendations(nextRecommendations);
     return nextRecommendations;
   });
-
-  pendingRecommendationUpdateQueue = operation.then(
-    () => undefined,
-    () => undefined
-  );
-  return operation;
 }
 
 export function whitelistFingerprint(entries: BookmarkWhitelistEntry[]) {
