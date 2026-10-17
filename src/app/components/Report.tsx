@@ -372,7 +372,7 @@ export function Report() {
     <div className="extension-page extension-page--report">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="整理报告" subtitle="最近 {Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作" />
+          <PageHeading title="整理报告" subtitle={`最近 ${Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作`} />
         </div>
 
         <section className="extension-section report-history">

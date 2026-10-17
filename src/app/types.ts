@@ -12,6 +12,14 @@ export type BookmarkNode = {
 
 export type OrganizeMode = "quick" | "deep";
 
+/** 模型列表缓存：按 provider 类型 + endpoint 区分，避免跨服务串用 */
+export type ModelCatalogCache = {
+  providerType: string;
+  endpoint: string;
+  fetchedAt: number;
+  models: { id: string; ownedBy?: string }[];
+};
+
 export type FixedDomainRule = { id: string; domain: string; folderId: string; folderPath: string[]; createdAt: number };
 
 export type BookmarkWhitelistEntry = {

@@ -53,6 +53,7 @@ import {
   saveIgnoredManualTaskBookmarkIds,
 } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+import { Select } from "./Select";
 import { ensureRequiredHostPermission, hasRequiredHostPermission } from "../services/hostPermissions";
 import {
   addBookmarkWhitelistEntry,
@@ -2203,7 +2204,22 @@ export function ManageBookmarks() {
           </div>
         )}
 
-        {!taskMode && <label className="extension-field">按目录筛选<select className="extension-control" value={directoryFilter} onChange={(event) => setDirectoryFilter(event.target.value)}><option value="">全部目录</option>{[...new Set(bookmarks.map((bookmark) => bookmark.path.join(" / ")).filter(Boolean))].sort().map((path) => <option key={path} value={path}>{path}</option>)}</select></label>}
+        {!taskMode && (
+          <div className="extension-field">
+            <label>按目录筛选</label>
+            <Select
+              value={directoryFilter}
+              onChange={setDirectoryFilter}
+              placeholder="全部目录"
+              options={[
+                { value: "", label: "全部目录" },
+                ...[...new Set(bookmarks.map((bookmark) => bookmark.path.join(" / ")).filter(Boolean))]
+                  .sort()
+                  .map((path) => ({ value: path, label: path })),
+              ]}
+            />
+          </div>
+        )}
         {(searchQuery || directoryFilter) && <button type="button" className="extension-text-button" onClick={() => { setSearchQuery(""); setDirectoryFilter(""); }}>清除搜索与筛选</button>}
         {taskMode === "invalid" ? (
           renderLinkHealthGroups()

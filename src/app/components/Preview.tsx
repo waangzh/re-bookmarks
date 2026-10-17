@@ -51,6 +51,7 @@ import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } f
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
 import { getFixedDomainRules } from "../services/fixedRules";
 import { getPreferenceConflict, getPreferenceFingerprint } from "../services/preferenceSafety";
+import { Select } from "./Select";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -1588,16 +1589,22 @@ export function Preview() {
             </span>
           </div>
           {options.showDecision && existingFolders.length > 0 && (
-            <label className="preview-inline-folder-edit">
+            <div className="preview-inline-folder-edit">
               <span>修改目录</span>
-              <select disabled={savingPreviewDrop} aria-label={`${plan.bookmarkTitle} 的目标目录`} value={plan.toFolderPath.join(" / ")} onChange={(event) => {
-                const target = existingFolders.find((folder) => folder.path.join(" / ") === event.target.value);
-                if (!target) return;
-                void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
-              }}>
-                {existingFolders.filter((folder) => folder.type === "folder").map((folder) => <option key={folder.id} value={folder.path.join(" / ")}>{folder.path.join(" / ")}</option>)}
-              </select>
-            </label>
+              <Select
+                disabled={savingPreviewDrop}
+                aria-label={`${plan.bookmarkTitle} 的目标目录`}
+                value={plan.toFolderPath.join(" / ")}
+                onChange={(next) => {
+                  const target = existingFolders.find((folder) => folder.path.join(" / ") === next);
+                  if (!target) return;
+                  void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
+                }}
+                options={existingFolders
+                  .filter((folder) => folder.type === "folder")
+                  .map((folder) => ({ value: folder.path.join(" / "), label: folder.path.join(" / ") }))}
+              />
+            </div>
           )}
           <p>{reasons.join("；")}</p>
           <button type="button" className="extension-text-button" disabled={savingPreviewDrop} onClick={() => { setEditingPlan(plan); setFolderDraft(plan.toFolderPath.join(" / ")); }}>搜索或输入目录</button>

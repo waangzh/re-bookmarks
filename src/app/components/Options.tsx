@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { Select } from "./Select";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -17,12 +18,31 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AIProviderConfig, AIProviderType, Settings } from "../types";
-import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, endpointFor, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { requestClearPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
-import { clearPreviewPlan, DEFAULT_CLASSIFY_PROMPT, DEFAULT_SETTINGS } from "../services/storage";
+import {
+  clearPreviewPlan,
+  DEFAULT_CLASSIFY_PROMPT,
+  DEFAULT_SETTINGS,
+  getModelCatalog,
+  MODEL_CATALOG_TTL_MS,
+  saveModelCatalog,
+} from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+
+/** 把缓存时间描述成「刚刚 / X 分钟前 / X 小时前」，超过 24 小时标记为可能过期 */
+function formatCatalogAge(fetchedAt: number): string {
+  const elapsed = Date.now() - fetchedAt;
+  if (elapsed < 60 * 1000) return "刚刚更新";
+  const minutes = Math.floor(elapsed / (60 * 1000));
+  if (minutes < 60) return `${minutes} 分钟前更新`;
+  const hours = Math.floor(minutes / 60);
+  return elapsed < MODEL_CATALOG_TTL_MS
+    ? `${hours} 小时前更新`
+    : `${hours} 小时前更新，可能已过期`;
+}
 
 export function Options() {
   const navigate = useNavigate();
@@ -61,11 +81,27 @@ export function Options() {
   useEffect(() => {
     modelRequest.current?.abort();
     modelRequest.current = null;
-    setModels([]);
     setModelMenuOpen(false);
     setModelStatus("idle");
     setModelMessage("");
-    return () => modelRequest.current?.abort();
+    setModels([]);
+
+    // 切换 provider / endpoint / API Key 时，优先展示匹配的本地缓存
+    let cancelled = false;
+    const provider = draft.provider;
+    if (provider.apiKey.trim()) {
+      void getModelCatalog(provider.type, endpointFor(provider)).then((cached) => {
+        if (cancelled || !cached) return;
+        setModels(cached.models);
+        setModelStatus("success");
+        setModelMessage(`已从缓存载入 ${cached.models.length} 个模型（${formatCatalogAge(cached.fetchedAt)}）。点击「检测可用模型」可刷新。`);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      modelRequest.current?.abort();
+    };
   }, [draft.provider.type, draft.provider.apiKey, draft.provider.endpoint]);
 
   useEffect(() => {
@@ -116,10 +152,26 @@ export function Options() {
       setModels(available);
       setModelStatus("success");
       setModelMessage(`已获取 ${available.length} 个模型。列表不保证均支持书签分类，请选择后测试连接。`);
+      void saveModelCatalog({
+        providerType: provider.type,
+        endpoint: endpointFor(provider),
+        fetchedAt: Date.now(),
+        models: available,
+      });
     } catch (error) {
       if (!isCurrent()) return;
+      // 网络或鉴权失败时，降级展示上次成功检测的列表（可能已过期）
+      const stale = await getModelCatalog(provider.type, endpointFor(provider), { allowStale: true });
+      if (!isCurrent()) return;
+      const reason = error instanceof Error ? error.message : "模型检测失败，请稍后重试或手动输入模型名称";
+      if (stale?.models.length) {
+        setModels(stale.models);
+        setModelStatus("error");
+        setModelMessage(`${reason} 已展示上次缓存的 ${stale.models.length} 个模型（${formatCatalogAge(stale.fetchedAt)}）。`);
+        return;
+      }
       setModelStatus("error");
-      setModelMessage(error instanceof Error ? error.message : "模型检测失败，请稍后重试或手动输入模型名称");
+      setModelMessage(reason);
     }
   };
 
@@ -270,11 +322,11 @@ export function Options() {
           <div className="extension-form provider-form settings-simple__form">
             <div className="extension-field">
               <label>AI 服务</label>
-              <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)} className="extension-control">
-                {AI_PROVIDER_OPTIONS.map((provider) => (
-                  <option key={provider.type} value={provider.type}>{provider.label}</option>
-                ))}
-              </select>
+              <Select
+                value={draft.provider.type}
+                onChange={(next) => updateProvider(next as AIProviderType)}
+                options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
+              />
               <p>模型、Endpoint 和请求参数将使用推荐值。</p>
             </div>
 
@@ -470,11 +522,11 @@ export function Options() {
                 <div className="provider-form__grid">
                   <div className="extension-field">
                     <label>Provider</label>
-                    <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)} className="extension-control">
-                      {AI_PROVIDER_OPTIONS.map((provider) => (
-                        <option key={provider.type} value={provider.type}>{provider.label}</option>
-                      ))}
-                    </select>
+                    <Select
+                      value={draft.provider.type}
+                      onChange={(next) => updateProvider(next as AIProviderType)}
+                      options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
+                    />
                   </div>
                 </div>
 
@@ -526,36 +578,36 @@ export function Options() {
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-token-param">Token 参数</label>
-                    <select
+                    <Select
                       id="provider-token-param"
                       value={draft.provider.tokenParam ?? "auto"}
-                      onChange={(event) => updateProviderConfig(
+                      onChange={(next) => updateProviderConfig(
                         "tokenParam",
-                        event.target.value as AIProviderConfig["tokenParam"]
+                        next as AIProviderConfig["tokenParam"]
                       )}
-                      className="extension-control"
-                    >
-                      <option value="auto">自动（{providerProfile.tokenParam}）</option>
-                      <option value="max_tokens">max_tokens</option>
-                      <option value="max_completion_tokens">max_completion_tokens</option>
-                    </select>
+                      options={[
+                        { value: "auto", label: `自动（${providerProfile.tokenParam}）` },
+                        { value: "max_tokens", label: "max_tokens" },
+                        { value: "max_completion_tokens", label: "max_completion_tokens" },
+                      ]}
+                    />
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-json-mode">JSON mode</label>
-                    <select
+                    <Select
                       id="provider-json-mode"
                       value={draft.provider.jsonMode ?? "auto"}
                       disabled={!providerProfile.supportsJsonMode}
-                      onChange={(event) => updateProviderConfig(
+                      onChange={(next) => updateProviderConfig(
                         "jsonMode",
-                        event.target.value as AIProviderConfig["jsonMode"]
+                        next as AIProviderConfig["jsonMode"]
                       )}
-                      className="extension-control"
-                    >
-                      <option value="auto">按任务自动</option>
-                      <option value="on">始终开启</option>
-                      <option value="off">始终关闭</option>
-                    </select>
+                      options={[
+                        { value: "auto", label: "按任务自动" },
+                        { value: "on", label: "始终开启" },
+                        { value: "off", label: "始终关闭" },
+                      ]}
+                    />
                   </div>
                 </div>
 
@@ -625,57 +677,61 @@ export function Options() {
               {draft.allowNestedFolders && (
                 <div className="extension-field">
                   <label>最大嵌套层级</label>
-                  <select value={draft.maxNestingLevel} onChange={(event) => setDraft({ ...draft, maxNestingLevel: Number(event.target.value) })} className="extension-control">
-                    <option value="1">1 级</option>
-                    <option value="2">2 级</option>
-                    <option value="3">3 级</option>
-                  </select>
+                  <Select
+                    value={String(draft.maxNestingLevel)}
+                    onChange={(next) => setDraft({ ...draft, maxNestingLevel: Number(next) })}
+                    options={[
+                      { value: "1", label: "1 级" },
+                      { value: "2", label: "2 级" },
+                      { value: "3", label: "3 级" },
+                    ]}
+                  />
                 </div>
               )}
 
               <div className="extension-field">
                 <label>一级文件夹数量上限</label>
-                <select
-                  value={draft.maxTopLevelFolders}
-                  onChange={(event) => setDraft({ ...draft, maxTopLevelFolders: Number(event.target.value) })}
-                  className="extension-control"
-                >
-                  <option value="4">4 个</option>
-                  <option value="6">6 个</option>
-                  <option value="8">8 个</option>
-                  <option value="10">10 个</option>
-                  <option value="12">12 个</option>
-                </select>
+                <Select
+                  value={String(draft.maxTopLevelFolders)}
+                  onChange={(next) => setDraft({ ...draft, maxTopLevelFolders: Number(next) })}
+                  options={[
+                    { value: "4", label: "4 个" },
+                    { value: "6", label: "6 个" },
+                    { value: "8", label: "8 个" },
+                    { value: "10", label: "10 个" },
+                    { value: "12", label: "12 个" },
+                  ]}
+                />
                 <p>数量越少，分类越克制；长尾内容会合并到“其他”或更粗粒度文件夹。</p>
               </div>
 
               {draft.allowNestedFolders && draft.maxNestingLevel > 1 && (
                 <div className="extension-field">
                   <label>每个一级文件夹的子文件夹上限</label>
-                  <select
-                    value={draft.maxSubfoldersPerFolder}
-                    onChange={(event) => setDraft({ ...draft, maxSubfoldersPerFolder: Number(event.target.value) })}
-                    className="extension-control"
-                  >
-                    <option value="0">不创建子文件夹</option>
-                    <option value="2">2 个</option>
-                    <option value="3">3 个</option>
-                    <option value="4">4 个</option>
-                    <option value="6">6 个</option>
-                  </select>
+                  <Select
+                    value={String(draft.maxSubfoldersPerFolder)}
+                    onChange={(next) => setDraft({ ...draft, maxSubfoldersPerFolder: Number(next) })}
+                    options={[
+                      { value: "0", label: "不创建子文件夹" },
+                      { value: "2", label: "2 个" },
+                      { value: "3", label: "3 个" },
+                      { value: "4", label: "4 个" },
+                      { value: "6", label: "6 个" },
+                    ]}
+                  />
                 </div>
               )}
 
               <div className="extension-field">
                 <label>未分类书签处理方式</label>
-                <select
+                <Select
                   value={draft.unclassifiedHandling}
-                  onChange={(event) => setDraft({ ...draft, unclassifiedHandling: event.target.value as Settings["unclassifiedHandling"] })}
-                  className="extension-control"
-                >
-                  <option value="preserveSourcePath">保持原位置（推荐）</option>
-                  <option value="collect">全部放入“未分类”文件夹</option>
-                </select>
+                  onChange={(next) => setDraft({ ...draft, unclassifiedHandling: next as Settings["unclassifiedHandling"] })}
+                  options={[
+                    { value: "preserveSourcePath", label: "保持原位置（推荐）" },
+                    { value: "collect", label: "全部放入“未分类”文件夹" },
+                  ]}
+                />
                 <p>适用于 AI 无法可靠分类、低置信度或返回待整理/未分类的书签；默认保持原位置，只有明确选择集中处理时才移动到“未分类”。</p>
               </div>
 

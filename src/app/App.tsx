@@ -29,7 +29,12 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
     void loadSettings();
   }, [loadSettings]);
 
-  useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+  useEffect(() => {
+    // 首页记录离开时的滚动位置；返回首页时由 SidebarHome 恢复，避免打断其它页面的顶部定位
+    const isHome = location.pathname === "/" || location.pathname === "/home";
+    if (isHome) return;
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   const home = settings.onboardingCompleted
     ? defaultView === "options"

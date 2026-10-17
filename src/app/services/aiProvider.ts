@@ -194,7 +194,7 @@ function profileFor(type: AIProviderType) {
   return AI_PROVIDER_PROFILES[type] ?? AI_PROVIDER_PROFILES.custom;
 }
 
-function endpointFor(config: AIProviderConfig) {
+export function endpointFor(config: AIProviderConfig) {
   const endpoint = config.endpoint?.replace(/\/$/, "");
   const profile = profileFor(config.type);
   if (config.type === "deepseek" && endpoint?.endsWith("/v1")) {

@@ -88,11 +88,11 @@
 .remarks-app .home-inline-notice a { color: var(--remarks-blue); text-decoration: underline; }
 .remarks-app .home-regular { margin-top: 20px; }
 .remarks-app .home-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.remarks-app .home-quick { display: flex; align-items: flex-start; gap: 9px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 12px; padding: 13px 10px; min-height: 75px; text-decoration: none; }
-.remarks-app .home-quick > span:last-child { min-width: 0; }
+.remarks-app .home-quick { display: flex; align-items: center; justify-content: center; gap: 9px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 12px; padding: 13px 10px; min-height: 75px; text-decoration: none; }
+.remarks-app .home-quick > span:last-child { min-width: 0; display: grid; align-content: center; }
 .remarks-app .home-quick__mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: #eff3ff; color: #4b6acf; flex-shrink: 0; }
 .remarks-app .home-quick__mark svg { width: 15px; height: 15px; }
-.remarks-app .home-quick strong { display: block; font-size: 13px; color: var(--remarks-ink); font-weight: 700; line-height: 1.5; }
+.remarks-app .home-quick strong { display: block; font-size: 14px; color: var(--remarks-ink); font-weight: 700; line-height: 1.5; }
 .remarks-app .home-quick small { display: block; font-size: 12px; color: var(--remarks-muted); margin-top: 3px; line-height: 1.5; }
 .remarks-app .home-recent-row { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 39px; padding: 6px 5px; color: #43516a; font-size: 13px; border-radius: 8px; text-decoration: none; }
 .remarks-app .home-recent-row > span:not(.sidebar-favicon) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -125,13 +125,16 @@
 /* 子页面共享层级。保留各业务面板的状态色和原有交互。 */
 .remarks-app .extension-page { background: var(--remarks-paper); color: var(--remarks-ink); }
 .remarks-app .extension-page .extension-page__inner { width: min(100%, 760px); padding: 24px; }
-.remarks-app .extension-page .extension-page__header { display: flex; flex-direction: row; align-items: flex-end; gap: 16px; margin-bottom: 22px; }
+.remarks-app .extension-page .extension-page__header { display: flex; flex-direction: row; align-items: flex-end; gap: 16px 28px; margin-bottom: 22px; }
 .remarks-app .extension-page .extension-page__heading { display: flex; flex-direction: column; align-items: flex-start; flex: 1; gap: 0; min-width: 0; }
-.remarks-app .extension-page .extension-page__back { display: inline-flex; align-items: center; gap: 7px; width: auto; height: auto; min-height: 32px; padding: 4px 0; margin-top: 22px; color: #5576be; font-size: 13px; text-decoration: none; border-radius: 4px; transform: none; }
-.remarks-app .extension-page .extension-page__back:hover { color: var(--remarks-blue); background: transparent; }
-.remarks-app .extension-page .extension-page__back svg { width: 16px; height: 16px; }
-.remarks-app .remarks-page-intro { margin-top: 16px; min-width: 0; }
-.remarks-app .extension-page .extension-page__title { color: var(--remarks-ink); font-size: 23px; font-weight: 800; line-height: 1.4; letter-spacing: 0; overflow-wrap: anywhere; }
+.remarks-app .extension-page .extension-page__back { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; padding: 0; margin-top: 0; border: 0; background: transparent; color: #5576be; cursor: pointer; text-decoration: none; border-radius: 8px; transform: none; transition: background-color 160ms ease, color 160ms ease; }
+.remarks-app .extension-page .extension-page__back:hover { color: var(--remarks-blue); background: #eaf0ff; }
+.remarks-app .extension-page .extension-page__back svg { width: 18px; height: 18px; }
+.remarks-app .remarks-page-intro { margin-top: 14px; min-width: 0; align-self: stretch; }
+.remarks-app .remarks-page-intro__row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.remarks-app .remarks-page-intro__row > .extension-page__title { min-width: 0; max-width: 100%; text-align: left; }
+.remarks-app .remarks-page-intro__row + .extension-page__subtitle { margin-top: 6px; padding-left: 40px; text-align: left; }
+.remarks-app .extension-page .extension-page__title { color: var(--remarks-ink); font-size: 23px; font-weight: 800; line-height: 1.4; letter-spacing: 0; overflow-wrap: anywhere; min-width: 0; }
 .remarks-app .extension-page .extension-page__subtitle { margin: 7px 0 0; font-size: 13px; color: var(--remarks-muted); line-height: 1.8; overflow-wrap: anywhere; }
 .remarks-app .extension-page .extension-section { border-color: var(--remarks-line); border-radius: 13px; box-shadow: none; }
 .remarks-app .extension-page .extension-section:not(.extension-section--flush):not(.collapsible-section) { padding: 16px; }
@@ -171,6 +174,12 @@
   .remarks-app .extension-page .extension-page__header > :not(.extension-page__heading) { max-width: 100%; }
   .remarks-app .extension-page .backup-header-actions { width: 100%; }
   .remarks-app .extension-page .extension-page__header > .extension-page__primary-button { width: 100%; }
+  /* 窄屏：返回图标与标题保持同一行，标题降一档字号，副标题同步缩进 */
+  .remarks-app .remarks-page-intro__row { gap: 8px; }
+  .remarks-app .extension-page .extension-page__title { font-size: 20px; }
+  .remarks-app .extension-page .extension-page__back { width: 28px; height: 28px; }
+  .remarks-app .extension-page .extension-page__back svg { width: 17px; height: 17px; }
+  .remarks-app .remarks-page-intro__row + .extension-page__subtitle { padding-left: 36px; }
 }
 @media (max-width: 320px) {
   .remarks-app .sidebar-home.home-v2, .remarks-app .extension-page .extension-page__inner { padding: 18px 10px; }

@@ -3,6 +3,7 @@ import type {
   BookmarkWhitelistEntry,
   BookmarkLinkHealthReport,
   FolderHabitProfile,
+  ModelCatalogCache,
   OrganizeReport,
   PendingRecommendation,
   PreviewPlanCache,
@@ -26,7 +27,11 @@ export const STORAGE_KEYS = {
   bookmarkWhitelist: "remarks.bookmarkWhitelist",
   fixedDomainRules: "remarks.fixedDomainRules",
   previewReview: "remarks.previewReview",
+  modelCatalog: "remarks.modelCatalog",
 } as const;
+
+/** 模型列表缓存的过期时间：24 小时 */
+export const MODEL_CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const REPORT_HISTORY_LIMIT = 5;
 export const BACKUP_HISTORY_LIMIT = 5;
@@ -286,6 +291,26 @@ export async function saveReportToHistory(report: OrganizeReport): Promise<void>
     setStorageValue(STORAGE_KEYS.reportHistory, nextReports),
     setStorageValue(STORAGE_KEYS.lastReport, normalizedReport),
   ]);
+}
+
+/**
+ * 读取模型列表缓存。仅在 provider 类型与 endpoint 都匹配且未过期时返回。
+ * @param allowStale 为 true 时忽略过期时间（用于网络失败后的降级展示）
+ */
+export async function getModelCatalog(
+  providerType: string,
+  endpoint: string,
+  options: { allowStale?: boolean } = {}
+): Promise<ModelCatalogCache | null> {
+  const cached = await getStorageValue<ModelCatalogCache | null>(STORAGE_KEYS.modelCatalog, null);
+  if (!cached || !Array.isArray(cached.models)) return null;
+  if (cached.providerType !== providerType || cached.endpoint !== endpoint) return null;
+  if (!options.allowStale && Date.now() - cached.fetchedAt > MODEL_CATALOG_TTL_MS) return null;
+  return cached;
+}
+
+export function saveModelCatalog(cache: ModelCatalogCache): Promise<void> {
+  return setStorageValue(STORAGE_KEYS.modelCatalog, cache);
 }
 
 export function getPreviewPlan(): Promise<PreviewPlanCache | null> {

@@ -33,6 +33,32 @@ import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint, type WhitelistIndex } from "../services/whitelist";
 
+// 首页状态在子页面往返期间保留，避免返回时丢失滚动位置与展开的工具列表
+const HOME_TOOLS_OPEN_KEY = "remarks.home.toolsOpen";
+const HOME_SCROLL_KEY = "remarks.home.scrollY";
+const HOME_RETURN_KEY = "remarks.home.returning";
+
+function readHomeScroll(): number {
+  try {
+    const raw = sessionStorage.getItem(HOME_SCROLL_KEY);
+    const value = raw ? Number(raw) : 0;
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** 只有从首页离开再返回时才恢复位置，避免从其它页面首次进入时误用旧值 */
+function consumeHomeReturn(): number {
+  try {
+    if (sessionStorage.getItem(HOME_RETURN_KEY) !== "1") return 0;
+    sessionStorage.removeItem(HOME_RETURN_KEY);
+    return readHomeScroll();
+  } catch {
+    return 0;
+  }
+}
+
 type PreviewState = "none" | "running" | "ready";
 type CurrentPageState = {
   title: string;
@@ -113,7 +139,14 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  // 记住「更多工具」的展开状态与离开时的滚动位置，返回首页时还原
+  const [toolsOpen, setToolsOpen] = useState(() => {
+    try {
+      return sessionStorage.getItem(HOME_TOOLS_OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [dismissedTask, setDismissedTask] = useState("");
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
   const [historyGranted, setHistoryGranted] = useState(false);
@@ -128,6 +161,50 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     document.addEventListener("keydown", focusSearch);
     return () => document.removeEventListener("keydown", focusSearch);
   }, []);
+
+  // 点击工具链接时立即快照滚动位置，并标记「从首页离开」
+  const rememberHomeScroll = () => {
+    try {
+      sessionStorage.setItem(HOME_SCROLL_KEY, String(window.scrollY));
+      sessionStorage.setItem(HOME_RETURN_KEY, "1");
+    } catch {
+      // 忽略存储失败
+    }
+  };
+
+  // 记录工具列表展开状态
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(HOME_TOOLS_OPEN_KEY, toolsOpen ? "1" : "0");
+    } catch {
+      // 隐私模式等场景下 sessionStorage 不可用，忽略即可
+    }
+  }, [toolsOpen]);
+
+  // 滚动时持续记录位置（点击链接时另有即时快照）
+  useEffect(() => {
+    const saveScroll = () => {
+      try {
+        sessionStorage.setItem(HOME_SCROLL_KEY, String(window.scrollY));
+      } catch {
+        // 忽略存储失败
+      }
+    };
+    window.addEventListener("scroll", saveScroll, { passive: true });
+    return () => window.removeEventListener("scroll", saveScroll);
+  }, []);
+
+  // 返回首页时还原上次的滚动位置；没有记录则回到顶部。只执行一次
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!ready || restoredRef.current) return;
+    restoredRef.current = true;
+    const target = consumeHomeReturn();
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo(0, target);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [ready]);
 
   useEffect(() => {
     let alive = true;
@@ -326,7 +403,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </section>
       <div className="home-tools">
         <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><span>报告 · 备份 · 导入 · 偏好</span><ChevronDown aria-hidden="true" /></button>
-        {toolsOpen && <nav id="home-tool-list" className="home-tool-list" aria-label="更多工具">{toolEntries.map(({ to, label, icon: Icon }) => <Link key={to} to={to}><Icon aria-hidden="true" /><span>{label}</span><ChevronRight aria-hidden="true" /></Link>)}<Link to="/more"><Grid2X2 aria-hidden="true" /><span>查看全部工具</span><ChevronRight aria-hidden="true" /></Link></nav>}
+        {toolsOpen && <nav id="home-tool-list" className="home-tool-list" aria-label="更多工具" onClickCapture={rememberHomeScroll}>{toolEntries.map(({ to, label, icon: Icon }) => <Link key={to} to={to}><Icon aria-hidden="true" /><span>{label}</span><ChevronRight aria-hidden="true" /></Link>)}<Link to="/more"><Grid2X2 aria-hidden="true" /><span>查看全部工具</span><ChevronRight aria-hidden="true" /></Link></nav>}
       </div>
       <footer className="home-footer"><ShieldCheck aria-hidden="true" /><span>分类建议由你审核，批量操作可回退</span></footer>
     </main>

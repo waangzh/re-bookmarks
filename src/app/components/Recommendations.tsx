@@ -9,6 +9,7 @@ import { recordHabitFeedback } from "../services/habits";
 import { useAppStore } from "../store/useAppStore";
 import { addBookmarkWhitelistEntry } from "../services/whitelist";
 import { STORAGE_KEYS } from "../services/storage";
+import { Select } from "./Select";
 
 type SortKey = "created-desc" | "created-asc" | "confidence-desc" | "confidence-asc" | "title-asc";
 
@@ -288,7 +289,7 @@ export function Recommendations() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="待处理推荐" subtitle="{pendingRecommendations.length} 条建议待处理" />
+          <PageHeading title="待处理推荐" subtitle={`${pendingRecommendations.length} 条建议待处理`} />
         </div>
 
         {error && (
@@ -346,16 +347,21 @@ export function Recommendations() {
                   一键忽略所有
                 </button>
               </div>
-              <label className="recommendation-sort">
+              <div className="recommendation-sort">
                 <span>排序</span>
-                <select value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
-                  <option value="created-desc">收藏时间：最新优先</option>
-                  <option value="created-asc">收藏时间：最早优先</option>
-                  <option value="confidence-desc">置信度：高到低</option>
-                  <option value="confidence-asc">置信度：低到高</option>
-                  <option value="title-asc">标题：A-Z</option>
-                </select>
-              </label>
+                <Select
+                  value={sortKey}
+                  onChange={(next) => setSortKey(next as SortKey)}
+                  aria-label="排序方式"
+                  options={[
+                    { value: "created-desc", label: "收藏时间：最新优先" },
+                    { value: "created-asc", label: "收藏时间：最早优先" },
+                    { value: "confidence-desc", label: "置信度：高到低" },
+                    { value: "confidence-asc", label: "置信度：低到高" },
+                    { value: "title-asc", label: "标题：A-Z" },
+                  ]}
+                />
+              </div>
             </div>
 
             <div className="extension-stack">

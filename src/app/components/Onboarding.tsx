@@ -25,6 +25,7 @@ import { getPreviewTask, requestClearPreviewTask, startPreviewTask } from "../se
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { clearPreviewPlan } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
+import { Select } from "./Select";
 import { filterAvailableBookmarks, getCurrentWhitelist, type WhitelistIndex } from "../services/whitelist";
 
 type OnboardingProps = {
@@ -403,11 +404,11 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
             <div className="onboarding__form">
               <label>
                 <span>AI 服务</span>
-                <select value={draft.provider.type} onChange={(event) => updateProvider(event.target.value as AIProviderType)}>
-                  {AI_PROVIDER_OPTIONS.map((provider) => (
-                    <option key={provider.type} value={provider.type}>{provider.label}</option>
-                  ))}
-                </select>
+                <Select
+                  value={draft.provider.type}
+                  onChange={(next) => updateProvider(next as AIProviderType)}
+                  options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
+                />
                 <small>{draft.provider.type === "custom" ? "请在下方填写兼容 OpenAI 接口的配置" : "模型与请求参数已使用 " + providerProfile.label + " 推荐值"}</small>
               </label>
               <label>
@@ -441,19 +442,27 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                   </label>
                   <label>
                     <span>Token 参数</span>
-                    <select value={draft.provider.tokenParam ?? "auto"} onChange={(event) => updateProviderConfig("tokenParam", event.target.value as AIProviderConfig["tokenParam"])}>
-                      <option value="auto">自动（{providerProfile.tokenParam}）</option>
-                      <option value="max_tokens">max_tokens</option>
-                      <option value="max_completion_tokens">max_completion_tokens</option>
-                    </select>
+                    <Select
+                      value={draft.provider.tokenParam ?? "auto"}
+                      onChange={(next) => updateProviderConfig("tokenParam", next as AIProviderConfig["tokenParam"])}
+                      options={[
+                        { value: "auto", label: `自动（${providerProfile.tokenParam}）` },
+                        { value: "max_tokens", label: "max_tokens" },
+                        { value: "max_completion_tokens", label: "max_completion_tokens" },
+                      ]}
+                    />
                   </label>
                   <label>
                     <span>JSON mode</span>
-                    <select value={draft.provider.jsonMode ?? "auto"} onChange={(event) => updateProviderConfig("jsonMode", event.target.value as AIProviderConfig["jsonMode"])}>
-                      <option value="auto">按任务自动</option>
-                      <option value="on">始终开启</option>
-                      <option value="off">始终关闭</option>
-                    </select>
+                    <Select
+                      value={draft.provider.jsonMode ?? "auto"}
+                      onChange={(next) => updateProviderConfig("jsonMode", next as AIProviderConfig["jsonMode"])}
+                      options={[
+                        { value: "auto", label: "按任务自动" },
+                        { value: "on", label: "始终开启" },
+                        { value: "off", label: "始终关闭" },
+                      ]}
+                    />
                   </label>
                 </div>
               )}

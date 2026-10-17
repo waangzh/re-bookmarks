@@ -2298,6 +2298,26 @@ textarea {
   padding: 10px 12px;
 }
 
+/* 含下拉框的容器不能裁剪浮层；展开时再抬高层级 */
+.extension-section:has(.ui-select),
+.settings-section:has(.ui-select),
+.settings-disclosure:has(.ui-select),
+.collapsible-section:has(.ui-select),
+.provider-advanced:has(.ui-select),
+.habit-card:has(.ui-select) {
+  overflow: visible;
+}
+
+.extension-section:has(.ui-select__menu),
+.settings-section:has(.ui-select__menu),
+.settings-disclosure:has(.ui-select__menu),
+.collapsible-section:has(.ui-select__menu),
+.provider-advanced:has(.ui-select__menu),
+.habit-card:has(.ui-select__menu) {
+  position: relative;
+  z-index: 50;
+}
+
 .extension-page--habits .extension-form {
   gap: 10px;
 }
@@ -3421,7 +3441,7 @@ textarea {
 
 .report-value-check__copy {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   min-width: 0;
 }
@@ -3735,13 +3755,18 @@ textarea {
 }
 
 @media (max-width: 520px) {
+  /* 窄屏下仍保持图标与操作按钮同一行，避免拆成上下两块 */
   .report-value-check {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 10px;
   }
 
   .report-value-check__action {
-    width: 100%;
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 
@@ -4068,6 +4093,206 @@ textarea {
   font-size: 14px;
   outline: none;
   transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+/* 通用下拉框：与模型选择框保持同一视觉语言 */
+.ui-select {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+/* 展开时提升整个下拉框的层叠顺序，避免被后续兄弟卡片覆盖 */
+.ui-select:has(.ui-select__menu) {
+  z-index: 50;
+}
+
+.ui-select__trigger {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #d9e1ea;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0 10px 0 12px;
+  color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.ui-select__trigger:hover:not(:disabled) {
+  border-color: #b9c7d8;
+  background: #fbfdff;
+}
+
+.ui-select__trigger:focus-visible,
+.ui-select__trigger.is-open {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+  background: #ffffff;
+  outline: none;
+}
+
+.ui-select__trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: #f8fafc;
+}
+
+.ui-select__value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-select__value.is-placeholder {
+  color: #94a3b8;
+}
+
+.ui-select__chevron {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #64748b;
+  transition: transform 160ms ease;
+}
+
+.ui-select__trigger.is-open .ui-select__chevron {
+  transform: rotate(180deg);
+}
+
+.ui-select__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: 100%;
+  max-height: 260px;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 5px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid #d7e1ef;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14), 0 3px 10px rgba(15, 23, 42, 0.07);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* 靠近视口底部时向上展开 */
+.ui-select__menu.is-above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.ui-select__option {
+  display: grid;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.ui-select__option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-select__option svg {
+  width: 15px;
+  height: 15px;
+  color: transparent;
+}
+
+.ui-select__option.is-highlighted {
+  background: #f1f6ff;
+  color: #1e3a5f;
+}
+
+.ui-select__option.is-selected {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.ui-select__option.is-selected svg {
+  color: #2563eb;
+}
+
+.ui-select__empty {
+  padding: 11px 10px;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 下拉框：去掉系统外观，改用与 lucide 图标风格一致的 chevron */
+select.extension-control,
+.extension-field > select,
+.recommendation-sort select,
+.preview-inline-folder-edit select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 15px 15px;
+  text-overflow: ellipsis;
+}
+
+select.extension-control:hover,
+.extension-field > select:hover,
+.recommendation-sort select:hover,
+.preview-inline-folder-edit select:hover {
+  border-color: #b9c7d8;
+  background-color: #fbfdff;
+}
+
+select.extension-control:focus,
+.extension-field > select:focus,
+.recommendation-sort select:focus,
+.preview-inline-folder-edit select:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+  background-color: #ffffff;
+}
+
+select.extension-control:disabled,
+.extension-field > select:disabled,
+.recommendation-sort select:disabled,
+.preview-inline-folder-edit select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f8fafc;
+}
+
+/* 深色下拉菜单项：Chrome/Firefox 的 option 由系统渲染，只能设置有限属性 */
+select.extension-control option,
+.extension-field > select option,
+.recommendation-sort select option,
+.preview-inline-folder-edit select option {
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 14px;
 }
 
 .extension-control--search {
@@ -7491,6 +7716,23 @@ textarea {
   outline: none;
 }
 
+.onboarding__form select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  text-overflow: ellipsis;
+}
+
+.onboarding__form select:hover {
+  border-color: #9fb3cc;
+  background-color: #fbfdff;
+}
+
 .onboarding__form input:focus,
 .onboarding__form select:focus {
   border-color: #60a5fa;
@@ -8041,7 +8283,17 @@ textarea {
 }
 
 .preview-inline-folder-edit { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 13px; }
-.preview-inline-folder-edit select { min-width: 0; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; background: #fff; }
+.preview-inline-folder-edit select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 4px 32px 4px 9px;
+  background-color: #fff;
+  color: #334155;
+  font-size: 13px;
+}
 
 @media (max-width: 320px) {
   .sidebar-shell .extension-page__inner { padding: 12px 8px; }
