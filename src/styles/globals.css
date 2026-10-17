@@ -133,9 +133,13 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
   background-color: var(--background);
   color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* 全局滚动栏 hover 显示 */
@@ -243,10 +247,21 @@ button {
   line-height: 1.5;
 }
 
-input {
+input,
+select,
+textarea {
+  font-family: inherit;
   font-size: var(--text-base);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
+}
+
+select {
+  line-height: 1.4;
+}
+
+textarea {
+  line-height: 1.6;
 }
 
 .bookmark-popup-window {
@@ -325,7 +340,7 @@ input {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .bookmark-popup__card-title--blue {
@@ -391,7 +406,7 @@ input {
   border-radius: 999px;
   background: #f59e0b;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
 }
@@ -400,7 +415,7 @@ input {
   margin: 0 0 12px;
   color: #92400e;
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .bookmark-popup__recommend-button {
@@ -494,7 +509,7 @@ input {
 .bookmark-popup__footer p {
   margin: 0;
   color: #6b7280;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -522,14 +537,14 @@ input {
 .home-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 700; font-size: 16px; }
 .home-heading > span { display: flex; align-items: center; gap: 8px; }
 .home-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #dbe8fb; border-radius: 10px; background: #fff; padding: 14px 0; }
-.home-stats a { display: grid; gap: 4px; text-align: center; text-decoration: none; color: #475569; font-size: 12px; }
+.home-stats a { display: grid; gap: 4px; text-align: center; text-decoration: none; color: #475569; font-size: 13px; }
 .home-stats a + a { border-left: 1px solid #e2e8f0; }
 .home-stats strong { font-size: 25px; color: #1e3a8a; font-variant-numeric: tabular-nums; }
 .home-skeleton { background: #eff6ff; border-radius: 5px; margin: 0 15px; color: #64748b; }
 .home-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #dbe8fb; padding-top: 12px; }
 .home-nav a { padding: 8px 0; text-align: center; text-decoration: none; color: #475569; font-size: 13px; }
 .home-nav a:hover, .home-nav a[aria-current] { color: #1d4ed8; background: #eff6ff; border-radius: 8px; }
-.home-notice { overflow-wrap: anywhere; color: #92400e; background: #fffbeb; padding: 10px; font-size: 12px; }
+.home-notice { overflow-wrap: anywhere; color: #92400e; background: #fffbeb; padding: 10px; font-size: 13px; }
 .home-notice button { margin-left: 8px; text-decoration: underline; }
 .home-v2 .sidebar-current-page { flex-wrap: wrap; }
 .home-v2 .sidebar-suggestion-row span { overflow-wrap: anywhere; }
@@ -639,7 +654,7 @@ input {
   border-radius: 5px;
   padding: 3px 5px;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
@@ -735,7 +750,7 @@ input {
   background: #f1f5f9;
   padding: 2px 5px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   font-family: inherit;
 }
 
@@ -771,7 +786,7 @@ input {
 .sidebar-panel__head a {
   flex: 0 0 auto;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   text-decoration: none;
 }
 
@@ -781,7 +796,7 @@ input {
   gap: 4px 8px;
   align-items: center;
   color: #059669;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -793,7 +808,7 @@ input {
   min-width: 0;
   overflow: hidden;
   color: #2563eb;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -824,7 +839,7 @@ input {
 .sidebar-mini-row time {
   flex: 0 0 auto;
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .sidebar-mini-row--placeholder {
@@ -878,7 +893,7 @@ input {
 .sidebar-muted-link {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -905,7 +920,7 @@ input {
 
 .sidebar-task-card span {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -978,7 +993,7 @@ input {
   margin-top: auto;
   padding-top: 4px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 @media (max-width: 380px) {
@@ -1217,8 +1232,8 @@ input {
 .extension-page__subtitle {
   margin: 4px 0 0;
   color: #64748b;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .extension-page__primary-button,
@@ -1443,7 +1458,7 @@ input {
   overflow: hidden;
   color: #0f172a;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1451,7 +1466,7 @@ input {
 .report-history-card__time {
   gap: 4px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -1469,7 +1484,7 @@ input {
   background: #f8fafc;
   padding: 0 6px;
   color: #475569;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -1518,8 +1533,8 @@ input {
   flex: 1;
   overflow: hidden;
   color: #64748b;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1643,8 +1658,8 @@ input {
   padding: 7px 9px;
   box-shadow: 0 4px 12px rgb(15 23 42 / 12%);
   color: #475569;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
   pointer-events: none;
 }
 
@@ -1672,8 +1687,8 @@ input {
   background: #ffffff;
   padding: 0 9px;
   color: #475569;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -1711,7 +1726,7 @@ input {
   border-top: 1px solid #edf1f5;
   padding: 10px 13px 11px 53px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .preview-risk-list {
@@ -1770,7 +1785,7 @@ input {
   flex: 1;
   overflow: hidden;
   color: #27364a;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1782,7 +1797,7 @@ input {
   align-items: center;
   gap: 3px;
   color: #64748b;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .preview-risk-item__route span {
@@ -1794,7 +1809,7 @@ input {
 
 .preview-risk-item__route span:last-child {
   color: #315f96;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .preview-risk-item__route svg {
@@ -1806,8 +1821,8 @@ input {
 .preview-risk-item__body p {
   margin: 0;
   color: #7c899a;
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .preview-risk-item__actions {
@@ -1823,8 +1838,8 @@ input {
   background: #ffffff;
   padding: 0 8px;
   color: #64748b;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -1894,7 +1909,7 @@ input {
 .preview-framework-group__title strong {
   overflow: hidden;
   color: #27364a;
-  font-size: 12px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1903,7 +1918,7 @@ input {
 .preview-framework-group__paths,
 .preview-batch-group__samples {
   color: #64748b;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -1938,13 +1953,13 @@ input {
 
 .preview-batch-group__summary strong {
   color: #27364a;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .preview-batch-group__summary span {
   overflow: hidden;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1952,8 +1967,8 @@ input {
 .preview-batch-group__status {
   flex: 0 0 auto;
   color: #b45309;
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .preview-batch-group__status.is-decided {
@@ -1979,7 +1994,7 @@ input {
 .preview-tree-help {
   margin: 0 0 9px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .preview-tree-panel {
@@ -2144,8 +2159,8 @@ input {
 .preview-tree-row__count {
   flex: 0 0 auto;
   color: #94a3b8;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2153,7 +2168,7 @@ input {
   display: block;
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2177,7 +2192,7 @@ input {
   pointer-events: none;
   color: #334155;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
   transform: translate(12px, 12px);
@@ -2313,7 +2328,7 @@ input {
 .extension-field__hint {
   margin: 6px 0 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -2396,8 +2411,8 @@ input {
   display: block;
   margin-top: 4px;
   color: #64748b;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .settings-disclosure__chevron {
@@ -2471,7 +2486,7 @@ input {
 
 .provider-overview__copy small {
   color: #718096;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .provider-overview__state {
@@ -2481,8 +2496,8 @@ input {
   background: #ffffff;
   padding: 5px 9px;
   color: #718096;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2517,7 +2532,7 @@ input {
 .extension-field__label-with-icon span {
   margin-left: auto;
   color: #8a98ab;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -2538,7 +2553,7 @@ input {
   color: #334155;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   list-style: none;
 }
 
@@ -2561,7 +2576,7 @@ input {
 .provider-advanced__summary-value {
   overflow: hidden;
   color: #8491a3;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2590,7 +2605,7 @@ input {
   background: #ffffff;
   padding: 4px 7px;
   color: #52627a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2619,14 +2634,14 @@ input {
 }
 
 .settings-section--provider .extension-status strong {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.3;
 }
 
 .settings-section--provider .extension-status small {
   overflow-wrap: anywhere;
   color: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
   opacity: 0.86;
 }
@@ -2731,8 +2746,8 @@ input {
 
 .collapsible-section__hint {
   color: #64748b;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .collapsible-section__body {
@@ -2847,7 +2862,7 @@ input {
 
 .extension-text-button--small {
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .extension-section__bar-title {
@@ -2940,8 +2955,8 @@ input {
   background: #eef2ff;
   color: #3730a3;
   padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .token-usage-highlight__label {
@@ -3069,7 +3084,7 @@ input {
 .extension-list__meta,
 .extension-list__note {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -3124,8 +3139,8 @@ input {
 }
 
 .history-summary-notice p {
-  font-size: 12px;
-  line-height: 1.25;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .history-summary-notice + .extension-search-field {
@@ -3205,7 +3220,7 @@ input {
   overflow: hidden;
   color: #0f172a;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0;
   -webkit-box-orient: vertical;
@@ -3265,7 +3280,7 @@ input {
   min-width: 0;
   gap: 5px 8px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -3305,7 +3320,7 @@ input {
   background: #f8fafc;
   padding: 0 6px;
   color: #475569;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   text-overflow: ellipsis;
@@ -3347,14 +3362,14 @@ input {
   flex: 0 0 auto;
   border-radius: 999px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
 }
 
 .extension-confidence--signal {
   padding: 4px 7px;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
@@ -3429,8 +3444,8 @@ input {
   background: #2563eb;
   padding: 0 12px;
   color: #fff;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -3494,7 +3509,7 @@ input {
 
 .extension-metric__label {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .extension-compact-list {
@@ -3560,7 +3575,7 @@ input {
   gap: 5px;
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -3693,12 +3708,12 @@ input {
 
 .report-target-tree-row__url {
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .report-target-tree-row__reason {
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .extension-page--report .report-actions {
@@ -3833,7 +3848,7 @@ input {
   border-radius: 999px;
   background: #ffffff;
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .extension-folder-target--new {
@@ -3847,7 +3862,7 @@ input {
   padding: 3px 7px;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -3907,7 +3922,7 @@ input {
   gap: 9px;
   min-width: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .recommendation-sort span {
@@ -3952,7 +3967,7 @@ input {
   gap: 4px 8px;
   margin-top: 6px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .recommendation-negative-feedback {
@@ -3977,7 +3992,7 @@ input {
   gap: 8px 14px;
   margin-top: 9px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .extension-meta-row span {
@@ -4003,7 +4018,7 @@ input {
 .extension-suggestion span {
   display: block;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -4011,7 +4026,7 @@ input {
   display: block;
   overflow: hidden;
   color: #334155;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4038,7 +4053,7 @@ input {
 .extension-field p {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -4070,7 +4085,7 @@ input {
   resize: vertical;
   font-size: 13px;
   line-height: 1.6;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "Microsoft YaHei", "PingFang SC", monospace;
 }
 
 .extension-textarea--autosize {
@@ -4096,7 +4111,7 @@ input {
   background: transparent;
   color: #64748b;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   transition: color 160ms ease, background-color 160ms ease;
 }
 
@@ -4118,7 +4133,7 @@ input {
 }
 
 .extension-selection-count {
-  font-size: 12px;
+  font-size: 13px;
   color: #64748b;
 }
 
@@ -4165,8 +4180,8 @@ input {
 
 .organize-mode-picker__button small {
   color: #64748b;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .organize-mode-picker__button:hover {
@@ -4235,7 +4250,7 @@ input {
 .organize-model-picker__title small {
   overflow: hidden;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4249,7 +4264,7 @@ input {
   background: transparent;
   color: #2563eb;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .organize-model-picker__refresh:hover:not(:disabled) {
@@ -4385,7 +4400,7 @@ input {
 .organize-model-picker__empty {
   padding: 11px 10px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   text-align: center;
 }
@@ -4393,7 +4408,7 @@ input {
 .organize-model-picker__help {
   margin: 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -4624,7 +4639,7 @@ input {
 .selection-tree-row__count {
   flex: 0 0 auto;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -4735,7 +4750,7 @@ input {
 .habit-rule-feature-hint {
   flex: 0 0 auto;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .habit-rule-feature-body {
@@ -4766,8 +4781,8 @@ input {
 .extension-switch-row__hint {
   margin-top: 3px;
   color: #64748b;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .extension-privacy,
@@ -4781,7 +4796,7 @@ input {
 .extension-summary-panel p {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
 }
 
@@ -4841,7 +4856,7 @@ input {
 .bookmark-task-panel__main span {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -4898,7 +4913,7 @@ input {
 
 .bookmark-unsorted-summary__item span {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -4961,7 +4976,7 @@ input {
 .bookmark-unsorted-section__head p {
   margin: 4px 0 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -4972,7 +4987,7 @@ input {
   background: #f1f5f9;
   padding: 3px 8px;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -4995,7 +5010,7 @@ input {
   min-height: 30px;
   width: auto;
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-unsorted-list {
@@ -5084,7 +5099,7 @@ input {
 .bookmark-unsorted-card__meta {
   margin: 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -5107,7 +5122,7 @@ input {
   background: #eff6ff;
   padding: 7px 8px;
   color: #2563eb;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -5122,7 +5137,7 @@ input {
   border-radius: 999px;
   background: #ffffff;
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 
@@ -5158,7 +5173,7 @@ input {
 
 .bookmark-recommendation-edit span {
   color: #1d4ed8;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -5167,7 +5182,7 @@ input {
   min-height: 32px;
   border-color: #bfdbfe;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-unsorted-card__actions {
@@ -5243,15 +5258,15 @@ input {
 }
 
 .bookmark-tree-panel__head span {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .bookmark-tree-panel__head p {
   margin: 3px 0 0;
   color: #94a3b8;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .bookmark-tree-panel__actions {
@@ -5265,7 +5280,7 @@ input {
 .bookmark-tree-panel__actions .extension-page__wide-secondary {
   min-height: 30px;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-tree-panel__delete-button {
@@ -5333,7 +5348,7 @@ input {
 .bookmark-health-group__head p {
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -5343,7 +5358,7 @@ input {
   background: #ffffff;
   padding: 3px 8px;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -5403,14 +5418,14 @@ input {
 .bookmark-whitelist-panel summary span {
   margin-left: auto;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .bookmark-whitelist-panel p {
   margin: 8px 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-whitelist-search {
@@ -5430,7 +5445,7 @@ input {
   background: transparent;
   color: #2563eb;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-whitelist-tools button:disabled {
@@ -5466,7 +5481,7 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .bookmark-whitelist-list button {
@@ -5476,7 +5491,7 @@ input {
   background: transparent;
   color: #2563eb;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .bookmark-whitelist-list button:disabled {
@@ -5617,7 +5632,7 @@ input {
 .bookmark-tree-row__count {
   flex: 0 0 auto;
   color: #94a3b8;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -5626,7 +5641,7 @@ input {
   max-width: 34%;
   overflow: hidden;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5642,7 +5657,7 @@ input {
   background: #fff1f2;
   padding: 3px 7px;
   color: #be123c;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
 }
@@ -5693,8 +5708,30 @@ input {
 .extension-row-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 2px;
   flex: 0 0 auto;
+}
+
+/* 行内操作按钮：保持 32px 触达尺寸，同时把宽度留给中文标题 */
+.bookmark-tree-row .extension-icon-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.bookmark-tree-row .extension-icon-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bookmark-tree-row .extension-link-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.bookmark-tree-row .extension-link-icon svg {
+  width: 15px;
+  height: 15px;
 }
 
 .extension-icon-action--blue {
@@ -5752,7 +5789,7 @@ input {
 .import-file-card__main span {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -5813,7 +5850,7 @@ input {
 .import-detail__more {
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -5822,7 +5859,7 @@ input {
   background: #ffffff;
   padding: 3px 8px;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.2;
 }
 
@@ -5879,7 +5916,7 @@ input {
   overflow: hidden;
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5960,7 +5997,7 @@ input {
 
 .backup-summary-card span {
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -5990,7 +6027,7 @@ input {
 .backup-section-copy {
   margin-top: 4px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -6034,12 +6071,12 @@ input {
 
 .backup-card__time {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .backup-card__metrics {
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .backup-card__metrics span,
@@ -6129,7 +6166,7 @@ input {
 .backup-folder-summary p,
 .backup-detail-more {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -6273,7 +6310,7 @@ input {
   gap: 10px;
   color: #111827;
   font-size: 18px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -6301,7 +6338,7 @@ input {
 
 .extension-page--habits .extension-page__title {
   font-size: 24px;
-  font-weight: 760;
+  font-weight: 700;
 }
 
 .extension-page--habits .extension-page__subtitle {
@@ -6387,14 +6424,14 @@ input {
   margin: 0;
   color: #0f172a;
   font-size: 17px;
-  font-weight: 760;
+  font-weight: 700;
 }
 
 .habit-section-heading p {
   margin: 4px 0 0;
   color: #64748b;
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .habit-metrics-grid {
@@ -6437,7 +6474,7 @@ input {
   overflow-wrap: anywhere;
   color: #0f172a;
   font-size: 20px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -6453,7 +6490,7 @@ input {
 .habit-warning-text {
   margin: 12px 0 0;
   color: #b45309;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -6491,7 +6528,7 @@ input {
   background: #eff6ff;
   padding: 4px 9px;
   color: #1d4ed8;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -6521,7 +6558,7 @@ input {
 
 .habit-learning-signal-grid span {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .habit-learned-list {
@@ -6533,7 +6570,7 @@ input {
 .habit-learned-list__title {
   margin: 0;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -6566,7 +6603,7 @@ input {
 
 .habit-learned-row span {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .habit-learned-row button,
@@ -6605,7 +6642,7 @@ input {
   background: #f8fafc;
   padding: 3px 3px 3px 10px;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .habit-advanced-details > summary {
@@ -6633,7 +6670,7 @@ input {
 
 .habit-advanced-details > summary small {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .habit-advanced-details__chevron {
@@ -6733,7 +6770,7 @@ input {
   color: #334155;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -6790,7 +6827,7 @@ input {
   width: auto;
   max-width: 18ch;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .habit-category-chip {
@@ -6894,7 +6931,7 @@ input {
 .habit-folder-group__title strong {
   min-width: 0;
   overflow: hidden;
-  font-weight: 760;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6907,8 +6944,8 @@ input {
   border-radius: 999px;
   background: #eaf2ff;
   color: #2563eb;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .habit-folder-group__rows {
@@ -6961,7 +6998,7 @@ input {
 
 .habit-path-segment__prefix {
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -6970,7 +7007,7 @@ input {
   width: 96px;
   color: #1e3a8a;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .habit-path-builder__add {
@@ -6984,7 +7021,7 @@ input {
   padding: 0 10px;
   color: #2563eb;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -7028,7 +7065,7 @@ input {
 .habit-avoid-chip input {
   width: 100%;
   font-size: 13px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .habit-avoid-chip button {
@@ -7160,7 +7197,7 @@ input {
   gap: 10px;
   margin-bottom: 22px;
   font-size: 17px;
-  font-weight: 780;
+  font-weight: 700;
 }
 
 .onboarding__brand-mark {
@@ -7187,8 +7224,8 @@ input {
   color: #64748b;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .onboarding__brand button:hover,
@@ -7227,8 +7264,8 @@ input {
   border-radius: 999px;
   background: #f8fafc;
   color: #94a3b8;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .onboarding__steps > span.is-active {
@@ -7264,8 +7301,8 @@ input {
   gap: 7px;
   margin-bottom: 9px;
   color: #2563eb;
-  font-size: 12px;
-  font-weight: 780;
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.04em;
 }
 
@@ -7277,8 +7314,8 @@ input {
 .onboarding__panel h1 {
   margin: 0;
   font-size: clamp(23px, 4vw, 32px);
-  font-weight: 790;
-  letter-spacing: -0.035em;
+  font-weight: 800;
+  letter-spacing: 0;
   line-height: 1.18;
 }
 
@@ -7318,14 +7355,14 @@ input {
 .onboarding__metric span,
 .onboarding__metric small {
   color: #64748b;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .onboarding__metric strong {
   grid-column: 1 / -1;
   font-size: 23px;
-  font-weight: 790;
+  font-weight: 800;
   line-height: 1;
 }
 
@@ -7395,7 +7432,7 @@ input {
   color: #fff;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 700;
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.2);
   transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
@@ -7450,7 +7487,7 @@ input {
   padding: 0 12px;
   color: #0f172a;
   font: inherit;
-  font-weight: 550;
+  font-weight: 500;
   outline: none;
 }
 
@@ -7462,8 +7499,8 @@ input {
 
 .onboarding__form label > small {
   color: #64748b;
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.4;
 }
 
@@ -7483,7 +7520,7 @@ input {
 
 .onboarding__label-row em {
   color: #16a34a;
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 700;
 }
@@ -7509,8 +7546,8 @@ input {
   padding: 0 14px;
   color: #1d4ed8;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .onboarding__sample-actions {
@@ -7533,8 +7570,8 @@ input {
   color: #1d4ed8;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .onboarding__sample-actions > button:last-child {
@@ -7576,7 +7613,7 @@ input {
 .onboarding__sample-loading span {
   margin-top: 6px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .onboarding__sample-empty .onboarding__primary {
@@ -7636,7 +7673,7 @@ input {
 .onboarding__before-after span,
 .onboarding__before-after small {
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .onboarding__before-after strong {
@@ -7658,7 +7695,7 @@ input {
   min-height: 62px;
   padding: 9px 12px;
   border-bottom: 1px solid #eef2f7;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .onboarding__suggestion:last-child {
@@ -7683,8 +7720,8 @@ input {
   display: -webkit-box;
   overflow: hidden;
   color: #64748b;
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -7729,7 +7766,7 @@ input {
   color: #1d4ed8;
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .onboarding__panel--finish {
@@ -7776,7 +7813,7 @@ input {
   background: #f8fafc;
   padding: 14px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
 }
 
@@ -7874,7 +7911,7 @@ input {
 .settings-simple__header p {
   margin: 4px 0 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -7927,8 +7964,8 @@ input {
   background: #fff;
   padding: 4px 8px;
   color: #64748b;
-  font-size: 10px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
 }
@@ -7944,7 +7981,7 @@ input {
   background: #fff;
   padding: 11px 12px;
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -8003,7 +8040,7 @@ input {
   }
 }
 
-.preview-inline-folder-edit { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 12px; }
+.preview-inline-folder-edit { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 13px; }
 .preview-inline-folder-edit select { min-width: 0; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; background: #fff; }
 
 @media (max-width: 320px) {

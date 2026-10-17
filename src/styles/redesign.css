@@ -8,7 +8,7 @@
   --remarks-soft: #edf3ff;
   color: var(--remarks-ink);
   background: var(--remarks-paper);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 }
 .remarks-app :where(a, button, input, select, textarea, summary):focus-visible {
   outline: 3px solid #9db9ff;
@@ -20,8 +20,8 @@
 .remarks-app .remarks-brand__mark { display: grid; place-items: center; width: 37px; height: 37px; flex-shrink: 0; border-radius: 12px; background: var(--remarks-blue); color: #fff; box-shadow: 0 7px 16px #315fda24; }
 .remarks-app .remarks-brand__mark svg { width: 19px; height: 19px; }
 .remarks-app .remarks-brand > span:last-child { min-width: 0; }
-.remarks-app .remarks-brand strong { display: block; font-size: 15px; font-weight: 800; letter-spacing: -.3px; line-height: 1.4; }
-.remarks-app .remarks-brand small { display: block; margin-top: 2px; color: var(--remarks-muted); font-size: 11px; font-weight: 400; line-height: 1.5; }
+.remarks-app .remarks-brand strong { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0; line-height: 1.4; }
+.remarks-app .remarks-brand small { display: block; margin-top: 2px; color: var(--remarks-muted); font-size: 12px; font-weight: 400; line-height: 1.5; }
 
 /* 首页：搜索 → 当前主任务 → 持续维护。 */
 .remarks-app .sidebar-home.home-v2 { display: block; max-width: 460px; min-height: 100vh; padding: 24px 18px 18px; background: var(--remarks-paper); }
@@ -33,58 +33,58 @@
 .remarks-app .home-search input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; color: var(--remarks-ink); font-size: 13px; }
 .remarks-app .home-search input::placeholder { color: #718098; }
 .remarks-app .home-search input:focus-visible { outline-offset: 5px; border-radius: 2px; }
-.remarks-app .home-search kbd { font-size: 9px; color: var(--remarks-muted); background: #f4f6fa; border: 1px solid var(--remarks-line); padding: 3px 5px; border-radius: 5px; white-space: nowrap; }
+.remarks-app .home-search kbd { font-size: 11px; color: var(--remarks-muted); background: #f4f6fa; border: 1px solid var(--remarks-line); padding: 3px 5px; border-radius: 5px; white-space: nowrap; }
 .remarks-app .home-search button { display: grid; place-items: center; width: 26px; height: 26px; flex-shrink: 0; color: var(--remarks-muted); border: 0; background: transparent; border-radius: 6px; cursor: pointer; }
 .remarks-app .home-search button svg { width: 15px; height: 15px; }
 .remarks-app .home-search-results { margin-top: 8px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 12px; padding: 6px; }
-.remarks-app .home-search-results > p { margin: 6px; color: var(--remarks-muted); font-size: 12px; line-height: 1.7; }
+.remarks-app .home-search-results > p { margin: 6px; color: var(--remarks-muted); font-size: 13px; line-height: 1.7; }
 .remarks-app .home-search-result { display: flex; align-items: center; gap: 9px; padding: 9px; color: var(--remarks-ink); border-radius: 8px; text-decoration: none; }
 .remarks-app .home-search-result > span:not(.sidebar-favicon) { flex: 1; min-width: 0; }
 .remarks-app .home-search-result strong, .remarks-app .home-search-result small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.remarks-app .home-search-result strong { font-size: 12px; font-weight: 650; }
-.remarks-app .home-search-result small { font-size: 10px; color: var(--remarks-muted); margin-top: 2px; }
+.remarks-app .home-search-result strong { font-size: 13px; font-weight: 600; }
+.remarks-app .home-search-result small { font-size: 12px; color: var(--remarks-muted); margin-top: 2px; }
 .remarks-app .home-search-result > svg, .remarks-app .home-search-more svg { width: 14px; height: 14px; flex-shrink: 0; }
-.remarks-app .home-search-more { display: flex; gap: 6px; justify-content: center; align-items: center; padding: 10px; color: var(--remarks-blue); font-size: 11px; text-decoration: none; }
+.remarks-app .home-search-more { display: flex; gap: 6px; justify-content: center; align-items: center; padding: 10px; color: var(--remarks-blue); font-size: 12px; text-decoration: none; }
 .remarks-app .home-featured-task { margin-top: 20px; padding: 19px 18px 16px; background: linear-gradient(156deg, #eaf0ff, #f5f8ff 45%, #fff); border: 1px solid #d8e4fc; border-radius: 17px; }
 .remarks-app .home-featured-task__heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.remarks-app .home-featured-task__heading > span { display: flex; align-items: center; gap: 7px; color: #4566af; font-size: 11px; font-weight: 750; }
+.remarks-app .home-featured-task__heading > span { display: flex; align-items: center; gap: 7px; color: #4566af; font-size: 12px; font-weight: 700; }
 .remarks-app .home-featured-task__heading svg { width: 23px; height: 23px; padding: 5px; border-radius: 8px; background: #dce8ff; }
-.remarks-app .home-featured-task__heading small { color: var(--remarks-muted); font-size: 10px; }
-.remarks-app .home-featured-task h1 { margin: 18px 0 8px; color: var(--remarks-ink); font-size: 22px; line-height: 1.4; letter-spacing: -.7px; font-weight: 800; overflow-wrap: anywhere; }
-.remarks-app .home-featured-task > p { margin: 0; color: var(--remarks-muted); font-size: 12px; line-height: 1.8; }
+.remarks-app .home-featured-task__heading small { color: var(--remarks-muted); font-size: 12px; }
+.remarks-app .home-featured-task h1 { margin: 18px 0 8px; color: var(--remarks-ink); font-size: 22px; line-height: 1.4; letter-spacing: 0; font-weight: 800; overflow-wrap: anywhere; }
+.remarks-app .home-featured-task > p { margin: 0; color: var(--remarks-muted); font-size: 13px; line-height: 1.8; }
 .remarks-app .home-featured-task__actions { display: flex; align-items: center; gap: 11px; margin-top: 21px; }
 .remarks-app .home-primary { display: flex; align-items: center; justify-content: center; flex: 1; gap: 8px; min-width: 0; min-height: 43px; padding: 10px 12px; border: 1px solid var(--remarks-blue); border-radius: 11px; background: var(--remarks-blue); color: #fff; font-size: 13px; line-height: 1.5; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; box-shadow: 0 7px 13px #315fda24; }
 .remarks-app .home-primary svg { width: 15px; height: 15px; flex-shrink: 0; }
 .remarks-app .home-primary:hover { background: #2350be; }
-.remarks-app .home-quiet-button { background: transparent; border: 0; padding: 10px 4px; font-size: 12px; color: var(--remarks-muted); cursor: pointer; flex-shrink: 0; }
+.remarks-app .home-quiet-button { background: transparent; border: 0; padding: 10px 4px; font-size: 13px; color: var(--remarks-muted); cursor: pointer; flex-shrink: 0; }
 .remarks-app .home-quiet-button:hover { color: var(--remarks-blue); }
-.remarks-app .home-safety-note { display: flex; align-items: flex-start; gap: 5px; margin-top: 13px; color: var(--remarks-muted); font-size: 10px; line-height: 1.6; }
+.remarks-app .home-safety-note { display: flex; align-items: flex-start; gap: 5px; margin-top: 13px; color: var(--remarks-muted); font-size: 12px; line-height: 1.6; }
 .remarks-app .home-safety-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
 .remarks-app .home-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 11px; }
-.remarks-app .home-section-heading h2 { margin: 0; font-size: 12.5px; font-weight: 750; color: var(--remarks-ink); }
-.remarks-app .home-section-heading a { display: flex; align-items: center; gap: 3px; color: var(--remarks-muted); font-size: 11px; text-decoration: none; }
+.remarks-app .home-section-heading h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--remarks-ink); }
+.remarks-app .home-section-heading a { display: flex; align-items: center; gap: 3px; color: var(--remarks-muted); font-size: 12px; text-decoration: none; }
 .remarks-app .home-section-heading a svg { width: 12px; height: 12px; }
 .remarks-app .home-task-queue { margin-top: 20px; }
-.remarks-app .home-queue-row { display: flex; align-items: center; gap: 9px; padding: 11px 12px; margin-top: 7px; background: #fff; color: #43516b; border: 1px solid var(--remarks-line); border-radius: 11px; font-size: 12px; text-decoration: none; }
+.remarks-app .home-queue-row { display: flex; align-items: center; gap: 9px; padding: 11px 12px; margin-top: 7px; background: #fff; color: #43516b; border: 1px solid var(--remarks-line); border-radius: 11px; font-size: 13px; text-decoration: none; }
 .remarks-app .home-queue-row__icon { color: #b67c2d; flex-shrink: 0; }
 .remarks-app .home-queue-row svg { width: 15px; height: 15px; }
 .remarks-app .home-queue-row > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .remarks-app .home-queue-row > svg { flex-shrink: 0; color: var(--remarks-muted); }
-.remarks-app .home-task-center-link { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-top: 12px; font-size: 11px; color: var(--remarks-muted); text-decoration: none; }
+.remarks-app .home-task-center-link { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-top: 12px; font-size: 12px; color: var(--remarks-muted); text-decoration: none; }
 .remarks-app .home-task-center-link svg { width: 13px; height: 13px; }
 .remarks-app .home-current { display: flex; align-items: center; gap: 10px; margin-top: 19px; padding: 11px 12px; min-height: 57px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 12px; }
 .remarks-app .home-current__icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; color: #168b68; background: #e9f5f0; border-radius: 10px; }
 .remarks-app .home-current__icon svg { width: 16px; height: 16px; }
 .remarks-app .home-current__main { flex: 1; min-width: 0; }
-.remarks-app .home-current__main small { display: block; font-size: 10px; color: var(--remarks-muted); margin-bottom: 3px; }
-.remarks-app .home-current__main strong { display: block; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remarks-app .home-current__main > span { display: block; color: var(--remarks-muted); font-size: 10px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remarks-app .home-current__saved { display: flex; align-items: center; gap: 3px; color: #168b68; font-size: 11px; white-space: nowrap; text-decoration: none; }
+.remarks-app .home-current__main small { display: block; font-size: 12px; color: var(--remarks-muted); margin-bottom: 3px; }
+.remarks-app .home-current__main strong { display: block; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remarks-app .home-current__main > span { display: block; color: var(--remarks-muted); font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remarks-app .home-current__saved { display: flex; align-items: center; gap: 3px; color: #168b68; font-size: 12px; white-space: nowrap; text-decoration: none; }
 .remarks-app .home-current__saved svg { width: 13px; height: 13px; }
-.remarks-app .home-current__save { display: flex; align-items: center; gap: 3px; background: var(--remarks-soft); color: var(--remarks-blue); border: 0; border-radius: 7px; padding: 7px 8px; font-size: 11px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.remarks-app .home-current__save { display: flex; align-items: center; gap: 3px; background: var(--remarks-soft); color: var(--remarks-blue); border: 0; border-radius: 7px; padding: 7px 8px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
 .remarks-app .home-current__save svg { width: 13px; height: 13px; }
 .remarks-app .home-current__save:disabled { opacity: .6; }
-.remarks-app .home-inline-notice { font-size: 12px; color: var(--remarks-muted); margin: 8px 0; overflow-wrap: anywhere; }
+.remarks-app .home-inline-notice { font-size: 13px; color: var(--remarks-muted); margin: 8px 0; overflow-wrap: anywhere; }
 .remarks-app .home-inline-notice a { color: var(--remarks-blue); text-decoration: underline; }
 .remarks-app .home-regular { margin-top: 20px; }
 .remarks-app .home-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -92,60 +92,60 @@
 .remarks-app .home-quick > span:last-child { min-width: 0; }
 .remarks-app .home-quick__mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: #eff3ff; color: #4b6acf; flex-shrink: 0; }
 .remarks-app .home-quick__mark svg { width: 15px; height: 15px; }
-.remarks-app .home-quick strong { display: block; font-size: 12px; color: var(--remarks-ink); font-weight: 700; line-height: 1.5; }
-.remarks-app .home-quick small { display: block; font-size: 10px; color: var(--remarks-muted); margin-top: 3px; line-height: 1.5; }
-.remarks-app .home-recent-row { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 39px; padding: 6px 5px; color: #43516a; font-size: 12px; border-radius: 8px; text-decoration: none; }
+.remarks-app .home-quick strong { display: block; font-size: 13px; color: var(--remarks-ink); font-weight: 700; line-height: 1.5; }
+.remarks-app .home-quick small { display: block; font-size: 12px; color: var(--remarks-muted); margin-top: 3px; line-height: 1.5; }
+.remarks-app .home-recent-row { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 39px; padding: 6px 5px; color: #43516a; font-size: 13px; border-radius: 8px; text-decoration: none; }
 .remarks-app .home-recent-row > span:not(.sidebar-favicon) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.remarks-app .home-recent-row small { font-size: 10px; color: var(--remarks-muted); max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remarks-app .home-recent-row small { font-size: 12px; color: var(--remarks-muted); max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remarks-app .home-recent-row > svg { width: 13px; height: 13px; flex-shrink: 0; }
 .remarks-app .sidebar-favicon { width: 23px; height: 23px; flex-shrink: 0; border-radius: 7px; border: 1px solid var(--remarks-line); background: #fff; }
-.remarks-app .home-related { margin-top: 14px; font-size: 11px; color: var(--remarks-muted); }
+.remarks-app .home-related { margin-top: 14px; font-size: 12px; color: var(--remarks-muted); }
 .remarks-app .home-related summary { cursor: pointer; padding: 6px 0; }
 .remarks-app .home-tools { margin-top: 17px; }
-.remarks-app .home-tools__toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 12px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 11px; color: #4a5b76; cursor: pointer; font-size: 12px; text-align: left; }
+.remarks-app .home-tools__toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px 12px; background: #fff; border: 1px solid var(--remarks-line); border-radius: 11px; color: #4a5b76; cursor: pointer; font-size: 13px; text-align: left; }
 .remarks-app .home-tools__toggle > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .remarks-app .home-tools__toggle strong { font-weight: 700; white-space: nowrap; }
-.remarks-app .home-tools__toggle > span { flex: 1; font-size: 10px; color: var(--remarks-muted); }
+.remarks-app .home-tools__toggle > span { flex: 1; font-size: 12px; color: var(--remarks-muted); }
 .remarks-app .home-tools__toggle > svg:last-child { margin-left: auto; transition: transform 160ms ease; }
 .remarks-app .home-tools__toggle[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
 .remarks-app .home-tool-list { background: #fff; margin-top: 5px; border: 1px solid var(--remarks-line); border-radius: 11px; padding: 5px; }
-.remarks-app .home-tool-list a { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 8px 9px; color: #55637b; font-size: 12px; text-decoration: none; border-radius: 7px; }
+.remarks-app .home-tool-list a { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 8px 9px; color: #55637b; font-size: 13px; text-decoration: none; border-radius: 7px; }
 .remarks-app .home-tool-list a svg { width: 16px; height: 16px; flex-shrink: 0; }
 .remarks-app .home-tool-list a > span { flex: 1; }
 .remarks-app .home-tool-list a > svg:last-child { width: 13px; color: var(--remarks-muted); }
 .remarks-app :is(.home-quick, .home-queue-row, .home-tools__toggle):hover { border-color: #c5d5fa; background: #fbfdff; }
 .remarks-app :is(.home-recent-row, .home-search-result, .home-tool-list a):hover { background: #edf3ff; }
-.remarks-app .home-footer { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 18px; color: var(--remarks-muted); font-size: 10px; line-height: 1.7; text-align: center; }
+.remarks-app .home-footer { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 18px; color: var(--remarks-muted); font-size: 12px; line-height: 1.7; text-align: center; }
 .remarks-app .home-footer svg { width: 13px; height: 13px; flex-shrink: 0; }
 .remarks-app .home-task-intro { margin: 10px 0 22px; }
-.remarks-app .home-task-intro a { color: var(--remarks-blue); font-size: 12px; text-decoration: none; }
+.remarks-app .home-task-intro a { color: var(--remarks-blue); font-size: 13px; text-decoration: none; }
 .remarks-app .home-task-intro h1 { font-size: 23px; font-weight: 800; margin: 18px 0 6px; }
-.remarks-app .home-task-intro p { font-size: 12px; color: var(--remarks-muted); margin: 0; }
+.remarks-app .home-task-intro p { font-size: 13px; color: var(--remarks-muted); margin: 0; }
 
 /* 子页面共享层级。保留各业务面板的状态色和原有交互。 */
 .remarks-app .extension-page { background: var(--remarks-paper); color: var(--remarks-ink); }
 .remarks-app .extension-page .extension-page__inner { width: min(100%, 760px); padding: 24px; }
 .remarks-app .extension-page .extension-page__header { display: flex; flex-direction: row; align-items: flex-end; gap: 16px; margin-bottom: 22px; }
 .remarks-app .extension-page .extension-page__heading { display: flex; flex-direction: column; align-items: flex-start; flex: 1; gap: 0; min-width: 0; }
-.remarks-app .extension-page .extension-page__back { display: inline-flex; align-items: center; gap: 7px; width: auto; height: auto; min-height: 32px; padding: 4px 0; margin-top: 22px; color: #5576be; font-size: 12px; text-decoration: none; border-radius: 4px; transform: none; }
+.remarks-app .extension-page .extension-page__back { display: inline-flex; align-items: center; gap: 7px; width: auto; height: auto; min-height: 32px; padding: 4px 0; margin-top: 22px; color: #5576be; font-size: 13px; text-decoration: none; border-radius: 4px; transform: none; }
 .remarks-app .extension-page .extension-page__back:hover { color: var(--remarks-blue); background: transparent; }
 .remarks-app .extension-page .extension-page__back svg { width: 16px; height: 16px; }
 .remarks-app .remarks-page-intro { margin-top: 16px; min-width: 0; }
-.remarks-app .extension-page .extension-page__title { color: var(--remarks-ink); font-size: 23px; font-weight: 800; line-height: 1.4; letter-spacing: -.6px; overflow-wrap: anywhere; }
-.remarks-app .extension-page .extension-page__subtitle { margin: 7px 0 0; font-size: 12px; color: var(--remarks-muted); line-height: 1.8; overflow-wrap: anywhere; }
+.remarks-app .extension-page .extension-page__title { color: var(--remarks-ink); font-size: 23px; font-weight: 800; line-height: 1.4; letter-spacing: 0; overflow-wrap: anywhere; }
+.remarks-app .extension-page .extension-page__subtitle { margin: 7px 0 0; font-size: 13px; color: var(--remarks-muted); line-height: 1.8; overflow-wrap: anywhere; }
 .remarks-app .extension-page .extension-section { border-color: var(--remarks-line); border-radius: 13px; box-shadow: none; }
 .remarks-app .extension-page .extension-section:not(.extension-section--flush):not(.collapsible-section) { padding: 16px; }
-.remarks-app .extension-page .extension-section__title { color: var(--remarks-ink); font-size: 13px; font-weight: 750; line-height: 1.5; }
+.remarks-app .extension-page .extension-section__title { color: var(--remarks-ink); font-size: 13px; font-weight: 700; line-height: 1.5; }
 .remarks-app .extension-page :is(.extension-page__primary-button, .extension-page__wide-primary) { background: var(--remarks-blue); border-color: var(--remarks-blue); border-radius: 11px; box-shadow: 0 5px 12px #315fda14; min-height: 43px; font-size: 13px; font-weight: 700; line-height: 1.5; padding: 10px 14px; }
 .remarks-app .extension-page :is(.extension-page__primary-button, .extension-page__wide-primary):hover { background: #2350be; transform: none; }
-.remarks-app .extension-page .extension-page__wide-secondary { border-radius: 11px; border-color: var(--remarks-line); color: #43516b; min-height: 43px; font-size: 12px; line-height: 1.5; padding: 10px 12px; transform: none; }
+.remarks-app .extension-page .extension-page__wide-secondary { border-radius: 11px; border-color: var(--remarks-line); color: #43516b; min-height: 43px; font-size: 13px; line-height: 1.5; padding: 10px 12px; transform: none; }
 .remarks-app .extension-page .extension-page__wide-secondary--blue { color: var(--remarks-blue); background: var(--remarks-soft); border-color: #d8e4fc; }
-.remarks-app .extension-page :is(.extension-control, .extension-search-field input) { border-radius: 10px; border-color: var(--remarks-line); min-height: 40px; font-size: 12px; }
+.remarks-app .extension-page :is(.extension-control, .extension-search-field input) { border-radius: 10px; border-color: var(--remarks-line); min-height: 40px; font-size: 13px; }
 .remarks-app .extension-page .extension-notice { border-radius: 11px; padding: 12px 14px; }
-.remarks-app .extension-page .extension-notice p { font-size: 12px; line-height: 1.8; }
+.remarks-app .extension-page .extension-notice p { font-size: 13px; line-height: 1.8; }
 .remarks-app .extension-page .extension-empty { background: #fff; border: 1px dashed #d6deec; border-radius: 13px; padding: 32px 18px; }
 .remarks-app .extension-page .extension-empty p { color: var(--remarks-ink); font-size: 14px; }
-.remarks-app .extension-page .extension-empty span { color: var(--remarks-muted); font-size: 12px; line-height: 1.8; }
+.remarks-app .extension-page .extension-empty span { color: var(--remarks-muted); font-size: 13px; line-height: 1.8; }
 .remarks-app .extension-page :is(.history-card, .recommendation-card, .habit-card) { border-color: var(--remarks-line); border-radius: 13px; box-shadow: none; }
 .remarks-app .extension-page :is(.habit-card, .settings-section--expert) { background-image: none; }
 .remarks-app .extension-page .habit-page-shell { gap: 16px; }
@@ -156,12 +156,12 @@
 .remarks-app .remarks-tool-directory__icon svg { width: 17px; height: 17px; }
 .remarks-app .remarks-tool-directory > a > span:nth-child(2) { flex: 1; min-width: 0; }
 .remarks-app .remarks-tool-directory strong { display: block; font-size: 13px; color: var(--remarks-ink); font-weight: 700; }
-.remarks-app .remarks-tool-directory small { display: block; font-size: 11px; color: var(--remarks-muted); line-height: 1.7; margin-top: 3px; }
+.remarks-app .remarks-tool-directory small { display: block; font-size: 12px; color: var(--remarks-muted); line-height: 1.7; margin-top: 3px; }
 .remarks-app .remarks-tool-directory > a > svg { width: 15px; height: 15px; color: var(--remarks-muted); flex-shrink: 0; }
 .remarks-app .onboarding { background: var(--remarks-paper); }
 .remarks-app .onboarding .onboarding__panel { border-radius: 17px; border-color: var(--remarks-line); box-shadow: none; }
 .remarks-app .onboarding .onboarding__brand-mark { background: var(--remarks-blue); border-radius: 12px; }
-.remarks-app .onboarding .onboarding__panel h1 { color: var(--remarks-ink); letter-spacing: -.6px; }
+.remarks-app .onboarding .onboarding__panel h1 { color: var(--remarks-ink); letter-spacing: 0; }
 .remarks-app .onboarding .onboarding__lead { color: var(--remarks-muted); }
 
 @media (max-width: 520px) {
