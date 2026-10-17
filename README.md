@@ -6,7 +6,7 @@
 
 先生成可审核的分类建议，再由你确认移动；每次批量改动前都会创建本地备份。
 
-[![Version](https://img.shields.io/badge/version-1.9.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v1.9.0)
+[![Version](https://img.shields.io/badge/version-2.0.0-2563eb)](https://github.com/waangzh/re-bookmarks/releases/tag/v2.0.0)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
 ![Chrome / Edge / Firefox](https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Firefox-supported-0ea5e9)
 
@@ -31,11 +31,15 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 
 ## 🖼️ 界面预览
 
-截图展示当前源码界面；书签标题、网址和目录中的个人内容已做遮挡。图中的数量、模型名称和执行记录仅为示例。
+截图展示当前源码界面；图中的书签标题、网址、目录、数量、模型名称与执行记录均为示例数据。
 
-| 首页与待整理任务 | 书签选择与本次模型 |
+| 首页：下一步建议与常用操作 | 展开「更多工具」快速跳转 |
 | --- | --- |
-| <img src="pic/readme-home.png" alt="首页展示书签统计、搜索、当前网页和待整理任务" width="300"> | <img src="pic/readme-models.png" alt="选择书签、快速或深度整理，并查询或输入本次模型" width="300"> |
+| <img src="pic/nn1.png" alt="首页展示搜索、下一步建议、当前网页、常用操作与常访问书签" width="300"> | <img src="pic/nn2.png" alt="首页底部展开更多工具，可进入整理报告、备份、导入与分类偏好" width="300"> |
+
+| 更多工具页 | 选择书签与本次模型 |
+| --- | --- |
+| <img src="pic/nn3.png" alt="更多工具页集中展示整理报告、书签备份、导入书签、分类偏好、常访问书签与设置入口" width="300"> | <img src="pic/readme-models.png" alt="选择书签页可全选或按文件夹勾选，切换快速与深度整理，并展开本次整理模型" width="300"> |
 
 | 管理书签与白名单 | 备份与安全恢复 |
 | --- | --- |
@@ -46,11 +50,11 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 
 | 整理报告 | 分类偏好管理 |
 | --- | --- |
-| <img src="pic/readme-report.png" alt="历史整理报告展示 token 用量、执行记录和目标文件夹" width="300"> | <img src="pic/readme-preferences.png" alt="分类偏好页展示自动学习反馈、分类修正和规则导入导出" width="300"> |
+| <img src="pic/readme-report.png" alt="历史整理报告展示 token 用量、执行记录和目标文件夹" width="300"> | <img src="pic/readme-preferences.png" alt="分类偏好页展示行为反馈、分类修正、域名归档偏好与减少推荐的目录" width="300"> |
 
 | 常访问书签 | 失效链接检测 |
 | --- | --- |
-| <img src="pic/readme-frequent.png" alt="按本地访问频率查找已收藏网页，支持搜索和打开" width="300"> | <img src="pic/readme-link-check.png" alt="链接检测将超时项标为暂时无法确认，并提供复查和保护入口" width="300"> |
+| <img src="pic/readme-frequent.png" alt="常访问书签按本地访问次数排序，显示最近访问时间与所在目录" width="300"> | <img src="pic/readme-link-check.png" alt="失效链接检测区分明确失效、可疑和暂时无法确认，并提供保护与删除入口" width="300"> |
 
 </details>
 
@@ -64,6 +68,15 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 - 每条代表建议会显示分类理由和相对把握程度；可在当前页面直接改写目标目录，修改后的目录结构和修正数量会即时更新。
 - 可以只应用页面中已经检查的条目：执行前仍会创建完整备份，未展示的样本不会随之移动；也可以先保存明确修正，再进入完整预览。
 - 没有 API Key 时，可通过“先使用本地搜索与重复检查”进入本地功能；之后仍可在设置页连接 AI。
+
+### 首页任务中心与工具导航
+
+- 首页顶部先给出“下一步建议”：按待审建议、重复链接、失效链接、未分类等优先级，聚焦当前最该处理的一件事；没有待办时提供生成分类预览的入口。
+- 搜索框可直接按标题、URL 或目录查找书签，支持 `Ctrl / ⌘ K` 唤起。
+- “当前网页”卡片显示本页是否已收藏，并提供一键收藏入口。
+- “常用操作”固定两个高频入口：第一个随当前状态切换为智能整理、继续审核整理方案或常访问书签，第二个始终是书签管理；下方列表在授权历史后显示常访问书签，否则显示最近收藏。
+- 底部“更多工具”可展开，直接进入整理报告、书签备份、导入书签与分类偏好，并可跳转到完整工具列表页，其中包含常访问书签与设置。
+- 从工具页返回首页时会恢复离开时的滚动位置与“更多工具”展开状态，无需重新定位。
 
 ### AI 辅助整理
 
@@ -228,6 +241,8 @@ Chromium 产物在 `dist/`；Firefox 开发产物在 `dist-firefox/`。Firefox �
 
 设置页可“检测可用模型”，整理页可“刷新模型”；检测结果支持选择，也保留手动输入。修改 API Key、Endpoint 或默认模型后，需要重新测试连接；模型列表可见不代表当前账号一定能调用该模型。
 
+模型列表会按 Provider 类型与 Endpoint 本地缓存 24 小时：重新打开设置页时优先展示缓存并标注更新时间，点击“检测可用模型”可强制刷新；检测失败时会降级展示上次缓存的列表。缓存仅保存模型 ID 与归属信息，不包含 API Key。各 Provider 的列表接口依据、超时与失败处理见 [模型列表检测](docs/model-discovery.md)。
+
 如果未配置 API Key，浏览、管理、导入、备份等本地功能仍可使用，但无法生成 AI 分类建议。
 
 ## 🛠️ 本地开发
@@ -281,7 +296,7 @@ docs/              隐私说明与 Firefox 构建、测试、签名指南
 
 ## 📌 当前状态与限制
 
-- `package.json`、Chromium 与 Firefox 清单当前版本均为 `1.9.0`；Chrome、Edge 与 Firefox 共用业务代码，通过独立清单和构建产物适配浏览器差异。
+- `package.json`、Chromium 与 Firefox 清单当前版本均为 `2.0.0`；Chrome、Edge 与 Firefox 共用业务代码，通过独立清单和构建产物适配浏览器差异。
 - 标签发布工作流会校验 Firefox 产物，并在配置 AMO 签名凭据时生成可安装的 unlisted XPI；未签名产物只用于开发调试。
 - AI 结果可能不准确，尤其是标题含糊或页面元数据不可访问时；请始终检查预览。
 - 分类偏好当前通过高优先级 Prompt 影响 AI，而不是本地硬路由；模型仍可能不完全遵循，所以学习机制不会替代人工确认。
