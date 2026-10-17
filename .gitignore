@@ -17,3 +17,6 @@ Thumbs.db
 
 AGENTS.md
 CLAUDE.md
+
+# Trellis uses a separate local Git repository; exclude it from project history.
+/.trellis/
