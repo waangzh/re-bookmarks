@@ -522,7 +522,7 @@ export function Report() {
             )
           )}
 
-          <Link to="/" className="extension-page__wide-primary">
+          <Link to="/home" className="extension-page__wide-primary">
             返回首页
           </Link>
         </div>

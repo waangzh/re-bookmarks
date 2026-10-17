@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   Bookmark,
+  ArrowLeft,
   ArrowRight,
   Archive,
   CheckCircle2,
@@ -89,6 +90,18 @@ function MiniFavicon({ title, url }: { title: string; url?: string }) {
   );
 }
 
+// 当前网页卡片：优先显示站点图标，取不到时退回地球图标
+function CurrentPageIcon({ title, url }: { title?: string; url?: string }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = url && !failed ? getBookmarkFaviconUrl(url, 32) : "";
+
+  return (
+    <span className="home-current__icon" aria-hidden="true" title={title || undefined}>
+      {faviconUrl ? <img src={faviconUrl} alt="" draggable={false} onError={() => setFailed(true)} /> : <Globe2 aria-hidden="true" />}
+    </span>
+  );
+}
+
 export async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<CurrentPageState | null> {
   if (typeof chrome === "undefined" || !chrome.tabs?.query) return null;
 
@@ -139,6 +152,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   // 记住「更多工具」的展开状态与离开时的滚动位置，返回首页时还原
   const [toolsOpen, setToolsOpen] = useState(() => {
     try {
@@ -345,7 +359,21 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         </Link>
         <Link to="/options" className="sidebar-icon-button" aria-label="设置"><Settings aria-hidden="true" /></Link>
       </header>
-      {showAllTasks && <div className="home-task-intro"><Link to="/home">← 返回首页</Link><h1>任务中心</h1><p>查看待办，按需继续处理。</p></div>}
+      {showAllTasks && <div className="home-task-intro">
+        <div className="remarks-page-intro__row">
+          <button
+            type="button"
+            className="extension-page__back"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/home"))}
+            aria-label="返回上一页"
+            title="返回上一页"
+          >
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <h1 className="extension-page__title">任务中心</h1>
+        </div>
+        <p className="extension-page__subtitle">查看待办，按需继续处理。</p>
+      </div>}
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
         <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} aria-label="搜索书签" placeholder="搜索书签、标题或网址…" autoComplete="off" />
@@ -377,7 +405,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </section>}
       {!showAllTasks && model.tasks.length <= 1 && <Link to="/tasks" className="home-task-center-link">查看任务中心 <ChevronRight aria-hidden="true" /></Link>}
       <section className="home-current" aria-label="当前网页">
-        <span className="home-current__icon"><Globe2 aria-hidden="true" /></span>
+        <CurrentPageIcon title={currentPage?.title} url={currentPage?.url} />
         <div className="home-current__main"><small>当前网页</small><strong title={currentPage?.title}>{currentPage ? getDomain(currentPage.url) || currentPage.title : "打开网页后可查看收藏状态"}</strong>
           {currentPage?.saved && <span title={currentPage.savedPaths.join("、")}>{currentPage.savedPaths.join("、")}</span>}
         </div>
