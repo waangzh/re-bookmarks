@@ -63,6 +63,7 @@ import {
 } from "./whitelist";
 
 import { getFixedDomainRules, matchFixedDomainRule } from "./fixedRules";
+import { upsertBatchImpressions } from "./semanticIndex";
 import { getPreferenceConflict, getPreferenceFingerprint } from "./preferenceSafety";
 import { classificationPolicyFingerprint, getPlanChangeReason } from "./previewSafety";
 
@@ -483,6 +484,20 @@ export async function generateMovePlanPreviewForBookmarks(
           onStage: (stage) => reportProgress(stage, batch.length),
         });
         throwIfAborted(options.signal);
+        const bookmarkById = new Map(batch.map((bookmark) => [bookmark.id, bookmark]));
+        // 只要 AI 成功返回建议就建立印象索引，不等待用户确认移动。
+        await upsertBatchImpressions(aiResults.flatMap((result) => {
+          const bookmark = bookmarkById.get(result.id);
+          if (!bookmark?.url || !requestedIds.has(result.id)) return [];
+          return [{
+            url: bookmark.url,
+            bookmarkId: bookmark.id,
+            keywords: result.keywords,
+            summary: result.reason,
+            folderSnapshot: result.categoryPath?.length ? result.categoryPath.join(" / ") : undefined,
+            source: "ai_organize" as const,
+          }];
+        })).catch(() => undefined);
         appendMetadataReasons(aiResults, aiBookmarks);
         for (const result of aiResults) {
           if (requestedIds.has(result.id)) results.set(result.id, result);
@@ -748,6 +763,18 @@ export async function executeMovePlans(
     }
   }
 
+  // 用户确认后把最终目录同步进印象索引；手动调整过的书签额外追加目录词。
+  await upsertBatchImpressions(effectivePlans.flatMap((plan) => {
+    if (!plan.bookmarkUrl || plan.executionStatus === "failed") return [];
+    return [{
+      url: plan.bookmarkUrl,
+      bookmarkId: plan.bookmarkId,
+      keywords: plan.source === "manual" ? plan.toFolderPath : undefined,
+      folderSnapshot: plan.toFolderPath.length ? plan.toFolderPath.join(" / ") : undefined,
+      source: plan.source === "manual" ? "user_edit" as const : "ai_organize" as const,
+    }];
+  })).catch(() => undefined);
+
   // 清理源文件夹中变空的
   let removedFolders = 0;
   if (sourceFolderIds.size > 0) {
@@ -956,6 +983,14 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
       } else {
         aiResult.reason = appendReason(aiResult.reason, metadataReason(aiBookmark));
         classification = aiResult;
+        await upsertBatchImpressions([{
+          url: currentBookmark.url,
+          bookmarkId: currentBookmark.id,
+          keywords: aiResult.keywords,
+          summary: aiResult.reason,
+          folderSnapshot: aiResult.categoryPath?.length ? aiResult.categoryPath.join(" / ") : undefined,
+          source: "ai_recommend",
+        }]).catch(() => undefined);
       }
     } catch (error) {
       const reason = classificationFailureReason(error);

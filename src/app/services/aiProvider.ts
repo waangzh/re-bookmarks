@@ -300,6 +300,25 @@ function debugAI(label: string, payload: unknown) {
   console.debug(`[ReMarks AI] ${label}`, payload);
 }
 
+function normalizeKeywords(value: unknown, limit = 6) {
+  const keywords = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[/>｜|,，、]/)
+      : [];
+  const seen = new Set<string>();
+  return keywords
+    .map((item) => String(item).trim().slice(0, 24))
+    .filter((keyword) => {
+      if (!keyword) return false;
+      const key = keyword.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
 function asStringArray(value: unknown) {
   if (Array.isArray(value)) {
     return value.map((part) => String(part).trim()).filter(Boolean);
@@ -391,6 +410,105 @@ function extractLooseReason(block: string) {
   return reasonMatch?.[1] ? parseJsonStringLiteral(reasonMatch[1]).trim() : undefined;
 }
 
+function extractLooseStringField(block: string, keys: string[]) {
+  for (const key of keys) {
+    const match = block.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+    if (match?.[1]) return parseJsonStringLiteral(match[1]).trim();
+  }
+  return "";
+}
+
+export type BookmarkImpressionSuggestion = {
+  id: string;
+  keywords: string[];
+  summary: string;
+};
+
+function parseImpressionResults(content: string): BookmarkImpressionSuggestion[] {
+  const jsonText = extractJson(content);
+  const results: BookmarkImpressionSuggestion[] = [];
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const items = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === "object"
+        ? (["results", "items", "data"] as const)
+            .map((key) => (parsed as Record<string, unknown>)[key])
+            .find(Array.isArray) ?? []
+        : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const value = item as Record<string, unknown>;
+      const id = typeof value.id === "string" ? value.id.trim() : "";
+      if (!id) continue;
+      const keywords = normalizeKeywords(value.keywords ?? value.tags ?? value.impressions);
+      const summary = typeof value.summary === "string"
+        ? value.summary.trim()
+        : typeof value.reason === "string" ? value.reason.trim() : "";
+      if (!keywords.length && !summary) continue;
+      results.push({ id, keywords, summary });
+    }
+    if (results.length) return results;
+  } catch {
+    // 继续尝试宽松解析，兼容缺少引号或尾随逗号的响应。
+  }
+
+  const recordPattern = /"id"\s*:\s*"((?:\\.|[^"\\])*)"([\s\S]*?)(?=,\s*\{\s*"id"\s*:|\]\s*\}?\s*$|\}\s*\]\s*\}?\s*$)/g;
+  for (const match of content.matchAll(recordPattern)) {
+    const id = parseJsonStringLiteral(match[1]).trim();
+    if (!id) continue;
+    const block = match[2];
+    const keywords = normalizeKeywords(extractLooseStringArray(block, ["keywords", "tags", "impressions"]));
+    const summary = extractLooseStringField(block, ["summary", "reason"]);
+    if (!keywords.length && !summary) continue;
+    results.push({ id, keywords, summary });
+  }
+  return results;
+}
+
+/** 仅生成功能印象标签，不返回分类建议，用于补全未索引书签 */
+export async function extractImpressionsWithAI(
+  config: AIProviderConfig,
+  bookmarks: BookmarkForAI[],
+  options?: { signal?: AbortSignal; onTokenUsage?: (usage: TokenUsage) => void }
+) {
+  if (!bookmarks.length || !config.apiKey) return [];
+
+  const completion = await chatCompletion(
+    config,
+    [
+      {
+        role: "system",
+        content:
+          "你是浏览器书签功能印象标注助手。必须输出合法 JSON，不要 Markdown，不要解释。" +
+          "请为每个书签生成：summary（一句话说明网站核心功能，15~35字）和 keywords（3~5 个功能印象词）。" +
+          "keywords 要站在“用户忘记网站名字时，会在搜索框输入什么功能词或品类词来找它”的角度生成，例如 Cupfox → [\"视频网站\",\"在线看剧\",\"影视搜索\",\"电影网站\"]，Squoosh → [\"图片压缩\",\"图像优化\",\"WebP转换\"]。" +
+          "不要只重复书签标题里已有的词；无法判断时 keywords 返回空数组，不要编造。" +
+          "输出格式为 {\"results\":[{\"id\":\"输入 id\",\"keywords\":[\"功能印象词\"],\"summary\":\"网站功能简述\"}]}，每一项必须对应输入中的一个 id。",
+      },
+      {
+        role: "user",
+        content: `请为这些书签生成功能印象，只返回 JSON：\n${JSON.stringify(bookmarks)}`,
+      },
+    ],
+    2400,
+    true,
+    CLASSIFICATION_REQUEST_TIMEOUT_MS,
+    options?.signal
+  );
+
+  if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
+
+  const results = parseImpressionResults(completion.content);
+  debugAI("parsed impressions", {
+    inputCount: bookmarks.length,
+    outputCount: results.length,
+    ids: results.map((result) => result.id),
+  });
+  return results;
+}
+
 function parseLooseResults(jsonText: string): ClassificationResult[] {
   const results: ClassificationResult[] = [];
   const recordPattern = /"id"\s*:\s*"((?:\\.|[^"\\])*)"([\s\S]*?)(?=,\s*\{\s*"id"\s*:|\]\s*\}?\s*$|\}\s*\]\s*\}?\s*$)/g;
@@ -419,6 +537,7 @@ function parseLooseResults(jsonText: string): ClassificationResult[] {
       categoryPath,
       confidence,
       reason: extractLooseReason(block) || "AI 分类建议",
+      keywords: normalizeKeywords(extractLooseStringArray(block, ["keywords", "tags", "impressions"])),
       decision,
       source: "ai",
     });
@@ -553,6 +672,7 @@ export function parseResults(content: string): ClassificationResult[] {
         categoryPath,
         confidence,
         reason: typeof value.reason === "string" ? value.reason : "AI 分类建议",
+        keywords: normalizeKeywords(value.keywords ?? value.tags ?? value.impressions),
         decision,
         source: "ai" as const,
       },
@@ -850,6 +970,7 @@ export async function classifyWithAI(
   const maxSubfoldersPerFolder = options?.allowNestedFolders === false ? 0 : options?.maxSubfoldersPerFolder ?? 4;
   const compactInstruction = `整体分类必须尽量克制，优先复用少量通用文件夹。一级分类总数尽量不超过 ${maxTopLevelFolders} 个；每个一级分类下尽量不超过 ${maxSubfoldersPerFolder} 个二级分类。先判断书签的内容或用途是否明确，再判断现有目录是否合适。内容明确且已有目录合适时 decision="existing_folder"；内容明确但现有目录体系未覆盖时 decision="new_folder"，提出命名通用、可继续容纳同类书签的路径；只有内容或用途本身难以判断、分类证据不足时才 decision="defer"。不要仅因当前只有一条书签就禁止新建目录，也不要用具体网站名或单篇文章名建立目录。`;
   const metadataInstruction = "如果输入包含 metadata，请优先结合 metadata.title、metadata.description、metadata.ogTitle、metadata.ogDescription、metadata.ogSiteName 判断网站类型。metadata.available 为 false 或 metadata 缺失时，继续根据书签标题、域名、路径和 URL 分类；不要仅因为 metadata 不可用就归入待整理。";
+  const impressionInstruction = "reason 请用一句话描述该网站的核心功能及归类依据（15~35字，例如：提供免费在线影视搜索与在线观看的视频网站，适合归入影视娱乐）。同时输出 keywords：3~5 个功能印象词，站在“用户忘记网站名字时会在搜索框输入什么功能词或品类词来找它”的角度生成，例如 Cupfox 输出 [\"视频网站\",\"在线看剧\",\"影视搜索\",\"电影网站\"]，Squoosh 输出 [\"图片压缩\",\"图像优化\",\"在线修图\",\"WebP转换\"]；不要只重复书签标题里已有的词。";
 
   const existingCategoriesInstruction = options?.existingCategories?.length
     ? `\n前面批次已形成这些一级分类：${options.existingCategories.join("、")}。后续批次应优先复用；若出现内容明确且这些分类确实未覆盖的新主题，仍可 decision="new_folder" 新增一个可复用分类，不得因批次顺序而暂缓。`
@@ -870,7 +991,7 @@ export async function classifyWithAI(
     [
       {
         role: "system",
-        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${metadataInstruction}${existingCategoriesInstruction}${existingFolderPathsInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"decision\":\"existing_folder|new_folder|defer\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"说明内容依据，以及为何复用、为何新建或为何暂缓\"}]}。results 中每一项必须对应输入中的一个 id。decision=\"defer\" 时 categoryPath 必须为空数组；其他 decision 必须提供路径。confidence 必须是 0 到 1 的数字，仅表示你对书签内容和用途判断的相对自评，不得把它表述为经过验证的正确率。`,
+        content: `${options?.customPrompt ?? `你是浏览器书签分类助手。必须输出合法 JSON，不要 Markdown，不要解释。`}${compactInstruction}${metadataInstruction}${impressionInstruction}${existingCategoriesInstruction}${existingFolderPathsInstruction}${habitInstruction} 输出必须是 JSON 对象，格式为 {\"results\":[{\"id\":\"输入 id\",\"decision\":\"existing_folder|new_folder|defer\",\"categoryPath\":[\"一级分类\",\"二级分类\"],\"confidence\":0.8,\"reason\":\"按上述要求描述功能与归类依据\",\"keywords\":[\"功能印象词\"]}]}。results 中每一项必须对应输入中的一个 id。decision=\"defer\" 时 categoryPath 必须为空数组；其他 decision 必须提供路径。confidence 必须是 0 到 1 的数字，仅表示你对书签内容和用途判断的相对自评，不得把它表述为经过验证的正确率。keywords 无法确定时返回空数组，不要编造。`,
       },
       {
         role: "user",

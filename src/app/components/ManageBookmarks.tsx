@@ -19,7 +19,7 @@ import {
   Shield,
   ShieldCheck,
 } from "lucide-react";
-import type { BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, BookmarkWhitelistEntry, PendingRecommendation } from "../types";
+import type { BookmarkImpressionMeta, BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, BookmarkWhitelistEntry, PendingRecommendation } from "../types";
 import {
   createBookmark,
   ensureFolderPath,
@@ -45,6 +45,9 @@ import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
 import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
+import { appendFolderImpression, getSemanticIndexCoverage, getSemanticIndexMap } from "../services/semanticIndex";
+import { backfillImpressions, getMissingImpressionBookmarks, type ImpressionBackfillProgress } from "../services/impressionBackfill";
+import { isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import {
   STORAGE_KEYS,
   getIgnoredManualTaskBookmarkIds,
@@ -53,7 +56,6 @@ import {
   saveIgnoredManualTaskBookmarkIds,
 } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
-import { Select } from "./Select";
 import { ensureRequiredHostPermission, hasRequiredHostPermission } from "../services/hostPermissions";
 import {
   addBookmarkWhitelistEntry,
@@ -243,14 +245,6 @@ function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
   };
 }
 
-function bookmarkMatchesQuery(bookmark: BookmarkNode, query: string) {
-  return (
-    bookmark.title.toLowerCase().includes(query) ||
-    bookmark.url?.toLowerCase().includes(query) ||
-    bookmark.path.join(" / ").toLowerCase().includes(query)
-  );
-}
-
 function getDuplicateGroupLabel() {
   return "精确重复";
 }
@@ -270,7 +264,6 @@ function getDuplicateGroupKindLabel(group: DuplicateBookmarkGroup) {
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, loadReports, settings } = useAppStore();
   const [searchParams] = useSearchParams();
-  const [directoryFilter, setDirectoryFilter] = useState("");
   const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -304,6 +297,9 @@ export function ManageBookmarks() {
   const [selectedManualTaskBookmarkIds, setSelectedManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
   const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
   const [whitelistEntries, setWhitelistEntries] = useState<BookmarkWhitelistEntry[]>([]);
+  const [semanticIndex, setSemanticIndex] = useState<Record<string, BookmarkImpressionMeta>>({});
+  const [backfillProgress, setBackfillProgress] = useState<ImpressionBackfillProgress | null>(null);
+  const backfillAbortRef = useRef<AbortController | null>(null);
   const [whitelistSearchQuery, setWhitelistSearchQuery] = useState("");
   const [selectedWhitelistKeys, setSelectedWhitelistKeys] = useState<Set<string>>(() => new Set());
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex>(() => ({
@@ -322,12 +318,13 @@ export function ManageBookmarks() {
   const resumedLinkScanIdsRef = useRef<Set<string>>(new Set());
 
   const loadManagedBookmarks = useCallback(async () => {
-    const [, , nextFolders, protection] = await Promise.all([
-      loadBookmarks(), loadRecommendations(), getAllBookmarkFolders(), getCurrentWhitelist(),
+    const [, , nextFolders, protection, nextSemanticIndex] = await Promise.all([
+      loadBookmarks(), loadRecommendations(), getAllBookmarkFolders(), getCurrentWhitelist(), getSemanticIndexMap(),
     ]);
     setFolders(nextFolders);
     setWhitelistEntries(protection.entries);
     setWhitelistIndex(protection.index);
+    setSemanticIndex(nextSemanticIndex);
   }, [loadBookmarks, loadRecommendations]);
 
   useEffect(() => {
@@ -337,7 +334,7 @@ export function ManageBookmarks() {
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations] || changes[STORAGE_KEYS.folderHabitProfile] || changes[STORAGE_KEYS.fixedDomainRules])) void loadManagedBookmarks();
+      if (areaName === "local" && (changes[STORAGE_KEYS.bookmarkWhitelist] || changes[STORAGE_KEYS.pendingRecommendations] || changes[STORAGE_KEYS.folderHabitProfile] || changes[STORAGE_KEYS.fixedDomainRules] || changes[STORAGE_KEYS.semanticIndex])) void loadManagedBookmarks();
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
@@ -484,11 +481,40 @@ export function ManageBookmarks() {
     );
   }, [bookmarks, ignoredManualTaskBookmarkIds, pendingRecommendations, taskBookmarks.length, taskMode, whitelistIndex]);
 
+  const searchableBookmarks = useMemo(() => visibleTaskBookmarks.map((bookmark) => ({
+    id: bookmark.id,
+    title: bookmark.title,
+    url: bookmark.url ?? "",
+    folderPath: bookmark.path.join(" / "),
+  })), [visibleTaskBookmarks]);
+
+  const impressionResults = useMemo(
+    () => searchQuery.trim()
+      ? searchBookmarksByImpression(searchQuery, searchableBookmarks, semanticIndex)
+      : [],
+    [searchQuery, searchableBookmarks, semanticIndex]
+  );
+
+  const impressionResultById = useMemo(
+    () => new Map(impressionResults.map((result) => [result.bookmark.id, result])),
+    [impressionResults]
+  );
+
   const filteredBookmarks = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return visibleTaskBookmarks.filter((bookmark) => (!query || bookmarkMatchesQuery(bookmark, query)) &&
-      (!directoryFilter || bookmark.path.join(" / ") === directoryFilter));
-  }, [searchQuery, visibleTaskBookmarks, directoryFilter]);
+    const query = searchQuery.trim();
+    const matchedIds = query ? new Set(impressionResults.map((result) => result.bookmark.id)) : null;
+    return visibleTaskBookmarks.filter((bookmark) => !matchedIds || matchedIds.has(bookmark.id));
+  }, [impressionResults, visibleTaskBookmarks, searchQuery]);
+
+  const semanticCoverage = useMemo(
+    () => getSemanticIndexCoverage(bookmarks, semanticIndex),
+    [bookmarks, semanticIndex]
+  );
+  const missingImpressionCount = useMemo(
+    () => getMissingImpressionBookmarks(bookmarks, semanticIndex).length,
+    [bookmarks, semanticIndex]
+  );
+  const backfillRunning = backfillProgress !== null;
 
   const visibleManualTaskBookmarkIds = useMemo(() => {
     if (taskMode !== "unsorted") return [];
@@ -497,16 +523,15 @@ export function ManageBookmarks() {
 
   const filteredDuplicateGroups = useMemo(() => {
     if (taskMode !== "duplicate") return [];
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return duplicateGroups;
+    if (!searchQuery.trim()) return duplicateGroups;
 
     return duplicateGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter((bookmark) => bookmarkMatchesQuery(bookmark, query)),
+        items: group.items.filter((bookmark) => impressionResultById.has(bookmark.id)),
       }))
       .filter((group) => group.items.length > 0);
-  }, [duplicateGroups, searchQuery, taskMode]);
+  }, [duplicateGroups, impressionResultById, searchQuery, taskMode]);
 
   const filteredDuplicateBookmarkCount = useMemo(() => {
     return filteredDuplicateGroups.reduce((total, group) => total + group.items.length, 0);
@@ -538,19 +563,22 @@ export function ManageBookmarks() {
 
   const filteredPendingRecommendations = useMemo(() => {
     if (taskMode !== "unsorted") return [];
-    const query = searchQuery.trim().toLowerCase();
     const visibleRecommendations = pendingRecommendations.filter((item) => !whitelistIndex.protectedBookmarkIds.has(item.bookmarkId));
-    if (!query) return visibleRecommendations;
+    if (!searchQuery.trim()) return visibleRecommendations;
 
-    return visibleRecommendations.filter((recommendation) => {
-      return (
-        recommendation.bookmarkTitle.toLowerCase().includes(query) ||
-        recommendation.bookmarkUrl?.toLowerCase().includes(query) ||
-        recommendation.suggestedFolderPath.join(" / ").toLowerCase().includes(query) ||
-        recommendation.reason?.toLowerCase().includes(query)
-      );
-    });
-  }, [pendingRecommendations, searchQuery, taskMode, whitelistIndex]);
+    // 建议项的书签可能不在“未分类”列表中，需单独按印象检索。
+    const matchedIds = new Set(searchBookmarksByImpression(
+      searchQuery,
+      visibleRecommendations.flatMap((item) => item.bookmarkUrl ? [{
+        id: item.bookmarkId,
+        title: item.bookmarkTitle,
+        url: item.bookmarkUrl,
+        folderPath: item.suggestedFolderPath.join(" / "),
+      }] : []),
+      semanticIndex
+    ).map((result) => result.bookmark.id));
+    return visibleRecommendations.filter((recommendation) => matchedIds.has(recommendation.bookmarkId));
+  }, [pendingRecommendations, searchQuery, semanticIndex, taskMode, whitelistIndex]);
 
   const actionablePendingRecommendations = useMemo(
     () => filteredPendingRecommendations.filter(isBatchSafeRecommendation),
@@ -783,13 +811,16 @@ export function ManageBookmarks() {
         setMessage("");
         try {
           await moveBookmark(bookmark.id, targetFolderId);
-          const learningNotice = await recordHabitFeedback({
-            type: "category_override",
-            bookmarkTitle: bookmark.title,
-            bookmarkUrl: bookmark.url,
-            suggestedFolderPath: bookmark.path,
-            chosenFolderPath: targetFolder.path,
-          }).catch(() => null);
+          const [learningNotice] = await Promise.all([
+            recordHabitFeedback({
+              type: "category_override",
+              bookmarkTitle: bookmark.title,
+              bookmarkUrl: bookmark.url,
+              suggestedFolderPath: bookmark.path,
+              chosenFolderPath: targetFolder.path,
+            }).catch(() => null),
+            appendFolderImpression(bookmark.url, targetFolder.path).catch(() => undefined),
+          ]);
           await loadManagedBookmarks();
           setMessage(learningNotice ?? `已移动到 ${targetFolder.path.join(" / ") || targetFolder.title}`);
         } catch (error) {
@@ -1065,15 +1096,18 @@ export function ManageBookmarks() {
       const folderPath = parseFolderPath(editForm.path, settings.maxNestingLevel);
       const parentId = await ensureFolderPath(folderPath, settings.maxNestingLevel);
       await moveBookmark(editingId, parentId);
-      const learningNotice = originalBookmark
-        ? await recordHabitFeedback({
-            type: "category_override",
-            bookmarkTitle: editForm.title,
-            bookmarkUrl: editForm.url,
-            suggestedFolderPath: originalBookmark.path,
-            chosenFolderPath: folderPath,
-          }).catch(() => null)
-        : null;
+      const [learningNotice] = await Promise.all([
+        originalBookmark
+          ? recordHabitFeedback({
+              type: "category_override",
+              bookmarkTitle: editForm.title,
+              bookmarkUrl: editForm.url,
+              suggestedFolderPath: originalBookmark.path,
+              chosenFolderPath: folderPath,
+            }).catch(() => null)
+          : Promise.resolve(null),
+        appendFolderImpression(editForm.url, folderPath).catch(() => undefined),
+      ]);
       await loadManagedBookmarks();
       setEditingId(null);
       setMessage(learningNotice ?? "书签修改已保存");
@@ -1447,6 +1481,15 @@ export function ManageBookmarks() {
           <span className="bookmark-tree-row__chevron" />
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
           <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+          {(() => {
+            const match = impressionResultById.get(bookmark.id);
+            if (!match?.matchHint || !isImpressionMatch(match)) return null;
+            return (
+              <span className="bookmark-tree-row__match" title={match.matchHint}>
+                ✨ {match.matchHint}
+              </span>
+            );
+          })()}
           {bookmark.url && (
             <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
               <ExternalLink className="w-3 h-3" />
@@ -1531,6 +1574,11 @@ export function ManageBookmarks() {
                 </div>
                 {bookmark.url && <p className="bookmark-unsorted-card__url">{bookmark.url}</p>}
                 <p className="bookmark-unsorted-card__meta">当前位置：{bookmark.path.join(" / ") || "根目录"}</p>
+                {(() => {
+                  const match = impressionResultById.get(bookmark.id);
+                  if (!match?.matchHint || !isImpressionMatch(match)) return null;
+                  return <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">✨ {match.matchHint}</p>;
+                })()}
               </div>
             </div>
             <div className="bookmark-unsorted-card__actions">
@@ -1580,6 +1628,11 @@ export function ManageBookmarks() {
               )}
             </div>
             {recommendation.bookmarkUrl && <p className="bookmark-unsorted-card__url">{recommendation.bookmarkUrl}</p>}
+            {(() => {
+              const match = impressionResultById.get(recommendation.bookmarkId);
+              if (!match?.matchHint || !isImpressionMatch(match)) return null;
+              return <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">✨ {match.matchHint}</p>;
+            })()}
             {isEditingRecommendation ? (
               <label className="bookmark-recommendation-edit">
                 <span>目标文件夹</span>
@@ -2066,6 +2119,58 @@ export function ManageBookmarks() {
     }
   };
 
+  const handleBackfillImpressions = async () => {
+    if (backfillRunning) return;
+    if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
+      setMessage("补全印象索引需要先在设置中配置并启用 AI Provider。");
+      return;
+    }
+    if (missingImpressionCount === 0) {
+      setMessage("所有网页书签都已建立功能印象索引。");
+      return;
+    }
+    if (!confirm(
+      `将为 ${missingImpressionCount} 个尚未建立功能印象的书签调用 AI。\n\n` +
+      "只会写入本地印象索引，不会移动、删除或改写任何书签，也不会创建备份或整理报告。\n\n" +
+      "每个批次约 20 个书签，可按批次计费。是否继续？"
+    )) return;
+
+    const controller = new AbortController();
+    backfillAbortRef.current = controller;
+    setBackfillProgress({ phase: "preparing", processed: 0, total: missingImpressionCount, indexed: 0, failed: 0 });
+    setMessage("");
+    try {
+      // Firefox 需要权限请求保持在用户手势内，先于任何存储读取调用。
+      await ensureRequiredHostPermission();
+      const summary = await backfillImpressions({
+        signal: controller.signal,
+        bookmarks,
+        onProgress: setBackfillProgress,
+      });
+      setSemanticIndex(await getSemanticIndexMap());
+      if (summary.canceled) {
+        setMessage(`已停止补全：本次新建立 ${summary.indexed} 条印象索引，${summary.failed} 条未完成。`);
+      } else if (summary.total === 0) {
+        setMessage("所有网页书签都已建立功能印象索引。");
+      } else {
+        setMessage(
+          `印象索引补全完成：新建立 ${summary.indexed} 条` +
+          (summary.failed ? `，${summary.failed} 条未能生成，可稍后重试。` : "。")
+        );
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "补全印象索引失败");
+    } finally {
+      backfillAbortRef.current = null;
+      setBackfillProgress(null);
+    }
+  };
+
+  useEffect(() => {
+    // 离开页面时停止补全，避免后台继续产生 AI 调用费用。
+    return () => { backfillAbortRef.current?.abort(); };
+  }, []);
+
   const emptyMessage = useMemo(() => {
     if (searchQuery) return "未找到匹配的书签";
     if (taskMode === "unsorted") {
@@ -2198,29 +2303,52 @@ export function ManageBookmarks() {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={taskMode ? "在当前任务中搜索..." : "搜索书签标题、网址或文件夹"}
+              placeholder={taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
               className="extension-control extension-control--search"
             />
           </div>
         )}
-
-        {!taskMode && (
-          <div className="extension-field">
-            <label>按目录筛选</label>
-            <Select
-              value={directoryFilter}
-              onChange={setDirectoryFilter}
-              placeholder="全部目录"
-              options={[
-                { value: "", label: "全部目录" },
-                ...[...new Set(bookmarks.map((bookmark) => bookmark.path.join(" / ")).filter(Boolean))]
-                  .sort()
-                  .map((path) => ({ value: path, label: path })),
-              ]}
-            />
+        {taskMode !== "invalid" && (
+          <div className="impression-coverage" role="status">
+            <p className="impression-coverage__text">
+              <Sparkles className="impression-coverage__icon" aria-hidden="true" />
+              <span>
+                已为 <strong>{semanticCoverage.indexed}</strong> / {semanticCoverage.total} 个书签建立 AI 印象索引
+                {semanticCoverage.indexed < semanticCoverage.total && <small>未索引的书签仍可通过标题、网址和常见站点识别搜索</small>}
+              </span>
+            </p>
+            {backfillRunning ? (
+              <div className="impression-backfill">
+                <div className="impression-backfill__head">
+                  <span>
+                    {backfillProgress.phase === "requesting_ai" ? "正在请求 AI…" : backfillProgress.phase === "saving" ? "正在写入索引…" : "正在准备…"}
+                    {" "}{backfillProgress.processed}/{backfillProgress.total}，已建立 {backfillProgress.indexed} 条
+                    {backfillProgress.failed > 0 && `，${backfillProgress.failed} 条失败`}
+                  </span>
+                  <button type="button" onClick={() => backfillAbortRef.current?.abort()} className="extension-text-button">停止</button>
+                </div>
+                <div className="bookmark-task-progress" aria-hidden="true">
+                  <span style={{ width: `${Math.round((backfillProgress.processed / Math.max(1, backfillProgress.total)) * 100)}%` }} />
+                </div>
+              </div>
+            ) : missingImpressionCount > 0 ? (
+              <button
+                type="button"
+                className="extension-page__wide-secondary impression-coverage__action"
+                disabled={busy}
+                onClick={() => void handleBackfillImpressions()}
+                title="仅为未索引书签调用 AI 生成功能印象，不会移动或改写书签"
+              >
+                <Sparkles aria-hidden="true" />
+                补全剩余 {missingImpressionCount} 个书签印象
+              </button>
+            ) : (
+              <span className="impression-coverage__done"><Check aria-hidden="true" />索引已覆盖全部网页书签</span>
+            )}
           </div>
         )}
-        {(searchQuery || directoryFilter) && <button type="button" className="extension-text-button" onClick={() => { setSearchQuery(""); setDirectoryFilter(""); }}>清除搜索与筛选</button>}
+
+        {searchQuery && <button type="button" className="extension-text-button" onClick={() => setSearchQuery("")}>清除搜索</button>}
         {taskMode === "invalid" ? (
           renderLinkHealthGroups()
         ) : taskMode === "unsorted" ? (

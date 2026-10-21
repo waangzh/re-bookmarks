@@ -28,6 +28,7 @@ export const STORAGE_KEYS = {
   fixedDomainRules: "remarks.fixedDomainRules",
   previewReview: "remarks.previewReview",
   modelCatalog: "remarks.modelCatalog",
+  semanticIndex: "remarks.semanticIndex",
 } as const;
 
 /** 模型列表缓存的过期时间：24 小时 */
@@ -45,7 +46,9 @@ export const DEFAULT_CLASSIFY_PROMPT = `你是浏览器书签分类助手。请�
 4. confidence 值范围 0-1，仅表示模型对当前分类依据的相对自评，不代表经过验证的正确率
 
 输出格式：
-{"results":[{"id":"输入id","categoryPath":["一级分类","二级分类"],"confidence":0.8,"reason":"简短中文原因"}]}
+{"results":[{"id":"输入id","categoryPath":["一级分类","二级分类"],"confidence":0.8,"reason":"网站核心功能及归类依据","keywords":["功能印象词1","功能印象词2"]}]}
+
+reason 用 15~35 字说明网站核心功能与归类依据；keywords 输出 3~5 个功能印象词，站在“用户忘记网站名字时会搜什么功能词/品类词”的角度生成，不要只重复标题。
 
 每个输入 id 必须对应一项结果。`;
 

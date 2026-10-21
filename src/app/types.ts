@@ -67,8 +67,49 @@ export type ClassificationResult = {
   categoryPath?: string[];
   confidence: number;
   reason?: string;
+  /** AI 生成的功能印象词，用于本地印象搜索；旧数据或解析失败时为空 */
+  keywords?: string[];
   decision: ClassificationDecision;
   source: "rule" | "ai" | "manual";
+};
+
+/** 印象索引来源，便于后续区分 AI 生成与用户手动补充 */
+export type BookmarkImpressionSource = "ai_organize" | "ai_recommend" | "rule_fallback" | "user_edit";
+
+/** 单个书签的功能印象索引；normalizedUrl 是持久化主键，备份恢复后仍可复用 */
+export type BookmarkImpressionMeta = {
+  normalizedUrl: string;
+  lastBookmarkId?: string;
+  keywords: string[];
+  summary: string;
+  folderSnapshot?: string;
+  source: BookmarkImpressionSource;
+  updatedAt: number;
+};
+
+export type SemanticIndexStorage = {
+  version: 1;
+  items: Record<string, BookmarkImpressionMeta>;
+  /** 是否已完成从历史整理报告吸纳旧数据 */
+  migratedAt?: number;
+};
+
+export type ImpressionMatchType = "title" | "ai_keyword" | "ai_summary" | "folder" | "heuristic" | "url";
+
+export type SearchableBookmark = {
+  id: string;
+  title: string;
+  url: string;
+  folderPath: string;
+};
+
+export type ImpressionSearchResult = {
+  bookmark: SearchableBookmark;
+  score: number;
+  matchType: ImpressionMatchType;
+  /** 供 UI 展示的命中说明，例如“匹配功能印象：视频网站 / 在线追番” */
+  matchHint?: string;
+  displayTags: string[];
 };
 
 export type MovePlan = {

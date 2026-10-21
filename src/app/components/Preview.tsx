@@ -44,6 +44,7 @@ import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { getAllBookmarkFolders, getAllBookmarks, getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
 import { AI_PROVIDER_PROFILES, listAIModels, type AIModelOption } from "../services/aiProvider";
 import { recordHabitFeedback } from "../services/habits";
+import { appendFolderImpression } from "../services/semanticIndex";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PreviewDialog } from "./PreviewDialog";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
@@ -1249,13 +1250,16 @@ export function Preview() {
         }),
       ]);
 
-      const learningNotice = await recordHabitFeedback({
-        type: "category_override",
-        bookmarkTitle: sourcePlan.bookmarkTitle,
-        bookmarkUrl: sourcePlan.bookmarkUrl,
-        suggestedFolderPath: sourcePlan.toFolderPath,
-        chosenFolderPath: targetPath,
-      }).catch(() => null);
+      const [learningNotice] = await Promise.all([
+        recordHabitFeedback({
+          type: "category_override",
+          bookmarkTitle: sourcePlan.bookmarkTitle,
+          bookmarkUrl: sourcePlan.bookmarkUrl,
+          suggestedFolderPath: sourcePlan.toFolderPath,
+          chosenFolderPath: targetPath,
+        }).catch(() => null),
+        appendFolderImpression(sourcePlan.bookmarkUrl, targetPath).catch(() => undefined),
+      ]);
       setCacheMessage(learningNotice ?? "已更新预览计划，确认整理前不会移动书签");
       return true;
     } catch (err) {

@@ -14,6 +14,7 @@ import { getFixedDomainRules } from "./fixedRules";
 import { getPreferenceConflict, getPreferenceFingerprint } from "./preferenceSafety";
 import { ensureRequiredHostPermission } from "./hostPermissions";
 import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
+import { appendFolderImpression } from "./semanticIndex";
 
 function hasChromeAction() {
   return typeof chrome !== "undefined" && Boolean(chrome.action);
@@ -134,6 +135,7 @@ export async function removeRecommendation(id: string) {
   return next;
 }
 
+
 export async function removeRecommendationsForBookmark(bookmarkId: string) {
   const next = await updatePendingRecommendations((recommendations) => {
     const filtered = recommendations.filter((recommendation) => recommendation.bookmarkId !== bookmarkId);
@@ -186,6 +188,10 @@ export async function updateRecommendationFolderPath(id: string, folderPath: str
 
   if (!matched) {
     throw new Error("推荐已不存在");
+  }
+  const updated = next.find((recommendation) => recommendation.id === id);
+  if (updated?.bookmarkUrl) {
+    await appendFolderImpression(updated.bookmarkUrl, safeFolderPath).catch(() => undefined);
   }
   await updateRecommendationBadge();
   return next;

@@ -22,9 +22,11 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import type { BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
+import type { BookmarkImpressionMeta, BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
+import { getSemanticIndexMap, getTopImpressionKeywords } from "../services/semanticIndex";
+import { isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { countDuplicateGroups, getLinkHealthProblemResults } from "../services/bookmarkTasks";
 import { saveCurrentPage } from "../services/currentPage";
 import { getHomeTasks, getOrganizeAction } from "../services/homeTasks";
@@ -163,6 +165,8 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   });
   const [dismissedTask, setDismissedTask] = useState("");
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
+  const [semanticIndex, setSemanticIndex] = useState<Record<string, BookmarkImpressionMeta>>({});
+  const [searchFocused, setSearchFocused] = useState(false);
   const [historyGranted, setHistoryGranted] = useState(false);
 
   useEffect(() => {
@@ -266,6 +270,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         setPreviewIdentity(task?.id ?? cache?.id ?? "");
         setIgnoredManualTaskBookmarkIds(ignored);
         setIgnoredManualTaskLoaded(true);
+        void getSemanticIndexMap().then((index) => { if (alive && request === revision) setSemanticIndex(index); }).catch(() => undefined);
         setPreviewState(task?.status === "running" ? "running" : task?.status === "failed" ? "none" :
           ((cache?.whitelistFingerprint === whitelistFingerprint(protection.entries) && cache.movePlan.length) || task?.movePlan?.length) ? "ready" : "none");
         setRefreshError("");
@@ -338,9 +343,20 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   });
   const taskKey = `${primary.kind}:${primary.title}:${primary.kind === "preview" ? previewIdentity : ""}`;
   const deferred = dismissedTask === taskKey;
-  const queryText = query.trim().toLocaleLowerCase();
-  const searchMatches = useMemo(() => queryText ? bookmarks.filter((bookmark) =>
-    [bookmark.title, bookmark.url, bookmark.path.join(" / ")].some((value) => value?.toLocaleLowerCase().includes(queryText))) : [], [bookmarks, queryText]);
+  const queryText = query.trim();
+  const searchMatches = useMemo(() => queryText
+    ? searchBookmarksByImpression(
+        queryText,
+        bookmarks.flatMap((bookmark) => bookmark.url ? [{
+          id: bookmark.id,
+          title: bookmark.title,
+          url: bookmark.url,
+          folderPath: bookmark.path.join(" / "),
+        }] : []),
+        semanticIndex
+      )
+    : [], [bookmarks, queryText, semanticIndex]);
+  const impressionSuggestions = useMemo(() => getTopImpressionKeywords(semanticIndex, 6), [semanticIndex]);
   const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
   const toolEntries = [
@@ -376,14 +392,21 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </div>}
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
-        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} aria-label="搜索书签" placeholder="搜索书签、标题或网址…" autoComplete="off" />
+        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} aria-label="搜索书签" placeholder="搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）…" autoComplete="off" />
         {query ? <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button> : <kbd>Ctrl / ⌘ K</kbd>}
       </form>
+      {!queryText && searchFocused && impressionSuggestions.length > 0 && <div className="home-impression-chips" aria-label="功能印象快捷搜索">
+        {impressionSuggestions.map((keyword) => <button key={keyword} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setQuery(keyword); searchRef.current?.focus(); }}>{keyword}</button>)}
+      </div>}
       {queryText && <section className="home-search-results" aria-label="搜索结果" aria-live="polite">
         {loading ? <p>正在读取书签…</p> : searchMatches.length ? <>
-          {searchMatches.slice(0, 5).map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong>{bookmark.title || "未命名书签"}</strong><small>{bookmark.path.join(" / ") || getDomain(bookmark.url)}</small></span><ArrowRight aria-hidden="true" /></a>)}
-          <Link to={`/manage?search=${encodeURIComponent(query.trim())}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
-        </> : <p>没有找到匹配的书签，试试标题、网址或目录名称。</p>}
+          {searchMatches.slice(0, 5).map((result) => {
+            const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
+            if (!bookmark) return null;
+            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong>{bookmark.title || "未命名书签"}</strong><small>{bookmark.path.join(" / ") || getDomain(bookmark.url)}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">✨ {result.matchHint}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
+          })}
+          <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
+        </> : <p>没有找到匹配的书签，试试标题、网址、目录名称或功能印象（如“视频网站”）。</p>}
       </section>}
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
