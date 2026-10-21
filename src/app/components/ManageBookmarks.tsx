@@ -18,6 +18,8 @@ import {
   ThumbsDown,
   Shield,
   ShieldCheck,
+  BrainCircuit,
+  Zap,
 } from "lucide-react";
 import type { BookmarkImpressionMeta, BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, BookmarkWhitelistEntry, PendingRecommendation } from "../types";
 import {
@@ -47,7 +49,8 @@ import { acceptRecommendation, acceptRecommendations, getRecommendationKind, get
 import { recordHabitFeedback } from "../services/habits";
 import { appendFolderImpression, getSemanticIndexCoverage, getSemanticIndexMap } from "../services/semanticIndex";
 import { backfillImpressions, getMissingImpressionBookmarks, type ImpressionBackfillProgress } from "../services/impressionBackfill";
-import { isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
+import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
+import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
 import {
   STORAGE_KEYS,
   getIgnoredManualTaskBookmarkIds,
@@ -488,12 +491,39 @@ export function ManageBookmarks() {
     folderPath: bookmark.path.join(" / "),
   })), [visibleTaskBookmarks]);
 
-  const impressionResults = useMemo(
+  const localImpressionResults = useMemo(
     () => searchQuery.trim()
       ? searchBookmarksByImpression(searchQuery, searchableBookmarks, semanticIndex)
       : [],
     [searchQuery, searchableBookmarks, semanticIndex]
   );
+
+  const existingTopFolders = useMemo(() => {
+    const names = new Set<string>();
+    folders.forEach((folder) => {
+      const name = folder.path[folder.path.length - 1] || folder.title;
+      if (name) names.add(name);
+    });
+    return [...names].slice(0, 30);
+  }, [folders]);
+
+  const {
+    state: deepSearchState,
+    run: runDeepSearch,
+    cancel: cancelDeepSearch,
+    hasResult: hasDeepResult,
+    running: deepSearchRunning,
+  } = useDeepImpressionSearch({
+    bookmarks: searchableBookmarks,
+    semanticIndexMap: semanticIndex,
+    existingTopFolders,
+  });
+
+  // 深度搜索结果只在搜索词未变化时生效，避免旧请求结果覆盖新输入。
+  const deepSearchActive = hasDeepResult && deepSearchState.query === searchQuery.trim();
+  const impressionResults = deepSearchActive
+    ? deepSearchState.results ?? []
+    : localImpressionResults;
 
   const impressionResultById = useMemo(
     () => new Map(impressionResults.map((result) => [result.bookmark.id, result])),
@@ -566,6 +596,12 @@ export function ManageBookmarks() {
     const visibleRecommendations = pendingRecommendations.filter((item) => !whitelistIndex.protectedBookmarkIds.has(item.bookmarkId));
     if (!searchQuery.trim()) return visibleRecommendations;
 
+    // 深度搜索已给出候选集时直接复用，避免本地检索与 AI 结果不一致。
+    if (deepSearchActive) {
+      const matchedIds = new Set(impressionResults.map((result) => result.bookmark.id));
+      return visibleRecommendations.filter((recommendation) => matchedIds.has(recommendation.bookmarkId));
+    }
+
     // 建议项的书签可能不在“未分类”列表中，需单独按印象检索。
     const matchedIds = new Set(searchBookmarksByImpression(
       searchQuery,
@@ -578,7 +614,7 @@ export function ManageBookmarks() {
       semanticIndex
     ).map((result) => result.bookmark.id));
     return visibleRecommendations.filter((recommendation) => matchedIds.has(recommendation.bookmarkId));
-  }, [pendingRecommendations, searchQuery, semanticIndex, taskMode, whitelistIndex]);
+  }, [deepSearchActive, impressionResults, pendingRecommendations, searchQuery, semanticIndex, taskMode, whitelistIndex]);
 
   const actionablePendingRecommendations = useMemo(
     () => filteredPendingRecommendations.filter(isBatchSafeRecommendation),
@@ -1486,7 +1522,8 @@ export function ManageBookmarks() {
             if (!match?.matchHint || !isImpressionMatch(match)) return null;
             return (
               <span className="bookmark-tree-row__match" title={match.matchHint}>
-                ✨ {match.matchHint}
+                <span>{getImpressionMatchIcon(match)} {match.matchHint}</span>
+                {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
               </span>
             );
           })()}
@@ -1577,7 +1614,12 @@ export function ManageBookmarks() {
                 {(() => {
                   const match = impressionResultById.get(bookmark.id);
                   if (!match?.matchHint || !isImpressionMatch(match)) return null;
-                  return <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">✨ {match.matchHint}</p>;
+                  return (
+                    <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">
+                      {getImpressionMatchIcon(match)} {match.matchHint}
+                      {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
+                    </p>
+                  );
                 })()}
               </div>
             </div>
@@ -1631,7 +1673,12 @@ export function ManageBookmarks() {
             {(() => {
               const match = impressionResultById.get(recommendation.bookmarkId);
               if (!match?.matchHint || !isImpressionMatch(match)) return null;
-              return <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">✨ {match.matchHint}</p>;
+              return (
+                <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">
+                  {getImpressionMatchIcon(match)} {match.matchHint}
+                  {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
+                </p>
+              );
             })()}
             {isEditingRecommendation ? (
               <label className="bookmark-recommendation-edit">
@@ -2171,8 +2218,35 @@ export function ManageBookmarks() {
     return () => { backfillAbortRef.current?.abort(); };
   }, []);
 
+  // 搜索词变化时取消进行中的深度搜索，避免旧请求结果覆盖新列表。
+  useEffect(() => {
+    const current = searchQuery.trim();
+    if (deepSearchState.query && deepSearchState.query !== current) cancelDeepSearch();
+  }, [cancelDeepSearch, deepSearchState.query, searchQuery]);
+
+  const handleDeepSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query || deepSearchRunning) return;
+    if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
+      setMessage("AI 深度回忆需要先在设置中配置并启用 AI Provider。");
+      return;
+    }
+    // Firefox 要求权限请求保持在用户手势内，必须早于任何 await 存储读取。
+    try {
+      await ensureRequiredHostPermission();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "未授予网站访问权限");
+      return;
+    }
+    runDeepSearch(query);
+  };
+
   const emptyMessage = useMemo(() => {
-    if (searchQuery) return "未找到匹配的书签";
+    if (searchQuery) {
+      if (deepSearchRunning) return "AI 正在根据功能描述深度回忆…";
+      if (deepSearchActive) return "AI 深度回忆没有找到更匹配的书签，可换个说法再试";
+      return "未找到匹配的书签，可按 Tab 让 AI 深度回忆";
+    }
     if (taskMode === "unsorted") {
       return pendingRecommendations.length > 0 ? "暂无未分类文件夹书签，可先处理上方 AI 推荐" : "暂无未分类书签";
     }
@@ -2181,7 +2255,7 @@ export function ManageBookmarks() {
       return linkHealthReport ? "未发现需要复查的链接" : "尚未检测链接，点击开始检测后查看结果";
     }
     return "暂无书签";
-  }, [linkHealthReport, pendingRecommendations.length, searchQuery, taskMode]);
+  }, [deepSearchActive, deepSearchRunning, linkHealthReport, pendingRecommendations.length, searchQuery, taskMode]);
 
   return (
     <div className="extension-page">
@@ -2297,16 +2371,73 @@ export function ManageBookmarks() {
         )}
 
         {taskMode !== "invalid" && (
-          <div className="extension-search-field manage-bookmarks-search">
-            <Search className="extension-search-field__icon" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
-              className="extension-control extension-control--search"
-            />
+          <div className="impression-search-bar">
+            <div className="extension-search-field manage-bookmarks-search">
+              <Search className="extension-search-field__icon" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  // Shift+Tab 保留原生焦点切换，避免键盘用户被困在搜索框内。
+                  if (event.key === "Tab" && !event.shiftKey && searchQuery.trim()) {
+                    event.preventDefault();
+                    void handleDeepSearch();
+                    return;
+                  }
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    void handleDeepSearch();
+                  }
+                }}
+                placeholder={taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
+                className="extension-control extension-control--search"
+              />
+            </div>
+            <button
+              type="button"
+              className="impression-search-bar__ai"
+              onClick={() => void handleDeepSearch()}
+              disabled={!searchQuery.trim() || deepSearchRunning}
+              title="让 AI 根据功能描述深度回忆（快捷键：Tab 或 Ctrl / ⌘ + Enter）"
+            >
+              <BrainCircuit aria-hidden="true" />
+              <span>{deepSearchRunning ? "AI 联想中…" : "AI 深度回忆"}</span>
+              {!deepSearchRunning && <kbd>Tab</kbd>}
+            </button>
           </div>
+        )}
+        {taskMode !== "invalid" && searchQuery.trim() && (
+          (deepSearchState.stage !== "idle" || deepSearchState.error) ? (
+            <div
+              className={`impression-deep-status impression-deep-status--${deepSearchState.error ? "error" : deepSearchState.stage}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="impression-deep-status__lead">
+                {deepSearchState.error
+                  ? <>AI 深度回忆失败：{deepSearchState.error}</>
+                  : deepSearchState.stage === "expanding"
+                    ? <><BrainCircuit aria-hidden="true" />正在联想相关功能与常见网站…</>
+                    : deepSearchState.stage === "expanded_shown"
+                      ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在从候选书签中精筛…</>
+                      : <><Check aria-hidden="true" />AI 深度回忆完成</>}
+              </span>
+              {deepSearchState.expandedTerms.length > 0 && deepSearchState.stage !== "error" && (
+                <span className="impression-deep-status__terms" aria-label="AI 联想词">
+                  {deepSearchState.expandedTerms.map((term) => <b key={term}>{term}</b>)}
+                </span>
+              )}
+              {deepSearchRunning && (
+                <button type="button" className="extension-text-button" onClick={cancelDeepSearch}>停止</button>
+              )}
+            </div>
+          ) : impressionResults.length < 3 ? (
+            <p className="impression-deep-hint">
+              <Sparkles aria-hidden="true" />
+              没找到想要的书签？按 <kbd>Tab</kbd> 让 AI 根据功能描述帮你深度回忆
+            </p>
+          ) : null
         )}
         {taskMode !== "invalid" && (
           <div className="impression-coverage" role="status">

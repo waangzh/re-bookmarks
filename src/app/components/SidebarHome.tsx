@@ -21,12 +21,16 @@ import {
   ShieldCheck,
   Sparkles,
   X,
+  BrainCircuit,
+  Zap,
 } from "lucide-react";
 import type { BookmarkImpressionMeta, BookmarkLinkHealthReport, BookmarkNode, FrequentBookmark, PreviewTaskCache } from "../types";
 import { getFrequentBookmarks, hasHistoryPermission } from "../services/history";
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { getSemanticIndexMap, getTopImpressionKeywords } from "../services/semanticIndex";
-import { isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
+import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
+import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
+import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { countDuplicateGroups, getLinkHealthProblemResults } from "../services/bookmarkTasks";
 import { saveCurrentPage } from "../services/currentPage";
 import { getHomeTasks, getOrganizeAction } from "../services/homeTasks";
@@ -344,18 +348,61 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const taskKey = `${primary.kind}:${primary.title}:${primary.kind === "preview" ? previewIdentity : ""}`;
   const deferred = dismissedTask === taskKey;
   const queryText = query.trim();
-  const searchMatches = useMemo(() => queryText
-    ? searchBookmarksByImpression(
-        queryText,
-        bookmarks.flatMap((bookmark) => bookmark.url ? [{
-          id: bookmark.id,
-          title: bookmark.title,
-          url: bookmark.url,
-          folderPath: bookmark.path.join(" / "),
-        }] : []),
-        semanticIndex
-      )
-    : [], [bookmarks, queryText, semanticIndex]);
+  const searchableBookmarks = useMemo(() => bookmarks.flatMap((bookmark) => bookmark.url ? [{
+    id: bookmark.id,
+    title: bookmark.title,
+    url: bookmark.url,
+    folderPath: bookmark.path.join(" / "),
+  }] : []), [bookmarks]);
+  const existingTopFolders = useMemo(() => {
+    const names = new Set<string>();
+    bookmarks.forEach((bookmark) => {
+      const top = bookmark.path[0];
+      if (top) names.add(top);
+    });
+    return [...names].slice(0, 30);
+  }, [bookmarks]);
+
+  const {
+    state: deepSearchState,
+    run: runDeepSearch,
+    cancel: cancelDeepSearch,
+    hasResult: hasDeepResult,
+    running: deepSearchRunning,
+  } = useDeepImpressionSearch({
+    bookmarks: searchableBookmarks,
+    semanticIndexMap: semanticIndex,
+    existingTopFolders,
+  });
+
+  const localSearchMatches = useMemo(() => queryText
+    ? searchBookmarksByImpression(queryText, searchableBookmarks, semanticIndex)
+    : [], [queryText, searchableBookmarks, semanticIndex]);
+  const deepSearchActive = hasDeepResult && deepSearchState.query === queryText;
+  const searchMatches = deepSearchActive
+    ? deepSearchState.results ?? []
+    : localSearchMatches;
+
+  // 输入变化时中止上一次深度搜索，防止旧结果覆盖新列表。
+  useEffect(() => {
+    if (deepSearchState.query && deepSearchState.query !== queryText) cancelDeepSearch();
+  }, [cancelDeepSearch, deepSearchState.query, queryText]);
+
+  const handleDeepSearch = async () => {
+    if (!queryText || deepSearchRunning) return;
+    if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
+      setPageNotice("AI 深度回忆需要先在设置中配置并启用 AI Provider");
+      return;
+    }
+    // Firefox 必须在用户手势内请求权限，先于任何存储读取。
+    try {
+      await ensureRequiredHostPermission();
+    } catch (error) {
+      setPageNotice(error instanceof Error ? error.message : "未授予网站访问权限");
+      return;
+    }
+    runDeepSearch(queryText);
+  };
   const impressionSuggestions = useMemo(() => getTopImpressionKeywords(semanticIndex, 6), [semanticIndex]);
   const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
@@ -392,22 +439,38 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </div>}
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
-        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} aria-label="搜索书签" placeholder="搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）…" autoComplete="off" />
-        {query ? <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button> : <kbd>Ctrl / ⌘ K</kbd>}
+        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onKeyDown={(event) => {
+          if (event.key === "Escape") { setQuery(""); return; }
+          // Shift+Tab 保留原生焦点切换，避免键盘用户被困在搜索框内。
+          if (event.key === "Tab" && !event.shiftKey && queryText) { event.preventDefault(); void handleDeepSearch(); return; }
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void handleDeepSearch(); }
+        }} aria-label="搜索书签" placeholder="搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）…" autoComplete="off" />
+        {query ? <>
+          <button type="button" className="home-search__ai" onClick={() => void handleDeepSearch()} disabled={deepSearchRunning} aria-label="AI 深度回忆" title="让 AI 根据功能描述深度回忆（Tab 或 Ctrl / ⌘ + Enter）"><BrainCircuit aria-hidden="true" /></button>
+          <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button>
+        </> : <kbd>Ctrl / ⌘ K</kbd>}
       </form>
       {!queryText && searchFocused && impressionSuggestions.length > 0 && <div className="home-impression-chips" aria-label="功能印象快捷搜索">
         {impressionSuggestions.map((keyword) => <button key={keyword} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setQuery(keyword); searchRef.current?.focus(); }}>{keyword}</button>)}
+      </div>}
+      {queryText && (deepSearchState.stage !== "idle" || deepSearchState.error) && <div className={`home-deep-status home-deep-status--${deepSearchState.error ? "error" : deepSearchState.stage}`} role="status" aria-live="polite">
+        <span>{deepSearchState.error ? `AI 深度回忆失败：${deepSearchState.error}` : deepSearchState.stage === "expanding" ? <><BrainCircuit aria-hidden="true" />正在联想相关功能与常见网站…</> : deepSearchState.stage === "expanded_shown" ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在精筛候选书签…</> : <><CheckCircle2 aria-hidden="true" />AI 深度回忆完成</>}</span>
+        {deepSearchState.expandedTerms.length > 0 && deepSearchState.stage !== "error" && <span className="home-deep-status__terms">{deepSearchState.expandedTerms.map((term) => <b key={term}>{term}</b>)}</span>}
       </div>}
       {queryText && <section className="home-search-results" aria-label="搜索结果" aria-live="polite">
         {loading ? <p>正在读取书签…</p> : searchMatches.length ? <>
           {searchMatches.slice(0, 5).map((result) => {
             const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
             if (!bookmark) return null;
-            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong>{bookmark.title || "未命名书签"}</strong><small>{bookmark.path.join(" / ") || getDomain(bookmark.url)}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">✨ {result.matchHint}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
+            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong>{bookmark.title || "未命名书签"}</strong><small>{bookmark.path.join(" / ") || getDomain(bookmark.url)}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">{getImpressionMatchIcon(result)} {result.matchHint}{result.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
           })}
           <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
-        </> : <p>没有找到匹配的书签，试试标题、网址、目录名称或功能印象（如“视频网站”）。</p>}
+        </> : deepSearchRunning ? <p>AI 正在根据功能描述深度回忆…</p> : <>
+          <p>没有找到匹配的书签，试试标题、网址、目录名称或功能印象（如“视频网站”）。</p>
+          <button type="button" className="home-search-deep" onClick={() => void handleDeepSearch()}><BrainCircuit aria-hidden="true" />让 AI 深度回忆「{queryText}」</button>
+        </>}
       </section>}
+      {queryText && !deepSearchRunning && searchMatches.length < 3 && deepSearchState.stage === "idle" && !deepSearchState.error && <p className="home-deep-hint"><Sparkles aria-hidden="true" />没找到想要的书签？按 <kbd>Tab</kbd> 让 AI 根据功能描述深度回忆</p>}
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
         <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span><small>聚焦一件事</small></div>

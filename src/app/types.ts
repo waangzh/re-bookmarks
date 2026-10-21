@@ -74,7 +74,15 @@ export type ClassificationResult = {
 };
 
 /** 印象索引来源，便于后续区分 AI 生成与用户手动补充 */
-export type BookmarkImpressionSource = "ai_organize" | "ai_recommend" | "rule_fallback" | "user_edit";
+export type BookmarkImpressionSource =
+  | "ai_organize"
+  | "ai_recommend"
+  | "rule_fallback"
+  | "user_edit"
+  /** V2：AI 深度搜索时顺手自愈补全 */
+  | "ai_search_heal"
+  /** V2：存量书签静默批量建索引 */
+  | "ai_batch_index";
 
 /** 单个书签的功能印象索引；normalizedUrl 是持久化主键，备份恢复后仍可复用 */
 export type BookmarkImpressionMeta = {
@@ -94,7 +102,15 @@ export type SemanticIndexStorage = {
   migratedAt?: number;
 };
 
-export type ImpressionMatchType = "title" | "ai_keyword" | "ai_summary" | "folder" | "heuristic" | "url";
+export type ImpressionMatchType =
+  | "title"
+  | "ai_keyword"
+  | "ai_summary"
+  /** V2：AI 候选集语义精排命中 */
+  | "ai_rerank"
+  | "folder"
+  | "heuristic"
+  | "url";
 
 export type SearchableBookmark = {
   id: string;
@@ -110,7 +126,49 @@ export type ImpressionSearchResult = {
   /** 供 UI 展示的命中说明，例如“匹配功能印象：视频网站 / 在线追番” */
   matchHint?: string;
   displayTags: string[];
+  /** V2：本次搜索顺手把功能印象写回本地索引，UI 可提示“已记住该印象” */
+  healed?: boolean;
 };
+
+/** Stage 1：AI 查询词联想扩展结果 */
+export type AIQueryExpansionResult = {
+  /** 核心功能意图词，如 ["代码截图", "代码转图片"] */
+  coreIntents: string[];
+  /** 中英文同义词、行业术语与 URL 常见词根 */
+  bilingualKeywords: string[];
+  /** AI 依据世界知识推测的匹配站点名或域名 */
+  likelySites: string[];
+  /** 可能归属的文件夹分类词 */
+  folderHints: string[];
+};
+
+/** Stage 3：发送给 AI 精排的精简候选书签，严控 Token 体积 */
+export type AIRerankCandidateInput = {
+  id: string;
+  title: string;
+  /** 仅 hostname + 首层 pathname，不含 query / hash */
+  shortUrl: string;
+  folder: string;
+  existingHint?: string;
+};
+
+/** Stage 3：AI 精排返回的单条结果，同时携带索引自愈数据 */
+export type AIRerankResultItem = {
+  id: string;
+  /** 语义相关度 0~100，低于 45 的结果会被过滤 */
+  relevance: number;
+  matchReason: string;
+  healedKeywords: string[];
+  healedSummary: string;
+};
+
+/** V2 深度搜索执行阶段，供 UI 展示渐进式反馈 */
+export type DeepSearchStage =
+  | "idle"
+  | "expanding"
+  | "expanded_shown"
+  | "completed"
+  | "error";
 
 export type MovePlan = {
   bookmarkId: string;

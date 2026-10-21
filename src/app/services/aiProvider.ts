@@ -1,6 +1,9 @@
 import type {
   AIProviderConfig,
   AIProviderType,
+  AIQueryExpansionResult,
+  AIRerankCandidateInput,
+  AIRerankResultItem,
   BookmarkForAI,
   ClassificationResult,
   FolderHabitProfile,
@@ -9,6 +12,10 @@ import type {
   TokenUsage,
 } from "../types";
 import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
+import {
+  buildCandidateRerankPrompt,
+  buildQueryExpansionPrompt,
+} from "./impressionSearchPrompts";
 
 type ClassificationOptions = {
   maxTopLevelFolders: number;
@@ -33,6 +40,9 @@ const CLASSIFICATION_REQUEST_TIMEOUT_MS = 90 * 1000;
 const CONNECTION_TEST_TIMEOUT_MS = 15 * 1000;
 const MODEL_LIST_TIMEOUT_MS = 15 * 1000;
 const HABIT_ANALYSIS_TIMEOUT_MS = 120 * 1000;
+/** V2 深度搜索追求低延迟：Stage 1 只做短输出，Stage 3 候选集有限 */
+const QUERY_EXPANSION_TIMEOUT_MS = 20 * 1000;
+const RERANK_TIMEOUT_MS = 30 * 1000;
 
 export type AIModelOption = {
   id: string;
@@ -503,6 +513,177 @@ export async function extractImpressionsWithAI(
   const results = parseImpressionResults(completion.content);
   debugAI("parsed impressions", {
     inputCount: bookmarks.length,
+    outputCount: results.length,
+    ids: results.map((result) => result.id),
+  });
+  return results;
+}
+
+const EMPTY_QUERY_EXPANSION: AIQueryExpansionResult = {
+  coreIntents: [],
+  bilingualKeywords: [],
+  likelySites: [],
+  folderHints: [],
+};
+
+function cleanClueList(value: unknown, limit: number) {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[/>｜|,，、]/)
+      : [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of values) {
+    const clue = String(item).trim().slice(0, 40);
+    if (!clue) continue;
+    const key = clue.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(clue);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function parseQueryExpansion(content: string): AIQueryExpansionResult {
+  for (const candidate of extractJsonCandidates(content)) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (!parsed || typeof parsed !== "object") continue;
+      const value = parsed as Record<string, unknown>;
+      const expansion: AIQueryExpansionResult = {
+        coreIntents: cleanClueList(value.coreIntents ?? value.intents, 5),
+        bilingualKeywords: cleanClueList(value.bilingualKeywords ?? value.keywords, 8),
+        likelySites: cleanClueList(value.likelySites ?? value.sites, 8),
+        folderHints: cleanClueList(value.folderHints ?? value.folders, 4),
+      };
+      if (Object.values(expansion).some((list) => list.length > 0)) return expansion;
+    } catch {
+      // 继续尝试下一个 JSON 片段。
+    }
+  }
+  return EMPTY_QUERY_EXPANSION;
+}
+
+function parseRerankResults(content: string): AIRerankResultItem[] {
+  const items: unknown[] = [];
+
+  for (const candidate of extractJsonCandidates(content)) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (Array.isArray(parsed)) {
+        items.push(...parsed);
+        break;
+      }
+      if (parsed && typeof parsed === "object") {
+        const list = (["results", "items", "data"] as const)
+          .map((key) => (parsed as Record<string, unknown>)[key])
+          .find(Array.isArray);
+        if (Array.isArray(list)) {
+          items.push(...list);
+          break;
+        }
+      }
+    } catch {
+      // 继续尝试下一个 JSON 片段。
+    }
+  }
+
+  const results: AIRerankResultItem[] = [];
+  const seenIds = new Set<string>();
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const value = item as Record<string, unknown>;
+    const id = typeof value.id === "string" ? value.id.trim() : "";
+    if (!id || seenIds.has(id)) continue;
+    const relevance = Number(value.relevance ?? value.score);
+    if (!Number.isFinite(relevance)) continue;
+    const matchReason = typeof value.matchReason === "string"
+      ? value.matchReason.trim()
+      : typeof value.reason === "string" ? value.reason.trim() : "";
+    seenIds.add(id);
+    results.push({
+      id,
+      relevance: Math.max(0, Math.min(100, Math.round(relevance))),
+      matchReason,
+      healedKeywords: normalizeKeywords(value.healedKeywords ?? value.keywords),
+      healedSummary: typeof value.healedSummary === "string"
+        ? value.healedSummary.trim()
+        : typeof value.summary === "string" ? value.summary.trim() : "",
+    });
+  }
+  return results;
+}
+
+/** Stage 1：AI 查询词联想扩展，不发送任何书签数据 */
+export async function expandImpressionQueryWithAI(
+  config: AIProviderConfig,
+  query: string,
+  existingTopFolders: string[],
+  options?: { signal?: AbortSignal; onTokenUsage?: (usage: TokenUsage) => void }
+): Promise<AIQueryExpansionResult> {
+  if (!config.apiKey || !query.trim()) return EMPTY_QUERY_EXPANSION;
+
+  const completion = await chatCompletion(
+    config,
+    [
+      {
+        role: "system",
+        content:
+          "你是浏览器书签检索意图分析专家。必须输出合法 JSON 对象，不要 Markdown，不要解释。" +
+          "用户会用模糊的功能印象描述来寻找忘记名字的书签，请把描述翻译成检索线索：" +
+          "coreIntents 为 3~5 个核心功能意图词；bilingualKeywords 为 5~8 个可能出现在标题或 URL 中的中英文词根；" +
+          "likelySites 为 4~8 个依据世界知识推测的知名站点域名或名称；folderHints 为 2~4 个可能的书签分类目录词。" +
+          "只根据功能描述联想，不要编造与描述无关的站点。输出格式为 {\"coreIntents\":[],\"bilingualKeywords\":[],\"likelySites\":[],\"folderHints\":[]}。",
+      },
+      { role: "user", content: buildQueryExpansionPrompt(query, existingTopFolders) },
+    ],
+    600,
+    true,
+    QUERY_EXPANSION_TIMEOUT_MS,
+    options?.signal
+  );
+
+  if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
+  const expansion = parseQueryExpansion(completion.content);
+  debugAI("parsed query expansion", expansion);
+  return expansion;
+}
+
+/** Stage 3：AI 候选集语义精排，并顺带生成可回写本地索引的功能印象 */
+export async function rerankImpressionCandidatesWithAI(
+  config: AIProviderConfig,
+  query: string,
+  candidates: AIRerankCandidateInput[],
+  options?: { signal?: AbortSignal; onTokenUsage?: (usage: TokenUsage) => void }
+): Promise<AIRerankResultItem[]> {
+  if (!config.apiKey || !candidates.length) return [];
+
+  const completion = await chatCompletion(
+    config,
+    [
+      {
+        role: "system",
+        content:
+          "你是浏览器书签语义检索精排助手。必须输出合法 JSON 数组，不要 Markdown，不要解释。" +
+          "根据用户的功能印象搜索词，从候选书签中挑出真正相关的项，剔除明显无关项，最多保留 10 个。" +
+          "每项输出 id、relevance（0~100，低于 45 的不要输出）、matchReason（15~30 字，向用户解释为什么符合）、" +
+          "healedKeywords（3~5 个通用功能印象词）和 healedSummary（15~35 字的一句话用途描述）。" +
+          "healedKeywords 与 healedSummary 必须描述站点本身的客观功能，不要针对本次搜索词定制；无法判断时返回空数组或空字符串，不要编造。",
+      },
+      { role: "user", content: buildCandidateRerankPrompt(query, candidates) },
+    ],
+    1600,
+    true,
+    RERANK_TIMEOUT_MS,
+    options?.signal
+  );
+
+  if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
+  const results = parseRerankResults(completion.content);
+  debugAI("parsed rerank results", {
+    inputCount: candidates.length,
     outputCount: results.length,
     ids: results.map((result) => result.id),
   });

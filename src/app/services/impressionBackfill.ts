@@ -7,12 +7,15 @@ import {
 } from "./aiProvider";
 import { enrichBookmarksWithPageMetadata } from "./pageMetadata";
 import { toBookmarkForAI } from "./rules";
-import { getSemanticIndexMap, normalizeUrl, upsertBatchImpressions } from "./semanticIndex";
+import { getSemanticIndexMap, hasUsableImpression, normalizeUrl, upsertBatchImpressions } from "./semanticIndex";
 import { getSettings } from "./storage";
 import { hasRequiredHostPermission, HOST_PERMISSION_REQUIRED_MESSAGE } from "./hostPermissions";
 
-/** 每批书签数量：与批量整理保持一致，避免单次请求过长 */
-const BACKFILL_BATCH_SIZE = 20;
+/**
+ * 每批书签数量：V2 只要求输出 keywords + summary，输出 Token 很少，
+ * 因此提高到 35 条以减少请求次数；单批失败也不至于损失过多进度。
+ */
+const BACKFILL_BATCH_SIZE = 35;
 const HTTP_URL_PATTERN = /^https?:\/\//i;
 
 export type ImpressionBackfillProgress = {
@@ -48,11 +51,9 @@ export function getMissingImpressionBookmarks(
     if (!isHttpUrl(bookmark.url)) return false;
     const normalizedUrl = normalizeUrl(bookmark.url ?? "");
     if (!normalizedUrl || seenUrls.has(normalizedUrl)) return false;
-    const meta = index[normalizedUrl];
-    // 只有目录快照、没有功能词与简述的记录仍需要 AI 补全。
-    if (meta && (meta.keywords.length > 0 || meta.summary.trim())) return false;
     seenUrls.add(normalizedUrl);
-    return true;
+    // 只有目录快照或规则兜底词的记录仍需要 AI 补全。
+    return !hasUsableImpression(index[normalizedUrl]);
   });
 }
 
@@ -157,7 +158,7 @@ export async function backfillImpressions(
           bookmarkId: bookmark.id,
           keywords: suggestion.keywords,
           summary: suggestion.summary,
-          source: "ai_organize" as const,
+          source: "ai_batch_index" as const,
         }];
       }));
 
@@ -185,5 +186,8 @@ export async function backfillImpressions(
 
 /** 仅用于测试与 UI 展示：判断某条索引是否由 AI 生成 */
 export function isAiImpression(meta: BookmarkImpressionMeta | undefined) {
-  return meta?.source === "ai_organize" || meta?.source === "ai_recommend";
+  return meta?.source === "ai_organize" ||
+    meta?.source === "ai_recommend" ||
+    meta?.source === "ai_search_heal" ||
+    meta?.source === "ai_batch_index";
 }

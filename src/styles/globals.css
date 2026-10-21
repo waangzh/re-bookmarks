@@ -5855,15 +5855,27 @@ select.extension-control option,
 }
 
 .bookmark-tree-row__match {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 46%;
-  overflow: hidden;
   color: #6d5bd0;
   font-size: 11px;
   line-height: 1.3;
+}
+
+.bookmark-tree-row__match > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bookmark-tree-row__match .impression-healed-badge {
+  flex: 0 0 auto;
+  margin-left: 0;
 }
 
 .bookmark-unsorted-card__match {
@@ -5989,6 +6001,186 @@ select.extension-control option,
 .impression-backfill__head .extension-text-button:hover {
   color: #1d4ed8;
   background: #e0edff;
+}
+
+/* V2：搜索框 + AI 深度回忆入口 */
+.impression-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.impression-search-bar .manage-bookmarks-search {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.impression-search-bar__ai {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid #c7d7f5;
+  border-radius: 9px;
+  background: #f4f8ff;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.impression-search-bar__ai svg {
+  width: 15px;
+  height: 15px;
+}
+
+.impression-search-bar__ai kbd {
+  padding: 2px 4px;
+  border: 1px solid #c7d7f5;
+  border-radius: 4px;
+  background: #fff;
+  color: #4b6ba8;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.impression-search-bar__ai:hover:not(:disabled) {
+  border-color: #93b4f0;
+  background: #eaf2ff;
+}
+
+.impression-search-bar__ai:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 渐进式状态条：联想中 / 精筛中 / 完成 / 失败 */
+.impression-deep-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: -10px 0 14px;
+  padding: 8px 10px;
+  border: 1px solid #dbe7fb;
+  border-radius: 9px;
+  background: #f7faff;
+  color: #3f5f9e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.impression-deep-status--error {
+  border-color: #fecdd3;
+  background: #fff7f8;
+  color: #be123c;
+}
+
+.impression-deep-status__lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.impression-deep-status__lead svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.impression-deep-status__terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.impression-deep-status__terms b {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e7efff;
+  color: #3b5fae;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
+.impression-deep-status .extension-text-button {
+  margin-left: auto;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.impression-deep-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -8px 0 14px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.impression-deep-hint svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: #8b7cd8;
+}
+
+.impression-deep-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid #dbe4f5;
+  border-radius: 4px;
+  background: #fff;
+  color: #4b6ba8;
+  font-size: 11px;
+}
+
+/* 索引自愈提示：让用户知道下次本地搜索即可命中 */
+.impression-healed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #eef7ee;
+  color: #2f7a3f;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.7;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.impression-healed-badge svg {
+  width: 10px;
+  height: 10px;
+}
+
+@media (max-width: 400px) {
+  .impression-search-bar {
+    flex-wrap: wrap;
+  }
+
+  .impression-search-bar__ai {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .impression-search-bar__ai kbd {
+    display: none;
+  }
 }
 
 .bookmark-tree-row__count {

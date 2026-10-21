@@ -192,5 +192,11 @@ export function searchBookmarksByImpression(
 export function isImpressionMatch(result: ImpressionSearchResult) {
   return result.matchType === "ai_keyword" ||
     result.matchType === "ai_summary" ||
+    result.matchType === "ai_rerank" ||
     result.matchType === "heuristic";
+}
+
+/** 搜索结果命中条目前缀：AI 精排用 🎯，其余印象命中用 ✨ */
+export function getImpressionMatchIcon(result: ImpressionSearchResult) {
+  return result.matchType === "ai_rerank" ? "🎯" : "✨";
 }

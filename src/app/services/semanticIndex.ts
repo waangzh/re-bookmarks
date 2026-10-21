@@ -15,6 +15,31 @@ const TRACKING_PARAM_PATTERN = /^(utm_[a-z]+|gclid|fbclid|yclid|msclkid|spm|from
 const MAX_KEYWORDS = 8;
 const MAX_KEYWORD_LENGTH = 24;
 
+const IMPRESSION_SOURCES: BookmarkImpressionSource[] = [
+  "ai_organize",
+  "ai_recommend",
+  "rule_fallback",
+  "user_edit",
+  "ai_search_heal",
+  "ai_batch_index",
+];
+
+function normalizeSource(value: unknown): BookmarkImpressionSource {
+  return IMPRESSION_SOURCES.includes(value as BookmarkImpressionSource)
+    ? value as BookmarkImpressionSource
+    : "ai_organize";
+}
+
+/**
+ * 判断一条索引是否算“已建立功能印象”。
+ * 只有目录快照或 rule_fallback 兜底词的记录仍需要 AI 补全，避免覆盖率虚高。
+ */
+export function hasUsableImpression(meta: BookmarkImpressionMeta | undefined): boolean {
+  if (!meta) return false;
+  if (meta.source === "rule_fallback") return false;
+  return meta.keywords.length > 0 || meta.summary.trim().length > 0;
+}
+
 export type ImpressionUpsertInput = {
   url: string;
   bookmarkId?: string;
@@ -93,7 +118,7 @@ function sanitizeIndex(value: unknown): SemanticIndexStorage {
         keywords: cleanKeywords(item.keywords),
         summary: typeof item.summary === "string" ? item.summary : "",
         folderSnapshot: typeof item.folderSnapshot === "string" ? item.folderSnapshot : undefined,
-        source: item.source ?? "ai_organize",
+        source: normalizeSource(item.source),
       };
     }
   }
@@ -243,9 +268,7 @@ export function getSemanticIndexCoverage(
   )));
   let indexed = 0;
   for (const url of urls) {
-    const meta = index[url];
-    // 只有目录快照、没有功能词或简述的记录不算已建立功能印象。
-    if (meta && (meta.keywords.length > 0 || meta.summary.trim())) indexed += 1;
+    if (hasUsableImpression(index[url])) indexed += 1;
   }
   return { indexed, total: urls.size };
 }
