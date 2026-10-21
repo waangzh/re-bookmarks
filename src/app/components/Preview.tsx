@@ -52,7 +52,7 @@ import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } f
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
 import { getFixedDomainRules } from "../services/fixedRules";
 import { getPreferenceConflict, getPreferenceFingerprint } from "../services/preferenceSafety";
-import { Select } from "./Select";
+import { FolderCascadeSelect } from "./FolderCascadeSelect";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -1595,18 +1595,16 @@ export function Preview() {
           {options.showDecision && existingFolders.length > 0 && (
             <div className="preview-inline-folder-edit">
               <span>修改目录</span>
-              <Select
+              <FolderCascadeSelect
                 disabled={savingPreviewDrop}
                 aria-label={`${plan.bookmarkTitle} 的目标目录`}
-                value={plan.toFolderPath.join(" / ")}
+                value={plan.toFolderPath}
+                folders={existingFolders}
                 onChange={(next) => {
-                  const target = existingFolders.find((folder) => folder.path.join(" / ") === next);
+                  const target = existingFolders.find((folder) => pathKey(folder.path) === pathKey(next));
                   if (!target) return;
                   void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
                 }}
-                options={existingFolders
-                  .filter((folder) => folder.type === "folder")
-                  .map((folder) => ({ value: folder.path.join(" / "), label: folder.path.join(" / ") }))}
               />
             </div>
           )}
@@ -2023,11 +2021,6 @@ export function Preview() {
                   <p>预计新增 {summary.newFolders.length} 个目录 · 尚需 {pendingDecisionCount} 个审核决定</p>
                   <p className="sidebar-muted-copy">先确认新文件夹，再审核需要判断的书签。审核数与条目数不能相加。</p>
                 </section>
-                <CollapsibleSection title="变更总览" hint={`${summary.crossTopLevelCount} 项跨一级目录变更`}>
-                  <p>新增：{summary.newFolders.map((path) => path.join(" / ")).join("、") || "无"}；复用 {summary.reusedCount} 个目标目录</p>
-                  {summary.moving.map((plan) => <div key={plan.bookmarkId} className="extension-compact-row"><span>{plan.bookmarkTitle}：{(allBookmarks.find((item) => item.id === plan.bookmarkId)?.path ?? plan.sourceFolderPath ?? []).join(" / ") || "根目录"} → {plan.toFolderPath.join(" / ")}{plan.source === "manual" ? "（人工修改）" : ""}<small>{plan.reason}</small></span></div>)}
-                  <p>会清理本次移动后变空的源目录及其空祖先、移动失败后留下的新建空目录；不会清理其他空目录。</p>
-                </CollapsibleSection>
                 <div className="preview-risk-overview" aria-label="整理风险概览">
                   <div>
                     <span>规则复用</span>
@@ -2245,24 +2238,53 @@ export function Preview() {
           </>
         )}
 
-        {confirmOpen && <PreviewDialog label="最终执行确认" description="确认变更范围后，先创建备份，再执行移动。可返回审核。" busy={phase === "submitting" || savingPreviewDrop} onClose={() => setConfirmOpen(false)}>
-          <h2 className="extension-section__title">确认本次变更</h2>
-          <p>移动 {executionSummary.moveCount} 条；新建 {executionSummary.newFolders.length} 个目录；复用 {executionSummary.reusedCount} 个目标目录；其余 {plans.length - approvedPlans.length} 条保持原位。</p>
-          <p>先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录。外部变化项会停止移动并写入失败原因。</p>
-          <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
-          <button type="button" data-dialog-return className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
+        {confirmOpen && <PreviewDialog
+          label="最终执行确认"
+          title="确认本次变更"
+          description="确认变更范围后，先创建备份，再执行移动。可返回审核。"
+          busy={phase === "submitting" || savingPreviewDrop}
+          onClose={() => setConfirmOpen(false)}
+          actions={<>
+            <button type="button" data-dialog-return className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
+            <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
+          </>}
+        >
+          <dl className="preview-dialog__metrics">
+            <div><dt>移动</dt><dd>{executionSummary.moveCount} 条</dd></div>
+            <div><dt>新建目录</dt><dd>{executionSummary.newFolders.length} 个</dd></div>
+            <div><dt>复用目录</dt><dd>{executionSummary.reusedCount} 个</dd></div>
+            <div><dt>保持原位</dt><dd>{plans.length - approvedPlans.length} 条</dd></div>
+          </dl>
+          <p className="preview-dialog__note">先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录；外部变化项会停止移动并写入失败原因。</p>
         </PreviewDialog>}
-        {editingPlan && <PreviewDialog label="修改预览目录" description="搜索或输入目录，仅修改预览，不移动书签。" busy={savingPreviewDrop} onClose={() => setEditingPlan(null)}>
-          <h2 className="extension-section__title">修改目录 · {editingPlan.bookmarkTitle}</h2>
-          <label>搜索已有目录或输入新路径<input className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" /></label>
+        {editingPlan && <PreviewDialog
+          label="修改预览目录"
+          title="修改目录"
+          description="搜索已有目录或输入新路径，仅修改预览，不移动书签。"
+          busy={savingPreviewDrop}
+          onClose={() => setEditingPlan(null)}
+          actions={<>
+            <button type="button" data-dialog-return className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => setEditingPlan(null)}>取消</button>
+            <button type="button" className="extension-page__wide-primary" disabled={savingPreviewDrop || !folderDraft.trim()} onClick={() => {
+              const path = parseFolderPath(folderDraft, settings.maxNestingLevel);
+              if (!path.length) { setError("请填写有效目录"); return; }
+              void applyPreviewDrop(editingPlan, { path, key: path.join("/") } as PreviewFolderNode).then((saved) => { if (saved) setEditingPlan(null); });
+            }}>确认修改</button>
+          </>}
+        >
+          <div className="preview-dialog__bookmark">
+            <BookmarkFavicon title={editingPlan.bookmarkTitle} url={editingPlan.bookmarkUrl} className="preview-dialog__favicon" />
+            <div>
+              <strong title={editingPlan.bookmarkTitle}>{editingPlan.bookmarkTitle}</strong>
+              <span title={editingPlan.bookmarkUrl}>{editingPlan.bookmarkUrl}</span>
+            </div>
+          </div>
+          <label className="preview-dialog__field">
+            <span>目标目录</span>
+            <input className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" />
+          </label>
           <datalist id="preview-folder-choices">{existingFolders.map((folder) => <option key={folder.id} value={folder.path.join(" / ")} />)}</datalist>
-          <p>仅修改预览，尚未移动书签；不存在的目录会在最终确认后创建。</p>
-          <button type="button" className="extension-page__wide-primary" disabled={savingPreviewDrop || !folderDraft.trim()} onClick={() => {
-            const path = parseFolderPath(folderDraft, settings.maxNestingLevel);
-            if (!path.length) { setError("请填写有效目录"); return; }
-            void applyPreviewDrop(editingPlan, { path, key: path.join("/") } as PreviewFolderNode).then((saved) => { if (saved) setEditingPlan(null); });
-          }}>确认修改</button>
-          <button type="button" data-dialog-return className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => setEditingPlan(null)}>取消</button>
+          <p className="preview-dialog__note">不存在的目录会在最终确认后创建。</p>
         </PreviewDialog>}
         {draggedPlan && (
           <div
