@@ -7,6 +7,7 @@ import {
   clearPreviewPlan,
   getFolderHabitProfile,
   getSettings,
+  getStoredFolderHabitProfile,
   saveFolderHabitProfile,
 } from "./storage";
 
@@ -450,10 +451,9 @@ export async function collectFolderHabitSamples(): Promise<FolderHabitSample[]> 
 
 export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> {
   const initialWhitelist = whitelistFingerprint((await getCurrentWhitelist()).entries);
-  const [settings, samples, storedProfile] = await Promise.all([
+  const [settings, samples] = await Promise.all([
     getSettings(),
     collectFolderHabitSamples(),
-    getFolderHabitProfile(),
   ]);
   const fallback = buildFallbackProfile(samples);
   let analyzed = fallback;
@@ -461,18 +461,31 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
   let analysisWarning: string | undefined;
 
   if (!samples.length) {
-    analysisWarning = "未找到可分析的书签样本，已使用本地规则推断";
+    analysisWarning = "未找到可分析的书签样本";
   } else if (!settings.provider.apiKey) {
-    analysisWarning = "未配置 API Key，已使用本地规则推断";
+    analysisWarning = "未配置 API Key";
   } else if (!isAIProviderAuthorized(settings.provider)) {
-    analysisWarning = AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE + " 已使用本地规则推断";
+    analysisWarning = AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE;
   } else {
     try {
       analyzed = await analyzeFolderHabitsWithAI(settings.provider, samples, fallback);
       analysisSource = "ai";
     } catch (error) {
-      analysisWarning = `AI 分析失败，已使用本地规则推断：${summarizeAnalysisError(error)}`;
+      analysisWarning = `AI 分析失败：${summarizeAnalysisError(error)}`;
     }
+  }
+
+  // Read strictly after the request to preserve recent feedback and detect read failures.
+  const storedProfile = await getStoredFolderHabitProfile();
+  if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== initialWhitelist) {
+    throw new Error("白名单在习惯分析期间发生变化，请重新分析");
+  }
+  const currentProfile = storedProfile && (
+    storedProfile.whitelistFingerprint === initialWhitelist ||
+    (!initialWhitelist && storedProfile.whitelistFingerprint === undefined)
+  ) ? storedProfile : null;
+  if (analysisWarning && currentProfile) {
+    throw new Error(`${analysisWarning}。本次未更新画像，已保留原有分类偏好`);
   }
 
   const profile = cleanFolderHabitProfile({
@@ -480,9 +493,9 @@ export async function analyzeAndSaveFolderHabits(): Promise<FolderHabitProfile> 
     createdAt: Date.now(),
     ...analyzed,
     analysisSource,
-    analysisWarning,
+    analysisWarning: analysisWarning ? `${analysisWarning}。已使用本地规则生成画像（非 AI 分析）` : undefined,
     whitelistFingerprint: initialWhitelist,
-    learning: storedProfile?.learning,
+    learning: currentProfile?.learning,
   });
 
   if (whitelistFingerprint((await getCurrentWhitelist()).entries) !== initialWhitelist) {

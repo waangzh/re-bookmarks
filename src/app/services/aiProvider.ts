@@ -385,10 +385,6 @@ function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
   };
 }
 
-function asObjectArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
-}
-
 function parseJsonStringLiteral(value: string) {
   try {
     return JSON.parse(`"${value}"`) as string;
@@ -728,69 +724,63 @@ function parseLooseResults(jsonText: string): ClassificationResult[] {
 }
 
 function parseHabitProfile(content: string, fallback: Omit<FolderHabitProfile, "id" | "createdAt">): Omit<FolderHabitProfile, "id" | "createdAt"> {
-  const candidates = extractJsonCandidates(content);
-  const errors: string[] = [];
-  let parsed: Record<string, unknown> | undefined;
-  let jsonText = candidates[0] ?? content.trim();
+  const trimmed = content.trim();
+  if (!trimmed) throw new Error("AI 返回的画像内容为空，请重试");
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  // Parse the complete document so nested fragments cannot hide truncated output.
+  const jsonText = fenced ? fenced[1].trim() : trimmed;
+  let value: unknown;
+  try {
+    value = JSON.parse(jsonText) as unknown;
+  } catch {
+    throw new Error("AI 返回的画像 JSON 不完整或格式无效，请重试");
+  }
 
-  for (const candidate of candidates) {
-    try {
-      const value = JSON.parse(candidate) as unknown;
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        errors.push("JSON is not an object");
-        continue;
-      }
-      const record = value as Record<string, unknown>;
-      const hasHabitField = ["summary", "preferredTopLevelFolders", "folderRules", "avoidRules", "promptHint"].some(
-        (key) => key in record
-      );
-      if (!hasHabitField) {
-        errors.push("JSON object does not contain habit profile fields");
-        continue;
-      }
-      parsed = record;
-      jsonText = candidate;
-      break;
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
+  const isRecord = (item: unknown): item is Record<string, unknown> =>
+    Boolean(item && typeof item === "object" && !Array.isArray(item));
+  if (isRecord(value)) {
+    const keys = Object.keys(value);
+    if (keys.length === 1 && ["profile", "data", "result"].includes(keys[0])) {
+      value = value[keys[0]];
     }
   }
-
-  if (!parsed) {
-    debugAI("habit profile JSON parse failed", {
-      error: errors[0] ?? "No valid habit profile JSON found",
-      errors,
-      extractedJson: jsonText,
-      rawContent: content,
-    });
-    throw new Error(errors[0] ?? "No valid habit profile JSON found");
+  if (Array.isArray(value) && value.length === 1) value = value[0];
+  if (!isRecord(value)) {
+    throw new Error("AI 返回的画像必须是单个 JSON 对象");
   }
 
-  const preferredTopLevelFolders = asStringArray(parsed.preferredTopLevelFolders).slice(0, 16);
-  const folderRules = asObjectArray(parsed.folderRules)
-    .map((item) => {
-      const value = item as Record<string, unknown>;
-      return {
-        folderPath: asStringArray(value.folderPath).slice(0, 3),
-        pattern: typeof value.pattern === "string" ? value.pattern.trim() : "",
-      };
-    })
-    .filter((rule) => rule.folderPath.length > 0 && rule.pattern)
-    .slice(0, 30);
-  const avoidRules = asStringArray(parsed.avoidRules).slice(0, 10);
+  const readStrings = (item: unknown): string[] | undefined =>
+    Array.isArray(item) && item.every((part) => typeof part === "string" && part.trim())
+      ? item.map((part: string) => part.trim())
+      : undefined;
+  const preferredTopLevelFolders = readStrings(value.preferredTopLevelFolders);
+  const avoidRules = readStrings(value.avoidRules);
+  const folderRules: FolderHabitProfile["folderRules"] = [];
+  if (!Array.isArray(value.folderRules)) {
+    throw new Error("AI 返回的画像缺少有效的文件夹规则");
+  }
+  for (const item of value.folderRules) {
+    const folderPath = isRecord(item) ? readStrings(item.folderPath) : undefined;
+    if (!folderPath?.length || folderPath.length > 3 || !isRecord(item) ||
+        typeof item.pattern !== "string" || !item.pattern.trim()) {
+      throw new Error("AI 返回的画像包含无效的文件夹路径或规则");
+    }
+    folderRules.push({ folderPath, pattern: item.pattern.trim() });
+  }
+  if (typeof value.summary !== "string" || !value.summary.trim() ||
+      typeof value.promptHint !== "string" || !value.promptHint.trim() ||
+      !preferredTopLevelFolders?.length || !folderRules.length || !avoidRules) {
+    throw new Error("AI 返回的画像字段缺失或类型不正确，请重试");
+  }
 
   return {
     folderCount: fallback.folderCount,
     bookmarkCount: fallback.bookmarkCount,
-    summary: typeof parsed.summary === "string" && parsed.summary.trim() ? parsed.summary.trim() : fallback.summary,
-    preferredTopLevelFolders: preferredTopLevelFolders.length
-      ? preferredTopLevelFolders
-      : fallback.preferredTopLevelFolders,
-    folderRules: folderRules.length ? folderRules : fallback.folderRules,
-    avoidRules: avoidRules.length ? avoidRules : fallback.avoidRules,
-    promptHint: typeof parsed.promptHint === "string" && parsed.promptHint.trim()
-      ? parsed.promptHint.trim()
-      : fallback.promptHint,
+    summary: value.summary.trim(),
+    preferredTopLevelFolders: preferredTopLevelFolders.slice(0, 16),
+    folderRules: folderRules.slice(0, 30),
+    avoidRules: avoidRules.slice(0, 10),
+    promptHint: value.promptHint.trim(),
   };
 }
 
@@ -951,13 +941,15 @@ async function chatCompletion(
 
   try {
     const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ finish_reason?: string; message?: { content?: string; refusal?: string | null } }>;
       usage?: unknown;
     };
     const content = data.choices?.[0]?.message?.content ?? "";
     debugAI("raw response content", content);
     return {
       content,
+      finishReason: data.choices?.[0]?.finish_reason,
+      refusal: data.choices?.[0]?.message?.refusal,
       tokenUsage: normalizeTokenUsage(data.usage),
     };
   } catch (error) {
@@ -1215,7 +1207,7 @@ export async function analyzeFolderHabitsWithAI(
       {
         role: "system",
         content:
-          "你是书签分类习惯分析助手。必须输出合法 JSON 对象，不要 Markdown，不要解释。请根据用户现有文件夹路径和样例，总结用户的分类命名、粒度和偏好。folderRules[].pattern 必须先说明该文件夹主要放置什么主题、什么类型的网页，例如“主要放置与前端框架相关的官方文档、API 参考和工程实践资料”。然后可补充少量参考。不要只罗列网站示例，不要单独输出“常见来源”或“主要来源”，不要为每条规则重复追加“后续归入这里的内容应与该主题、来源类型或标题特征明显一致”这类通用约束。需要提供参考时，使用“参考：标题（链接）、标题（链接）”格式，链接使用样例中的 url 或 domain，最多 3 个。promptHint 应提醒后续分类模型参考这些文件夹规则体现的主题、命名和粒度。输出格式为 {\"summary\":\"一句话总结\",\"preferredTopLevelFolders\":[\"一级分类\"],\"folderRules\":[{\"folderPath\":[\"一级\",\"二级\"],\"pattern\":\"主要放置什么主题和类型的网页，可附少量参考\"}],\"avoidRules\":[\"应避免的过度分类行为\"],\"promptHint\":\"给后续书签分类模型使用的一段简短指令\"}。",
+          "你是书签分类习惯分析助手。必须输出合法 JSON 对象，不要 Markdown，不要解释。请根据用户现有文件夹路径和样例，总结用户的分类命名、粒度和偏好。优先总结书签较多的目录，folderRules 最多 12 条，folderPath 保留 1~3 层，pattern 每条不超过 80 字；summary 不超过 100 字，preferredTopLevelFolders 最多 12 个，avoidRules 最多 5 条且每条不超过 40 字，promptHint 不超过 150 字。所有字段均须提供，avoidRules 可以为空数组。folderRules[].pattern 必须先说明该文件夹主要放置什么主题、什么类型的网页，例如“主要放置与前端框架相关的官方文档、API 参考和工程实践资料”。不要只罗列网站示例，不要单独输出“常见来源”或“主要来源”，不要为每条规则重复追加通用约束。参考为可选内容，仅在字数允许时附 1 个样例标题，无需复述链接。promptHint 应提醒后续分类模型参考这些文件夹规则体现的主题、命名和粒度。输出格式为 {\"summary\":\"一句话总结\",\"preferredTopLevelFolders\":[\"一级分类\"],\"folderRules\":[{\"folderPath\":[\"一级\",\"二级\"],\"pattern\":\"主要放置什么主题和类型的网页\"}],\"avoidRules\":[\"应避免的过度分类行为\"],\"promptHint\":\"给后续书签分类模型使用的一段简短指令\"}。",
       },
       {
         role: "user",
@@ -1227,5 +1219,11 @@ export async function analyzeFolderHabitsWithAI(
     HABIT_ANALYSIS_TIMEOUT_MS
   );
 
+  if (completion.finishReason === "length") {
+    throw new Error("AI 画像输出达到长度限制而未完成，请适当提高输出上限后重试");
+  }
+  if (completion.finishReason === "content_filter" || completion.refusal) {
+    throw new Error("AI 服务未提供画像内容，请检查服务限制后重试");
+  }
   return parseHabitProfile(completion.content, fallback);
 }

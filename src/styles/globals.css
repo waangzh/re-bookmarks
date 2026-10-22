@@ -5312,6 +5312,11 @@ select.extension-control option,
   border: 1px solid #fecaca;
 }
 
+.extension-status--warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
 .extension-folder-stat {
   justify-content: flex-start;
   color: #2563eb;
@@ -7210,9 +7215,54 @@ select.extension-control option,
 }
 
 .habit-info-callout p {
+  margin: 0;
   color: #51627f;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.65;
+}
+
+.habit-info-callout p + p {
+  margin-top: 6px;
+}
+
+.habit-help-details {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.habit-help-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.habit-help-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.habit-help-details summary:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+.habit-help-details[open] summary svg {
+  transform: rotate(90deg);
+}
+
+.habit-help-details ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #64748b;
+}
+
+.habit-help-details li + li {
+  margin-top: 4px;
 }
 
 .extension-page--habits .habit-card {
@@ -7347,6 +7397,12 @@ select.extension-control option,
     #ffffff;
 }
 
+.habit-section-heading.habit-learning-heading {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .habit-learning-badge {
   border: 1px solid #b9d3ff;
   border-radius: 999px;
@@ -7358,32 +7414,65 @@ select.extension-control option,
   white-space: nowrap;
 }
 
-.habit-learning-signal-grid {
+.habit-learning-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 16px;
+  gap: 0;
+  margin: 16px 0 0;
 }
 
-.habit-learning-signal-grid > div {
-  display: grid;
-  gap: 3px;
+.habit-learning-summary > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   min-width: 0;
-  border: 1px solid #e4eaf3;
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.86);
-  padding: 11px 12px;
+  border-top: 1px solid #edf1f7;
+  padding: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.habit-learning-signal-grid strong {
+.habit-learning-summary > div:last-child {
+  padding-bottom: 0;
+}
+
+.habit-learning-summary dt {
+  flex: 0 0 auto;
+  color: #64748b;
+}
+
+.habit-learning-summary dd {
+  min-width: 0;
+  margin: 0;
   overflow-wrap: anywhere;
   color: #172033;
-  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
 }
 
-.habit-learning-signal-grid span {
+.habit-learning-summary .habit-learning-summary__pending {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.habit-learning-empty {
+  margin-top: 16px;
+  border-top: 1px solid #edf1f7;
+  padding-top: 16px;
+}
+
+.habit-learning-empty strong {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.habit-learning-empty p {
+  margin: 6px 0 0;
   color: #64748b;
   font-size: 13px;
+  line-height: 1.6;
 }
 
 .habit-learned-list {
@@ -7509,16 +7598,6 @@ select.extension-control option,
 
 .habit-advanced-details .habit-prompt-textarea {
   margin-top: 14px;
-}
-
-@media (max-width: 540px) {
-  .habit-learning-signal-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .habit-learning-badge {
-    align-self: start;
-  }
 }
 
 .habit-outline-button,

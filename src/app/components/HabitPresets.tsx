@@ -30,8 +30,6 @@ import {
   saveEditedFolderHabitProfile,
 } from "../services/habits";
 
-import { FixedRules } from "./FixedRules";
-
 const emptyProfile = (): FolderHabitProfile => ({
   id: `habit-${Date.now()}`,
   createdAt: Date.now(),
@@ -165,7 +163,6 @@ function FolderPathBuilder({ value, onChange }: FolderPathBuilderProps) {
           </button>
         )}
       </div>
-      <p className="extension-field__hint">每一层单独填写；粘贴 “Tools / 开发工具” 会自动拆成两层，AI/ML 或 C/C++ 会保留为单个名称。</p>
     </div>
   );
 }
@@ -174,6 +171,7 @@ export function HabitPresets() {
   const [profile, setProfile] = useState<FolderHabitProfile | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "analyzing" | "saving" | "error">("loading");
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"success" | "warning" | "error">("success");
   const [openFolderGroups, setOpenFolderGroups] = useState<Set<string>>(() => new Set());
   const [openFolderMenu, setOpenFolderMenu] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -197,12 +195,15 @@ export function HabitPresets() {
   const handleAnalyze = async () => {
     setStatus("analyzing");
     setMessage("");
+    setMessageTone("success");
     try {
       const next = await analyzeAndSaveFolderHabits();
       setProfile(next);
       setMessage(next.analysisWarning ?? "已重新分析当前书签分类习惯");
+      setMessageTone(next.analysisWarning ? "warning" : "success");
     } catch (error) {
       setStatus("error");
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "分析失败");
       return;
     }
@@ -213,12 +214,14 @@ export function HabitPresets() {
     if (!profile) return;
     setStatus("saving");
     setMessage("");
+    setMessageTone("success");
     try {
       const next = await saveEditedFolderHabitProfile(profile);
       setProfile(next);
       setMessage("分类偏好调整已保存");
     } catch (error) {
       setStatus("error");
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "保存失败");
       return;
     }
@@ -235,6 +238,7 @@ export function HabitPresets() {
     link.download = `remarks-classification-rules-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    setMessageTone("success");
     setMessage("分类规则已导出");
   };
 
@@ -245,12 +249,14 @@ export function HabitPresets() {
 
     setStatus("saving");
     setMessage("");
+    setMessageTone("success");
     try {
       const next = await importFolderHabitProfileJson(await file.text());
       setProfile(next);
       setMessage("分类规则已导入，旧预览缓存已清理");
     } catch (error) {
       setStatus("error");
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "导入失败");
       return;
     }
@@ -264,15 +270,18 @@ export function HabitPresets() {
   const lastUpdatedAt = learning?.lastLearnedAt ?? current.createdAt;
   const lastUpdatedText = lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString() : "尚未学习";
   const depthPreference = !learning || learning.depthVotes.levelOne + learning.depthVotes.nested < 2
-    ? "继续观察"
+    ? "尚未形成"
     : learning.depthVotes.nested > learning.depthVotes.levelOne
       ? "偏好二级结构"
       : "偏好一级结构";
   const stylePreference = !learning || learning.styleVotes.topic + learning.styleVotes.purpose < 2
-    ? "继续观察"
+    ? "尚未形成"
     : learning.styleVotes.purpose > learning.styleVotes.topic
       ? "偏好用途分类"
       : "偏好主题分类";
+  const hasLearningRecords = learnedCount > 0 || Boolean(
+    learning && (learning.categoryCorrections.length || learning.domainPreferences.length || learning.rejectedFolderPaths.length)
+  );
   const folderRuleGroups = current.folderRules.reduce<Array<{ title: string; indexes: number[] }>>((groups, rule, index) => {
     const title = getFolderRuleGroupTitle(rule.folderPath);
     const existing = groups.find((group) => group.title === title);
@@ -358,31 +367,49 @@ export function HabitPresets() {
 
         <div className="extension-summary-panel habit-presets-help habit-info-callout">
           <Info className="w-4 h-4" />
-          <p>无需维护 Prompt。你修改分类或拒绝建议时，ReMarks 会在本地记录反馈并用于后续分类；“更新书签画像”才会把脱敏样例发送给已配置的 AI Provider。</p>
+          <div>
+            <p>分类调整与明确拒绝会记录在本地，供 AI 分类参考。</p>
+            <p>点击“更新书签画像”时，才会向 AI 服务发送脱敏书签样例。</p>
+            <details className="habit-help-details">
+              <summary>
+                了解偏好如何使用
+                <ChevronRight className="w-3 h-3" aria-hidden="true" />
+              </summary>
+              <ul>
+                <li>明确拒绝目录与暂不处理分别记录，忽略不会生成负反馈。</li>
+                <li>删除下方偏好后，点击“保存调整”生效。</li>
+                <li>偏好仅供 AI 参考，不保证每次分类都命中。</li>
+              </ul>
+            </details>
+          </div>
         </div>
 
         {message && (
-          <div className={`extension-status ${status === "error" ? "extension-status--error" : "extension-status--success"}`}>
+          <div className={`extension-status extension-status--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>
             <span>{message}</span>
           </div>
         )}
 
-        <FixedRules />
-        <section className="extension-section"><h2 className="extension-section__title">偏好从哪里来</h2><p>明确固定规则用于本地生成建议；多次修正形成的习惯与书签画像推断只影响 AI 提示。明确拒绝目录与暂不处理分别记录，忽略不会生成负反馈。</p><p>下方可删除软偏好，点击保存后生效；固定规则可直接撤销。人工修正并不保证下一次一定命中。</p></section>
         <section className="extension-section habit-card habit-learning-card">
-          <div className="habit-section-heading habit-section-heading--with-action">
+          <div className="habit-section-heading habit-learning-heading">
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">自动学习</h2>
-              <p>来自你实际修改和拒绝建议的行为反馈</p>
             </div>
-            <span className="habit-learning-badge">AI 参考</span>
+            <span className="habit-learning-badge">供 AI 参考</span>
           </div>
-          <div className="habit-learning-signal-grid">
-            <div><strong>{learnedCount}</strong><span>次行为反馈</span></div>
-            <div><strong>{depthPreference}</strong><span>目录层级</span></div>
-            <div><strong>{stylePreference}</strong><span>分类方式</span></div>
-          </div>
+          {hasLearningRecords ? (
+            <dl className="habit-learning-summary" aria-label="学习状态">
+              <div><dt>反馈记录</dt><dd>{learnedCount} 次</dd></div>
+              <div><dt>目录层级</dt><dd className={depthPreference === "尚未形成" ? "habit-learning-summary__pending" : undefined}>{depthPreference}</dd></div>
+              <div><dt>分类方式</dt><dd className={stylePreference === "尚未形成" ? "habit-learning-summary__pending" : undefined}>{stylePreference}</dd></div>
+            </dl>
+          ) : (
+            <div className="habit-learning-empty">
+              <strong>尚未形成分类偏好</strong>
+              <p>调整分类或明确拒绝目录建议，逐步积累你的偏好。</p>
+            </div>
+          )}
 
           {(learning?.categoryCorrections.length ?? 0) > 0 && (
             <div className="habit-learned-list">
@@ -443,8 +470,6 @@ export function HabitPresets() {
                 </div>
               ))}
             </div>
-          ) : learnedCount === 0 ? (
-            <p className="habit-empty-text">还没有行为反馈。下一次调整 AI 建议后，这里会自动出现学到的偏好。</p>
           ) : null}
 
           {(learning?.rejectedFolderPaths.length ?? 0) > 0 && (
@@ -576,6 +601,8 @@ export function HabitPresets() {
               新建父分类
             </button>
           </div>
+
+          <p className="extension-field__hint mt-3">路径每层单独填写；粘贴“Tools / 开发工具”会自动拆成两层，AI/ML 或 C/C++ 保留为单个名称。</p>
 
           <div className="habit-rule-list">
             {folderRuleGroups.map((group) => (
