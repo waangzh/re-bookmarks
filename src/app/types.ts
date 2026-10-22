@@ -497,3 +497,27 @@ export type FrequentBookmark = {
   suggestedFolder?: string;
   confidence?: number;
 };
+
+export type PreviewRiskLevel = "auto" | "framework" | "batch" | "review" | "keep";
+export type PreviewPlanDecision = "move" | "keep";
+export type PreviewFrameworkDecision = "approve" | "keep";
+
+export type PreviewRiskItem = {
+  plan: MovePlan;
+  level: PreviewRiskLevel;
+  reasons: string[];
+  sourcePath: string[];
+};
+
+export type PreviewBatchGroup = {
+  key: string;
+  targetPath: string[];
+  items: PreviewRiskItem[];
+};
+
+export type PreviewFrameworkGroup = {
+  key: string;
+  topLevel: string;
+  targetPathCount: number;
+  items: PreviewRiskItem[];
+};

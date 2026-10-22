@@ -22,13 +22,14 @@ test("摘要按条目互斥统计，目录前缀去重，保持原位不进入�
   assert.deepEqual(result.newFolders, [["开发", "工具"]]);
 });
 test("风险分组不会因模型信号较强而整组批准疑似重复或跨一级目录", async () => {
-  const { buildPreviewRiskAnalysis } = await loadService("src/app/components/Preview.tsx");
+  const { buildPreviewRiskAnalysis } = await loadService("src/app/services/previewReview.ts");
   const bookmarks = [source, { id: "b", path: ["开发", "工具"] }, { id: "c", path: ["开发", "工具"] }];
   const duplicate = { ...plan, confidence: 0.99, source: "ai", reason: "可能重复" };
   const cross = { ...duplicate, bookmarkId: "c", toFolderPath: ["生活"], reason: "分类" };
   const result = buildPreviewRiskAnalysis([duplicate, cross], bookmarks, null);
   assert.equal(result.auto.length, 0);
-  assert.equal(result.review.length, 2);
+  assert.equal(result.keep.length, 1);
+  assert.equal(result.review.length, 1);
 });
 
 test("损坏或旧版审核记录不造成崩溃也不恢复非法批准", () => {

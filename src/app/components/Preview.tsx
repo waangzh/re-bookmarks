@@ -11,7 +11,6 @@ import {
 import { Link, useNavigate } from "react-router";
 import {
   Folder,
-  FolderPlus,
   ExternalLink,
   Check,
   AlertCircle,
@@ -20,15 +19,13 @@ import {
   Cpu,
   Globe2,
   RefreshCw,
-  ShieldAlert,
-  ShieldCheck,
-  Layers3,
-  PauseCircle,
   Zap,
 } from "lucide-react";
 import type {
   BookmarkNode,
   FixedDomainRule,
+  PreviewPlanDecision,
+  PreviewFrameworkDecision,
   FolderHabitProfile,
   MovePlan,
   OrganizeMode,
@@ -52,7 +49,10 @@ import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } f
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
 import { getFixedDomainRules } from "../services/fixedRules";
 import { getPreferenceConflict, getPreferenceFingerprint } from "../services/preferenceSafety";
-import { FolderCascadeSelect } from "./FolderCascadeSelect";
+import { ReviewWorkbench } from "./ReviewWorkbench";
+import { buildPreviewRiskAnalysis, derivePreviewReview, groupRiskItemsByTarget, pathKey } from "../services/previewReview";
+import "../../styles/preview-review.css";
+export { buildPreviewRiskAnalysis } from "../services/previewReview";
 
 type PreviewPhase = "selection" | "preview" | "submitting";
 
@@ -84,73 +84,11 @@ type LongPressSession = {
   timer: number;
 };
 
-type PreviewRiskLevel = "auto" | "framework" | "batch" | "review" | "keep";
-type PreviewPlanDecision = "move" | "keep";
-type PreviewFrameworkDecision = "approve" | "keep";
-
-type PreviewRiskItem = {
-  plan: MovePlan;
-  level: PreviewRiskLevel;
-  reasons: string[];
-  sourcePath: string[];
-};
-
-type PreviewBatchGroup = {
-  key: string;
-  targetPath: string[];
-  items: PreviewRiskItem[];
-};
-
-type PreviewFrameworkGroup = {
-  key: string;
-  topLevel: string;
-  targetPathCount: number;
-  items: PreviewRiskItem[];
-};
-
 const DEEP_ORGANIZE_BOOKMARK_LIMIT = 100;
 const QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT = 300;
 const STALLED_PROGRESS_WARNING_MS = 2 * 60 * 1000;
 const STRONG_MODEL_SIGNAL = 0.9;
 const WEAK_MODEL_SIGNAL = 0.7;
-
-function pathKey(path: string[]) {
-  return path.map((part) => part.trim()).filter(Boolean).join(" / ");
-}
-
-function isSamePath(left: string[], right: string[]) {
-  return pathKey(left) === pathKey(right);
-}
-
-function groupRiskItemsByTarget(items: PreviewRiskItem[]) {
-  const groupsByPath = new Map<string, PreviewBatchGroup>();
-  for (const item of items) {
-    const key = pathKey(item.plan.toFolderPath) || "待整理";
-    const group = groupsByPath.get(key) ?? {
-      key,
-      targetPath: item.plan.toFolderPath,
-      items: [],
-    };
-    group.items.push(item);
-    groupsByPath.set(key, group);
-  }
-
-  return [...groupsByPath.values()]
-    .map((group) => ({
-      ...group,
-      items: group.items.sort((left, right) =>
-        right.plan.confidence - left.plan.confidence ||
-        left.plan.bookmarkTitle.localeCompare(right.plan.bookmarkTitle, "zh-CN")
-      ),
-    }))
-    .sort((left, right) => right.items.length - left.items.length || left.key.localeCompare(right.key, "zh-CN"));
-}
-
-function getRepresentativeItems(items: PreviewRiskItem[]) {
-  if (items.length <= 3) return items;
-  const indexes = [0, Math.floor((items.length - 1) / 2), items.length - 1];
-  return indexes.map((index) => items[index]);
-}
 
 function ConfidenceSignal({ plan }: { plan: MovePlan }) {
   if (plan.source === "manual") {
@@ -177,154 +115,6 @@ function ConfidenceSignal({ plan }: { plan: MovePlan }) {
       {level.label}
     </span>
   );
-}
-
-export function buildPreviewRiskAnalysis(
-  plans: MovePlan[],
-  bookmarks: BookmarkNode[],
-  habitProfile: FolderHabitProfile | null,
-  fixedRules: FixedDomainRule[] = [],
-  preferenceProfile: FolderHabitProfile | null = habitProfile
-) {
-  const bookmarkById = new Map(bookmarks.map((bookmark) => [bookmark.id, bookmark]));
-  const existingPathCounts = new Map<string, number>();
-  const existingTopLevels = new Set<string>();
-
-  for (const bookmark of bookmarks) {
-    bookmark.path.forEach((_, index) => {
-      const key = pathKey(bookmark.path.slice(0, index + 1));
-      if (key) existingPathCounts.set(key, (existingPathCounts.get(key) ?? 0) + 1);
-    });
-    if (bookmark.path[0]) existingTopLevels.add(bookmark.path[0]);
-  }
-
-  const habitPaths = new Set(
-    (habitProfile?.folderRules ?? []).map((rule) => pathKey(rule.folderPath)).filter(Boolean)
-  );
-  const preferredTopLevels = new Set(habitProfile?.preferredTopLevelFolders ?? []);
-  const auto: PreviewRiskItem[] = [];
-  const review: PreviewRiskItem[] = [];
-  const keep: PreviewRiskItem[] = [];
-  const frameworkCandidates: PreviewRiskItem[] = [];
-  const batchCandidates: PreviewRiskItem[] = [];
-
-  for (const plan of plans) {
-    const sourcePath = bookmarkById.get(plan.bookmarkId)?.path ?? [];
-    const targetPath = plan.toFolderPath;
-    const targetKey = pathKey(targetPath);
-    const targetExists = existingPathCounts.has(targetKey);
-    const habitMatches = (existingPathCounts.get(targetKey) ?? 0) >= 2 ||
-      habitPaths.has(targetKey) ||
-      Boolean(targetPath[0] && preferredTopLevels.has(targetPath[0]));
-    const keepsTopLevel = Boolean(sourcePath[0] && targetPath[0] && sourcePath[0] === targetPath[0]);
-    const crossesTopLevel = Boolean(sourcePath[0] && targetPath[0] && sourcePath[0] !== targetPath[0]);
-    const createsTopLevel = Boolean(targetPath[0] && !existingTopLevels.has(targetPath[0]));
-    const possibleDuplicate = /重复|duplicate/i.test(plan.reason ?? "");
-    const preferenceConflict = getPreferenceConflict(plan, preferenceProfile, fixedRules);
-    const keepsOriginalPosition = Boolean(
-      plan.keepInPlace ||
-      (sourcePath.length > 0 && isSamePath(sourcePath, targetPath))
-    );
-
-    if (keepsOriginalPosition) {
-      keep.push({
-        plan,
-        level: "keep",
-        sourcePath,
-        reasons: [
-          plan.keepInPlace ? plan.reason || "当前计划保持原位" : "目标与原目录一致",
-        ],
-      });
-      continue;
-    }
-
-    if (
-      plan.source === "manual" ||
-      (
-        plan.confidence >= STRONG_MODEL_SIGNAL &&
-        targetExists &&
-        !possibleDuplicate &&
-        !preferenceConflict &&
-        habitMatches &&
-        keepsTopLevel
-      )
-    ) {
-      auto.push({
-        plan,
-        level: "auto",
-        sourcePath,
-        reasons: [
-          plan.source === "manual"
-            ? "已由你手动调整"
-            : "模型信号较强、复用现有目录且符合已有分类习惯",
-        ],
-      });
-      continue;
-    }
-
-    const reviewReasons = [
-      preferenceConflict ?? "",
-      crossesTopLevel ? "将跨一级目录移动" : "",
-      possibleDuplicate ? "检测到可能重复；本次不会删除" : "",
-      plan.confidence < WEAK_MODEL_SIGNAL ? "模型提供的分类依据较弱" : "",
-    ].filter(Boolean);
-
-    if (reviewReasons.length > 0) {
-      if (createsTopLevel) reviewReasons.unshift("目标属于拟新增一级文件夹");
-      const reviewItem: PreviewRiskItem = { plan, level: "review", sourcePath, reasons: reviewReasons };
-      review.push(reviewItem);
-      if (createsTopLevel) frameworkCandidates.push(reviewItem);
-      continue;
-    }
-
-    if (createsTopLevel) {
-      frameworkCandidates.push({
-        plan,
-        level: "framework",
-        sourcePath,
-        reasons: [`分配到拟新增一级目录“${targetPath[0]}”`],
-      });
-      continue;
-    }
-
-    batchCandidates.push({
-      plan,
-      level: "batch",
-      sourcePath,
-      reasons: [targetExists ? "同一主题，目标目录已存在" : "同一主题，建议批量确认"],
-    });
-  }
-
-  const sortByConfidence = (left: PreviewRiskItem, right: PreviewRiskItem) =>
-    right.plan.confidence - left.plan.confidence ||
-    left.plan.bookmarkTitle.localeCompare(right.plan.bookmarkTitle, "zh-CN");
-
-  auto.sort(sortByConfidence);
-  review.sort(sortByConfidence);
-  keep.sort(sortByConfidence);
-  frameworkCandidates.sort(sortByConfidence);
-  const frameworkGroupsByTopLevel = new Map<string, PreviewFrameworkGroup>();
-  for (const item of frameworkCandidates) {
-    const topLevel = item.plan.toFolderPath[0];
-    const key = `framework:${topLevel}`;
-    const group = frameworkGroupsByTopLevel.get(key) ?? {
-      key,
-      topLevel,
-      targetPathCount: 0,
-      items: [],
-    };
-    group.items.push(item);
-    frameworkGroupsByTopLevel.set(key, group);
-  }
-  const frameworkGroups = [...frameworkGroupsByTopLevel.values()]
-    .map((group) => ({
-      ...group,
-      targetPathCount: new Set(group.items.map((item) => pathKey(item.plan.toFolderPath))).size,
-    }))
-    .sort((left, right) => right.items.length - left.items.length || left.topLevel.localeCompare(right.topLevel, "zh-CN"));
-  const batchGroups = groupRiskItemsByTarget(batchCandidates);
-
-  return { auto, frameworkGroups, batchGroups, review, keep };
 }
 
 function createFolderNode(title: string, path: string[]): BookmarkFolderNode {
@@ -445,10 +235,6 @@ function collectPreviewFolderLookup(root: PreviewFolderNode) {
   return lookup;
 }
 
-function formatTokenCount(value: number) {
-  return new Intl.NumberFormat("zh-CN").format(value);
-}
-
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "不足 1 分钟";
   const minutes = Math.ceil(ms / 60000);
@@ -522,8 +308,8 @@ export function Preview() {
   const [plans, setPlans] = useState<MovePlan[]>([]);
   const [planDecisions, setPlanDecisions] = useState<Record<string, PreviewPlanDecision>>({});
   const [frameworkDecisions, setFrameworkDecisions] = useState<Record<string, PreviewFrameworkDecision>>({});
+  const [treeQuery, setTreeQuery] = useState("");
   const [reviewLoaded, setReviewLoaded] = useState(false);
-  const [riskGroupExpansionOverrides, setRiskGroupExpansionOverrides] = useState<Record<string, boolean>>({});
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | undefined>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [draggedPlan, setDraggedPlan] = useState<MovePlan | null>(null);
@@ -971,7 +757,6 @@ export function Preview() {
     setReviewLoaded(false);
     await setStorageValue(STORAGE_KEYS.previewReview, null);
     setExpandedPreviewFolders(new Set());
-    setRiskGroupExpansionOverrides({});
     setPlanDecisions({});
     setFrameworkDecisions({});
     setSelectedPlan(null);
@@ -997,7 +782,6 @@ export function Preview() {
     }
   };
 
-  const previewTree = useMemo(() => buildMovePlanFolderTree(plans), [plans]);
   useEffect(() => {
     if (phase !== "preview" || loading || reviewLoaded || !plans.length) return;
     let alive = true;
@@ -1008,12 +792,16 @@ export function Preview() {
         const valid = plans.filter((plan) => saved.signatures[plan.bookmarkId] === JSON.stringify(plan) &&
           !(plan.preferenceFingerprint === undefined && getPreferenceConflict(plan, preferenceProfile, fixedRules)));
         setPlanDecisions((previous) => ({ ...previous, ...Object.fromEntries(valid.filter((plan) => saved.plans[plan.bookmarkId]).map((plan) => [plan.bookmarkId, saved.plans[plan.bookmarkId]])) }));
-        if (valid.length === plans.length) setFrameworkDecisions(saved.frameworks);
+        const validIds = new Set(valid.map((plan) => plan.bookmarkId));
+        const groups = buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile, fixedRules, preferenceProfile, existingFolders).frameworkGroups;
+        setFrameworkDecisions(Object.fromEntries(groups
+          .filter((group) => saved.frameworks[group.key] && group.items.every((item) => validIds.has(item.plan.bookmarkId)))
+          .map((group) => [group.key, saved.frameworks[group.key]])));
       }
       setReviewLoaded(true);
     });
     return () => { alive = false; };
-  }, [phase, loading, plans, reviewLoaded, folderHabitProfile, preferenceProfile, fixedRules]);
+  }, [phase, loading, plans, reviewLoaded, allBookmarks, existingFolders, folderHabitProfile, preferenceProfile, fixedRules]);
   useEffect(() => {
     if (phase !== "preview" || loading || !plans.length) return;
     setPlans((previous) => {
@@ -1029,67 +817,28 @@ export function Preview() {
   }, [phase, loading, allBookmarks, existingFolders, settings, plans, folderHabitProfile, preferenceProfile, fixedRules]);
   useEffect(() => {
     if (!reviewLoaded || phase !== "preview" || loading || savingPreviewDrop) return;
-    const timer = window.setTimeout(() => {
-      void setStorageValue(STORAGE_KEYS.previewReview, { signatures: Object.fromEntries(plans.map((plan) => [plan.bookmarkId, JSON.stringify(plan)])), plans: planDecisions, frameworks: frameworkDecisions })
-        .catch(() => setError("审核决定保存失败，关闭后可能需要重新审核"));
-    }, 200);
-    return () => window.clearTimeout(timer);
+    void setStorageValue(STORAGE_KEYS.previewReview, { signatures: Object.fromEntries(plans.map((plan) => [plan.bookmarkId, JSON.stringify(plan)])), plans: planDecisions, frameworks: frameworkDecisions })
+      .catch(() => setError("审核决定保存失败，关闭后可能需要重新审核"));
   }, [plans, planDecisions, frameworkDecisions, phase, loading, reviewLoaded, savingPreviewDrop]);
+  const riskAnalysis = useMemo(
+    () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile, fixedRules, preferenceProfile, existingFolders),
+    [plans, allBookmarks, folderHabitProfile, fixedRules, preferenceProfile, existingFolders]
+  );
+  const review = useMemo(() => derivePreviewReview(riskAnalysis, planDecisions, frameworkDecisions), [riskAnalysis, planDecisions, frameworkDecisions]);
+  const approvedPlans = review.approvedPlans;
+  const assignmentGroups = groupRiskItemsByTarget([
+    ...riskAnalysis.batchGroups.flatMap((group) => group.items),
+    ...riskAnalysis.frameworkGroups.filter((group) => frameworkDecisions[group.key] === "approve")
+      .flatMap((group) => group.items.filter((item) => item.level === "framework")),
+  ]);
+  const pendingDecisionCount = review.pending.length + review.pendingFrameworks.length;
+  const summary = getPlanSummary(review.items.map((item) => item.plan), allBookmarks, existingFolders);
+  const executionSummary = getPlanSummary(approvedPlans, allBookmarks, existingFolders);
+  const previewTree = useMemo(() => buildMovePlanFolderTree(approvedPlans.filter((plan) =>
+    [plan.bookmarkTitle, plan.bookmarkUrl, pathKey(plan.toFolderPath)].join(" ").toLocaleLowerCase().includes(treeQuery.trim().toLocaleLowerCase())
+  )), [approvedPlans, treeQuery]);
   const previewFolderCount = useMemo(() => countPreviewFolders(previewTree), [previewTree]);
   const previewFolderLookup = useMemo(() => collectPreviewFolderLookup(previewTree), [previewTree]);
-  const riskAnalysis = useMemo(
-    () => buildPreviewRiskAnalysis(plans, allBookmarks, folderHabitProfile, fixedRules, preferenceProfile),
-    [plans, allBookmarks, folderHabitProfile, fixedRules]
-  );
-  const approvedFrameworkItems = riskAnalysis.frameworkGroups.flatMap((group) =>
-    frameworkDecisions[group.key] === "approve"
-      ? group.items.filter((item) => item.level === "framework")
-      : []
-  );
-  const assignmentGroups = useMemo(
-    () => groupRiskItemsByTarget([
-      ...riskAnalysis.batchGroups.flatMap((group) => group.items),
-      ...approvedFrameworkItems,
-    ]),
-    [approvedFrameworkItems, riskAnalysis.batchGroups]
-  );
-  const assignmentRiskCount = assignmentGroups.reduce((total, group) => total + group.items.length, 0);
-  const actionableRiskItems = useMemo(
-    () => [
-      ...riskAnalysis.auto,
-      ...riskAnalysis.frameworkGroups.flatMap((group) => group.items.filter((item) => item.level === "framework")),
-      ...riskAnalysis.batchGroups.flatMap((group) => group.items),
-      ...riskAnalysis.review,
-      ...riskAnalysis.keep,
-    ],
-    [riskAnalysis]
-  );
-  const frameworkDecisionByBookmarkId = useMemo(() => {
-    const decisions = new Map<string, PreviewFrameworkDecision>();
-    for (const group of riskAnalysis.frameworkGroups) {
-      const decision = frameworkDecisions[group.key];
-      if (!decision) continue;
-      for (const item of group.items) decisions.set(item.plan.bookmarkId, decision);
-    }
-    return decisions;
-  }, [frameworkDecisions, riskAnalysis.frameworkGroups]);
-  const approvedPlans = useMemo(
-    () => plans.filter((plan) => !plan.keepInPlace && planDecisions[plan.bookmarkId] === "move"),
-    [plans, planDecisions]
-  );
-  const pendingFrameworkCount = riskAnalysis.frameworkGroups.filter(
-    (group) => !frameworkDecisions[group.key]
-  ).length;
-  const pendingAssignmentCount = assignmentGroups.reduce(
-    (total, group) => total + group.items.filter((item) => !planDecisions[item.plan.bookmarkId]).length,
-    0
-  );
-  const pendingReviewCount = riskAnalysis.review.filter(
-    (item) => !planDecisions[item.plan.bookmarkId]
-  ).length;
-  const pendingDecisionCount = pendingFrameworkCount + pendingAssignmentCount + pendingReviewCount;
-  const summary = getPlanSummary(plans, allBookmarks, existingFolders);
-  const executionSummary = getPlanSummary(approvedPlans, allBookmarks, existingFolders);
   const progressPercent = getProgressPercent(taskProgress);
   const progressPhaseLabel = getProgressPhaseLabel(taskProgress?.phase);
   const progressBatchText = taskProgress?.totalBatches
@@ -1102,25 +851,6 @@ export function Preview() {
   const isTaskProgressStalled = Boolean(
     loading && taskProgress && now - taskProgress.updatedAt > STALLED_PROGRESS_WARNING_MS
   );
-
-  useEffect(() => {
-    setPlanDecisions((previous) => {
-      const next: Record<string, PreviewPlanDecision> = {};
-      for (const item of actionableRiskItems) {
-        const frameworkDecision = frameworkDecisionByBookmarkId.get(item.plan.bookmarkId);
-        if (item.level === "keep" || frameworkDecision === "keep") {
-          next[item.plan.bookmarkId] = "keep";
-        } else if (item.plan.preferenceFingerprint === undefined && getPreferenceConflict(item.plan, preferenceProfile, fixedRules)) {
-          // 旧快照没有记录偏好上下文，冲突项必须在当前页面重新决定。
-        } else if (previous[item.plan.bookmarkId]) {
-          next[item.plan.bookmarkId] = previous[item.plan.bookmarkId];
-        } else if (item.level === "auto") {
-          next[item.plan.bookmarkId] = "move";
-        }
-      }
-      return next;
-    });
-  }, [actionableRiskItems, frameworkDecisionByBookmarkId, folderHabitProfile, preferenceProfile, fixedRules]);
 
   useEffect(() => {
     previewFolderLookupRef.current = previewFolderLookup;
@@ -1140,7 +870,7 @@ export function Preview() {
   };
 
   const handlePreviewRowPointerDown = (
-    event: ReactPointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLDivElement>,
     plan: MovePlan
   ) => {
     if (loading || event.button !== 0) return;
@@ -1169,7 +899,7 @@ export function Preview() {
     };
   };
 
-  const handlePreviewRowPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handlePreviewRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = longPressSessionRef.current;
     if (!session) return;
 
@@ -1221,10 +951,11 @@ export function Preview() {
     );
 
     setPlans(nextPlans);
-    setPlanDecisions((previous) => ({
-      ...previous,
-      [sourcePlan.bookmarkId]: "move",
-    }));
+    setPlanDecisions((previous) => {
+      const next = { ...previous };
+      delete next[sourcePlan.bookmarkId];
+      return next;
+    });
     setSavingPreviewDrop(true);
     setExpandedPreviewFolders((prev) => {
       const next = new Set(prev);
@@ -1260,7 +991,7 @@ export function Preview() {
         }).catch(() => null),
         appendFolderImpression(sourcePlan.bookmarkUrl, targetPath).catch(() => undefined),
       ]);
-      setCacheMessage(learningNotice ?? "已更新整理方案，确认整理前不会移动书签");
+      setCacheMessage(learningNotice ?? "目标已更新，请重新确认该条建议；书签尚未移动");
       return true;
     } catch (err) {
       setPlans(previousPlans);
@@ -1273,7 +1004,7 @@ export function Preview() {
     }
   };
 
-  const handlePreviewRowPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handlePreviewRowPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = longPressSessionRef.current;
     if (!session) return;
 
@@ -1295,6 +1026,7 @@ export function Preview() {
   };
 
   const handleConfirm = async () => {
+    if (!reviewLoaded || savingPreviewDrop || phase === "submitting") return;
     if (pendingDecisionCount > 0) {
       setError(`还有 ${pendingDecisionCount} 个审核决定需要完成`);
       return;
@@ -1305,7 +1037,7 @@ export function Preview() {
     }
     setPhase("submitting");
     try {
-      await executeMovePlans(plans.map((plan) => ({ ...plan, keepInPlace: planDecisions[plan.bookmarkId] !== "move",
+      await executeMovePlans(review.items.map(({ plan }) => ({ ...plan, keepInPlace: review.effective[plan.bookmarkId] !== "move",
         preferenceFingerprint: plan.preferenceFingerprint ?? getPreferenceFingerprint(plan, preferenceProfile, fixedRules) })), tokenUsage);
       await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
       await loadAll();
@@ -1471,13 +1203,14 @@ export function Preview() {
   };
 
   const renderPreviewPlanRow = (plan: MovePlan, depth: number) => (
-    <button
+    <div role="button" tabIndex={0}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setEditingPlan(plan); setFolderDraft(pathKey(plan.toFolderPath)); } }}
       key={plan.bookmarkId}
       className={`preview-tree-row preview-tree-row--bookmark ${
         selectedPlan === plan.bookmarkId ? "is-selected" : ""
       } ${draggedPlan?.bookmarkId === plan.bookmarkId ? "is-dragging" : ""}`}
       style={{ "--tree-depth": depth } as CSSProperties}
-      aria-label={`长按并拖动 ${plan.bookmarkTitle} 到目标文件夹`}
+      aria-label={`修改 ${plan.bookmarkTitle} 的目标目录，也可长按拖动`}
       onPointerDown={(event) => handlePreviewRowPointerDown(event, plan)}
       onPointerMove={handlePreviewRowPointerMove}
       onPointerUp={handlePreviewRowPointerUp}
@@ -1485,6 +1218,7 @@ export function Preview() {
       onClick={() => {
         if (suppressNextPreviewClickRef.current) return;
         setSelectedPlan(plan.bookmarkId);
+        setEditingPlan(plan); setFolderDraft(pathKey(plan.toFolderPath));
       }}
     >
       <span className="preview-tree-row__expand" />
@@ -1514,7 +1248,7 @@ export function Preview() {
         )}
       </span>
       <ConfidenceSignal plan={plan} />
-    </button>
+    </div>
   );
 
   const setPlanDecision = (bookmarkIds: string[], decision: PreviewPlanDecision) => {
@@ -1529,7 +1263,7 @@ export function Preview() {
   };
 
   const setFrameworkDecision = (
-    group: PreviewFrameworkGroup,
+    group: (typeof riskAnalysis.frameworkGroups)[number],
     decision: PreviewFrameworkDecision
   ) => {
     setFrameworkDecisions((previous) => ({ ...previous, [group.key]: decision }));
@@ -1542,186 +1276,6 @@ export function Preview() {
       return next;
     });
     setError("");
-  };
-
-  const isDefaultRiskGroupExpanded = (key: string) => {
-    if (key === "__framework__") return riskAnalysis.frameworkGroups.length > 0;
-    if (key === "__batch__") return assignmentRiskCount > 0;
-    if (key === "__review__") return riskAnalysis.review.length > 0;
-    return false;
-  };
-
-  const isRiskGroupExpanded = (key: string) =>
-    riskGroupExpansionOverrides[key] ?? isDefaultRiskGroupExpanded(key);
-
-  const toggleRiskGroup = (key: string) => {
-    setRiskGroupExpansionOverrides((previous) => ({
-      ...previous,
-      [key]: !(previous[key] ?? isDefaultRiskGroupExpanded(key)),
-    }));
-  };
-
-  const renderRiskPlanItem = (
-    item: PreviewRiskItem,
-    options: { showDecision?: boolean } = {}
-  ) => {
-    const { plan, sourcePath, reasons } = item;
-    const decision = planDecisions[plan.bookmarkId];
-
-    return (
-      <div
-        key={plan.bookmarkId}
-        className={`preview-risk-item${decision ? ` is-${decision}` : ""}`}
-      >
-        <BookmarkFavicon
-          title={plan.bookmarkTitle}
-          url={plan.bookmarkUrl}
-          className="preview-risk-item__favicon"
-        />
-        <div className="preview-risk-item__body">
-          <div className="preview-risk-item__title-line">
-            <strong title={plan.bookmarkTitle}>{plan.bookmarkTitle}</strong>
-            <ConfidenceSignal plan={plan} />
-          </div>
-          <div className="preview-risk-item__route">
-            <span title={sourcePath.join(" / ") || "当前根目录"}>
-              {sourcePath.join(" / ") || "当前根目录"}
-            </span>
-            <ChevronRight aria-hidden="true" />
-            <span title={plan.toFolderPath.join(" / ")}>
-              {plan.toFolderPath.join(" / ") || "保持原位"}
-            </span>
-          </div>
-          {options.showDecision && existingFolders.length > 0 && (
-            <div className="preview-inline-folder-edit">
-              <span>修改目录</span>
-              <FolderCascadeSelect
-                disabled={savingPreviewDrop}
-                aria-label={`${plan.bookmarkTitle} 的目标目录`}
-                value={plan.toFolderPath}
-                folders={existingFolders}
-                onChange={(next) => {
-                  const target = existingFolders.find((folder) => pathKey(folder.path) === pathKey(next));
-                  if (!target) return;
-                  void applyPreviewDrop(plan, { path: target.path, key: target.path.join("/") } as PreviewFolderNode);
-                }}
-              />
-            </div>
-          )}
-          <p>{reasons.join("；")}</p>
-          <button type="button" className="extension-text-button" disabled={savingPreviewDrop} onClick={() => { setEditingPlan(plan); setFolderDraft(plan.toFolderPath.join(" / ")); }}>搜索或输入目录</button>
-        </div>
-        {options.showDecision && (
-          <div className="preview-risk-item__actions" aria-label={`${plan.bookmarkTitle} 的处理方式`}>
-            <button
-              type="button"
-              className={decision === "move" ? "is-active" : ""}
-              onClick={() => setPlanDecision([plan.bookmarkId], "move")}
-            >
-              移动
-            </button>
-            <button
-              type="button"
-              className={decision === "keep" ? "is-active" : ""}
-              onClick={() => setPlanDecision([plan.bookmarkId], "keep")}
-            >
-              保留
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderFrameworkGroup = (group: PreviewFrameworkGroup) => {
-    const decision = frameworkDecisions[group.key];
-    const targetPaths = [...new Set(group.items.map((item) => pathKey(item.plan.toFolderPath)))];
-
-    return (
-      <div key={group.key} className={`preview-framework-group${decision ? ` is-${decision}` : ""}`}>
-        <div className="preview-framework-group__summary">
-          <div className="preview-framework-group__title">
-            <FolderPlus aria-hidden="true" />
-            <div>
-              <strong>{group.topLevel}</strong>
-              <span>{group.items.length} 个书签 / {group.targetPathCount} 个目标目录</span>
-            </div>
-          </div>
-          <span className={`preview-batch-group__status${decision ? " is-decided" : ""}`}>
-            {decision === "approve" ? "框架已采用" : decision === "keep" ? "不新建" : "待确认"}
-          </span>
-        </div>
-        <p className="preview-framework-group__paths" title={targetPaths.join("；")}>
-          包含：{targetPaths.slice(0, 3).join("、")}{targetPaths.length > 3 ? ` 等 ${targetPaths.length} 个目录` : ""}
-        </p>
-        <div className="preview-batch-group__actions">
-          <button
-            type="button"
-            className={`preview-risk-action${decision === "approve" ? " preview-risk-action--primary" : ""}`}
-            onClick={() => setFrameworkDecision(group, "approve")}
-          >
-            采用此目录
-          </button>
-          <button
-            type="button"
-            className={`preview-risk-action${decision === "keep" ? " preview-risk-action--ignore" : ""}`}
-            onClick={() => setFrameworkDecision(group, "keep")}
-          >
-            不采用，保持原位
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  const renderBatchRiskGroup = (group: PreviewBatchGroup) => {
-    const isExpanded = isRiskGroupExpanded(group.key);
-    const bookmarkIds = group.items.map((item) => item.plan.bookmarkId);
-    const movedCount = bookmarkIds.filter((id) => planDecisions[id] === "move").length;
-    const pendingCount = bookmarkIds.filter((id) => !planDecisions[id]).length;
-    const representativeItems = getRepresentativeItems(group.items);
-
-    return (
-      <div key={group.key} className="preview-batch-group">
-        <div className="preview-batch-group__summary">
-          <div>
-            <strong>{group.items.length} 个同主题书签</strong>
-            <span>建议放入：{group.targetPath.join(" / ")}</span>
-          </div>
-          <span className={`preview-batch-group__status${pendingCount ? "" : " is-decided"}`}>
-            {pendingCount ? `${pendingCount} 个待确认` : movedCount ? `已接受 ${movedCount} 个` : "全部保留"}
-          </span>
-        </div>
-        <p className="preview-batch-group__samples" title={representativeItems.map((item) => item.plan.bookmarkTitle).join("；")}>
-          代表条目：{representativeItems.map((item) => item.plan.bookmarkTitle).join("、")}
-        </p>
-        <div className="preview-batch-group__actions">
-          <button
-            type="button"
-            className="preview-risk-action preview-risk-action--primary"
-            onClick={() => setPlanDecision(bookmarkIds, "move")}
-            title="只批准当前同质分组；跨一级目录、重复项和弱依据项仍需逐条审核"
-          >
-            接受这组
-          </button>
-          <button type="button" className="preview-risk-action" onClick={() => setPlanDecision(bookmarkIds, "keep")}>保留这组</button>
-          <button
-            type="button"
-            className="preview-risk-action"
-            onClick={() => toggleRiskGroup(group.key)}
-            aria-expanded={isExpanded}
-          >
-            {isExpanded ? "收起检查" : "展开检查"}
-            {isExpanded ? <ChevronDown /> : <ChevronRight />}
-          </button>
-        </div>
-        {isExpanded && (
-          <div className="preview-risk-list">
-            {group.items.map((item) => renderRiskPlanItem(item, { showDecision: true }))}
-          </div>
-        )}
-      </div>
-    );
   };
 
   const toggleSelectAll = () => {
@@ -1739,11 +1293,7 @@ export function Preview() {
       ? "正在生成整理方案"
       : plans.length === 0
         ? "整理方案"
-        : !isReviewComplete
-          ? "审核整理方案"
-          : approvedPlans.length > 0
-            ? "确认整理方案"
-            : "审核完成";
+        : "审核整理方案";
   const pageSubtitle = phase === "selection"
     ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
     : loading
@@ -1751,36 +1301,27 @@ export function Preview() {
       : plans.length === 0
         ? "可返回上一步重新选择书签"
         : !isReviewComplete
-          ? `${pendingDecisionCount} 个审核决定待完成`
+          ? `${review.pending.length} 条书签待决定${review.pendingFrameworks.length ? ` · ${review.pendingFrameworks.length} 个目录待确认` : ""}`
           : approvedPlans.length > 0
             ? `已批准移动 ${approvedPlans.length} 个书签`
             : "所有书签保持原位";
 
   return (
-    <div className="extension-page extension-page--preview">
+    <div className={`extension-page extension-page--preview${phase === "preview" && !loading && plans.length ? " review-page" : ""}`}>
       <div className="extension-page__inner">
         <div className="extension-page__header">
           <PageHeading title={pageTitle} subtitle={pageSubtitle} />
           <p className="sr-only" role="status">{pageTitle}。{pageSubtitle}</p>
-          {phase === "preview" && !loading && (
-            <button
-              onClick={() => setConfirmOpen(true)}
-              disabled={!approvedPlans.length || pendingDecisionCount > 0 || savingPreviewDrop}
-              className="extension-page__primary-button"
-            >
-              <Check className="w-4 h-4" />
-              {pendingDecisionCount ? `待确认 ${pendingDecisionCount}` : "确认移动"}
-            </button>
-          )}
+
         </div>
 
         {error && (
-          <div className="extension-notice extension-notice--amber">
+          <div className="extension-notice extension-notice--amber" role="alert">
             <p>{error}</p>
           </div>
         )}
 
-        {cacheMessage && (
+        {cacheMessage && phase !== "preview" && (
           <div className="extension-notice extension-notice--blue">
             <p>{cacheMessage}</p>
           </div>
@@ -1985,30 +1526,6 @@ export function Preview() {
         {/* 预览阶段 */}
         {phase === "preview" && (
           <>
-            {!loading && plans.length > 0 && (
-              <button onClick={handleRegenerate} className="extension-page__wide-secondary">
-                <RefreshCw className="w-4 h-4" />
-                重新选择书签
-              </button>
-            )}
-
-            <div className="extension-notice extension-notice--blue">
-              <div className="extension-notice__title">
-                <AlertCircle className="extension-notice__icon" />
-                <span>分阶段确认，减少重复审核</span>
-              </div>
-            </div>
-
-            {!loading && tokenUsage && (
-              <details className="token-usage-highlight">
-                <summary><span className="token-usage-highlight__label">本次 AI 使用量</span> 查看 Token 明细</summary>
-                <div className="token-usage-highlight__details">
-                  <strong>{formatTokenCount(tokenUsage.totalTokens)} Token</strong>
-                  <span>输入 {formatTokenCount(tokenUsage.promptTokens)} / 输出 {formatTokenCount(tokenUsage.completionTokens)}</span>
-                </div>
-              </details>
-            )}
-
             {loading ? (
               <div className="extension-empty extension-empty--progress">
                 <p>{progressPhaseLabel}</p>
@@ -2035,230 +1552,21 @@ export function Preview() {
                 <span>请先在浏览器中添加书签</span>
               </div>
             ) : (
-              <div className="preview-risk-board">
-                <section className="extension-section" aria-label="本次整理建议">
-                  <h2 className="extension-section__title">本次整理建议</h2>
-                  <p>分析 {summary.total} 条 · 建议移动 {summary.moveCount} 条 · 保持原位 {summary.keepCount} 条</p>
-                  <p>预计新增 {summary.newFolders.length} 个目录 · 尚需 {pendingDecisionCount} 个审核决定</p>
-                  <p className="sidebar-muted-copy">先确认新文件夹，再审核需要判断的书签。审核数与条目数不能相加。</p>
-                </section>
-                <div className="preview-risk-overview" aria-label="审核概览">
-                  <div>
-                    <span>规则复用</span>
-                    <strong>{riskAnalysis.auto.length}</strong>
-                  </div>
-                  <div>
-                    <span>新增框架</span>
-                    <strong>{riskAnalysis.frameworkGroups.length}</strong>
-                  </div>
-                  <div>
-                    <span>分组审核</span>
-                    <strong>{assignmentRiskCount}</strong>
-                  </div>
-                  <div>
-                    <span>需逐项审核</span>
-                    <strong>{riskAnalysis.review.length}</strong>
-                  </div>
-                </div>
-
-                <section className="preview-risk-section preview-risk-section--auto">
-                  <div className="preview-risk-section__header">
-                    <div className="preview-risk-section__icon"><ShieldCheck /></div>
-                    <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>可直接接受 · 支持抽查</strong>
-                      <span>
-                        {riskAnalysis.auto.length} 个建议同时满足：复用现有目录、符合已有习惯且未跨一级目录
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="preview-risk-section__toggle"
-                      onClick={() => toggleRiskGroup("__auto__")}
-                      aria-expanded={isRiskGroupExpanded("__auto__")}
-                    >
-                      {isRiskGroupExpanded("__auto__")
-                        ? "收起"
-                        : riskAnalysis.auto.length > 0
-                          ? `抽查 ${Math.min(5, riskAnalysis.auto.length)} 个`
-                          : "展开"}
-                      {isRiskGroupExpanded("__auto__") ? <ChevronDown /> : <ChevronRight />}
-                    </button>
-                  </div>
-                  {isRiskGroupExpanded("__auto__") && (
-                    riskAnalysis.auto.length > 0 ? (
-                      <div className="preview-risk-list">
-                        {riskAnalysis.auto.slice(0, 5).map((item) => renderRiskPlanItem(item))}
-                      </div>
-                    ) : (
-                      <p className="preview-risk-section__empty">没有自动接受的候选项目</p>
-                    )
-                  )}
-                </section>
-
-                <section className="preview-risk-section preview-risk-section--framework">
-                  <div className="preview-risk-section__header">
-                    <div className="preview-risk-section__icon"><FolderPlus /></div>
-                    <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>1. 新文件夹确认</strong>
-                      <span>
-                        {riskAnalysis.frameworkGroups.length} 个拟新增一级目录；先确认目录是否合理，再审核其中的书签分配
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="preview-risk-section__toggle"
-                      onClick={() => toggleRiskGroup("__framework__")}
-                      aria-expanded={isRiskGroupExpanded("__framework__")}
-                    >
-                      {isRiskGroupExpanded("__framework__") ? "收起" : "展开"}
-                      {isRiskGroupExpanded("__framework__") ? <ChevronDown /> : <ChevronRight />}
-                    </button>
-                  </div>
-                  {isRiskGroupExpanded("__framework__") && (
-                    riskAnalysis.frameworkGroups.length > 0 ? (
-                      <div className="preview-framework-groups">
-                        {riskAnalysis.frameworkGroups.map(renderFrameworkGroup)}
-                      </div>
-                    ) : (
-                      <p className="preview-risk-section__empty">没有拟新增的一级目录，可直接检查书签分配</p>
-                    )
-                  )}
-                </section>
-
-                <section className="preview-risk-section preview-risk-section--batch">
-                  <div className="preview-risk-section__header">
-                    <div className="preview-risk-section__icon"><Layers3 /></div>
-                    <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>2. 检查书签分配</strong>
-                      <span>
-                        {assignmentRiskCount} 个建议按目标目录分组；每组展示强、典型、弱三个代表条目
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="preview-risk-section__toggle"
-                      onClick={() => toggleRiskGroup("__batch__")}
-                      aria-expanded={isRiskGroupExpanded("__batch__")}
-                    >
-                      {isRiskGroupExpanded("__batch__") ? "收起" : "展开"}
-                      {isRiskGroupExpanded("__batch__") ? <ChevronDown /> : <ChevronRight />}
-                    </button>
-                  </div>
-                  {isRiskGroupExpanded("__batch__") && (
-                    pendingFrameworkCount > 0 ? (
-                      <p className="preview-risk-section__empty">请先确认上方分类框架，再审核书签分配</p>
-                    ) : assignmentGroups.length > 0 ? (
-                      <div className="preview-batch-groups">
-                        {assignmentGroups.map(renderBatchRiskGroup)}
-                      </div>
-                    ) : (
-                      <p className="preview-risk-section__empty">没有需要分组确认的项目</p>
-                    )
-                  )}
-                </section>
-
-                <section className="preview-risk-section preview-risk-section--review">
-                  <div className="preview-risk-section__header">
-                    <div className="preview-risk-section__icon"><ShieldAlert /></div>
-                    <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>3. 逐项审核异常</strong>
-                      <span>{riskAnalysis.review.length} 个跨一级目录、疑似重复或弱依据变更；不提供整组批准</span>
-                    </div>
-                    <div className="preview-risk-section__actions">
-                      <button
-                        type="button"
-                        className="preview-risk-section__toggle"
-                        onClick={() => toggleRiskGroup("__review__")}
-                        aria-expanded={isRiskGroupExpanded("__review__")}
-                      >
-                        {isRiskGroupExpanded("__review__") ? "收起" : "展开"}
-                        {isRiskGroupExpanded("__review__") ? <ChevronDown /> : <ChevronRight />}
-                      </button>
-                    </div>
-                  </div>
-                  {isRiskGroupExpanded("__review__") && (
-                    pendingFrameworkCount > 0 ? (
-                      <p className="preview-risk-section__empty">请先确认上方分类框架，再逐项审核异常变更</p>
-                    ) : riskAnalysis.review.length > 0 ? (
-                      <div className="preview-risk-list">
-                        {riskAnalysis.review.map((item) => renderRiskPlanItem(item, { showDecision: true }))}
-                      </div>
-                    ) : (
-                      <p className="preview-risk-section__empty">没有跨一级目录、疑似重复或弱依据项目</p>
-                    )
-                  )}
-                </section>
-
-                <section className="preview-risk-section preview-risk-section--keep">
-                  <div className="preview-risk-section__header">
-                    <div className="preview-risk-section__icon"><PauseCircle /></div>
-                    <div className="preview-risk-section__heading">
-                      <strong tabIndex={0}>保持原位</strong>
-                      <span>{riskAnalysis.keep.length} 个模型信号较弱或无需移动的书签，不会执行移动</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="preview-risk-section__toggle"
-                      onClick={() => toggleRiskGroup("__keep__")}
-                      aria-expanded={isRiskGroupExpanded("__keep__")}
-                    >
-                      {isRiskGroupExpanded("__keep__")
-                        ? "收起"
-                        : riskAnalysis.keep.length > 0
-                          ? `查看 ${Math.min(5, riskAnalysis.keep.length)} 个`
-                          : "展开"}
-                      {isRiskGroupExpanded("__keep__") ? <ChevronDown /> : <ChevronRight />}
-                    </button>
-                  </div>
-                  {isRiskGroupExpanded("__keep__") && (
-                    riskAnalysis.keep.length > 0 ? (
-                      <div className="preview-risk-list">
-                        {riskAnalysis.keep.slice(0, 5).map((item) => renderRiskPlanItem(item))}
-                      </div>
-                    ) : (
-                      <p className="preview-risk-section__empty">没有保持原位的项目</p>
-                    )
-                  )}
-                </section>
-              </div>
-            )}
-
-            {!loading && plans.length > 0 && (
-              <CollapsibleSection title="完整目标树" hint={`${plans.length} 个建议 / ${previewFolderCount} 个目标文件夹`}>
-                <p className="preview-tree-help">需要微调时，可长按书签并拖到目标文件夹。</p>
-                <div className="preview-tree-panel">
-                  <div className="preview-tree">
-                    {previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
-                  </div>
-                </div>
-              </CollapsibleSection>
-            )}
-
-            <CollapsibleSection title="整理说明" hint="备份、撤销和文件夹复用规则">
-              <ul className="extension-copy-list">
-                <li>· 整理前会自动备份当前书签结构</li>
-                <li>· 支持将最近一次整理的书签移回原文件夹（不恢复原排序）</li>
-                <li>· 已存在的文件夹会复用，不会重复创建</li>
-              </ul>
-            </CollapsibleSection>
-
-            {!loading && plans.length > 0 && (
-              <>
-                {pendingDecisionCount > 0 && <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => {
-                  setFrameworkDecisions((previous) => Object.fromEntries(riskAnalysis.frameworkGroups.map((group) => [group.key, previous[group.key] ?? "keep"])));
-                  setPlanDecisions((previous) => Object.fromEntries(plans.map((plan) => [plan.bookmarkId, previous[plan.bookmarkId] ?? "keep"])));
-                }}>其余未决项保持原位</button>}
-                <button
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={!approvedPlans.length || pendingDecisionCount > 0 || savingPreviewDrop}
-                  className="extension-page__wide-primary"
-                >
-                  <Check className="w-5 h-5" />
-                  {pendingDecisionCount > 0
-                    ? `完成 ${pendingDecisionCount} 个审核决定`
-                    : `确认移动 ${approvedPlans.length} 个书签`}
-                </button>
-              </>
+              <ReviewWorkbench
+                analysis={riskAnalysis} review={review} groups={assignmentGroups}
+                frameworks={frameworkDecisions}
+                busy={savingPreviewDrop || !reviewLoaded} cacheMessage={cacheMessage}
+                summary={summary} tree={previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
+                treeQuery={treeQuery} onTreeQuery={setTreeQuery} folderCount={previewFolderCount}
+                tokenUsage={tokenUsage} model={selectedModel} unclassifiedHandling={settings.unclassifiedHandling}
+                onDecision={setPlanDecision} onFramework={setFrameworkDecision}
+                onEdit={(plan) => { setEditingPlan(plan); setFolderDraft(pathKey(plan.toFolderPath)); }}
+                onRegenerate={() => void handleRegenerate()} onConfirm={() => setConfirmOpen(true)}
+                onKeepRemaining={() => {
+                  setFrameworkDecisions((previous) => ({ ...previous, ...Object.fromEntries(review.pendingFrameworks.map((group) => [group.key, "keep"])) }));
+                  setPlanDecisions((previous) => ({ ...previous, ...Object.fromEntries(review.pending.map((item) => [item.plan.bookmarkId, "keep"])) }));
+                }}
+              />
             )}
           </>
         )}
@@ -2271,16 +1579,17 @@ export function Preview() {
           onClose={() => setConfirmOpen(false)}
           actions={<>
             <button type="button" data-dialog-return className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
-            <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认移动 {executionSummary.moveCount} 个书签</button>
+            <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0 || !approvedPlans.length} onClick={() => void handleConfirm()}>{phase === "submitting" ? "正在备份并移动…" : `确认移动 ${executionSummary.moveCount} 个书签`}</button>
           </>}
         >
           <dl className="preview-dialog__metrics">
             <div><dt>移动</dt><dd>{executionSummary.moveCount} 条</dd></div>
             <div><dt>新建目录</dt><dd>{executionSummary.newFolders.length} 个</dd></div>
             <div><dt>复用目录</dt><dd>{executionSummary.reusedCount} 个</dd></div>
-            <div><dt>保持原位</dt><dd>{plans.length - approvedPlans.length} 条</dd></div>
+            <div><dt>保持原位</dt><dd>{review.keepCount} 条</dd></div>
+            <div><dt>跨一级目录</dt><dd>{executionSummary.crossTopLevelCount} 条</dd></div>
           </dl>
-          <p className="preview-dialog__note">先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录；外部变化项会停止移动并写入失败原因。</p>
+          <p className="preview-dialog__note">先创建完整本地备份，备份失败则停止。可将最近一次整理移回原目录，但不恢复原排序。会清理本次移动后变空的源目录、空祖先及新建空目录；外部变化项会停止移动并写入失败原因。</p>
         </PreviewDialog>}
         {editingPlan && <PreviewDialog
           label="修改目标目录"

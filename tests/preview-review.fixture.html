@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ReMarks 审核页测试</title></head>
+<body><div id="root"></div><script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "../src/app/App.tsx";
+import "../src/styles/globals.css";
+import { setupBrowser } from "./browser-mock.mjs";
+import { getAllBookmarks } from "../src/app/services/bookmarks.ts";
+import { whitelistFingerprint } from "../src/app/services/whitelist.ts";
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../src/app/services/storage.ts";
+
+const mock = setupBrowser();
+const src = mock.find("source");
+const titles = ["同主题研究资料", "跨目录 API 文档", "跨目录代码审查", "跨目录个人主页", "跨目录面试资料", "低依据建议", "可能重复的收藏", "人工目录草稿"];
+titles.forEach((title, index) => src.children.push({ id: `test-${index}`, title, parentId: "source", url: `https://fixture.test/${index}`, index }));
+mock.find("target").children.push(...["t1", "t2"].map((id) => ({ id, parentId: "target", title: "已有工具", url: `https://${id}.test/` })));
+mock.find("root").children.push({ id: "research", parentId: "root", title: "学校竞赛与科研", children: [] });
+mock.values[STORAGE_KEYS.settings] = { ...DEFAULT_SETTINGS, onboardingCompleted: true };
+const bookmarks = await getAllBookmarks();
+const plans = bookmarks.filter((bookmark) => bookmark.parentId === "source").map((bookmark, index) => ({
+  bookmarkId: bookmark.id, bookmarkTitle: bookmark.title, bookmarkUrl: bookmark.url, fromParentId: bookmark.parentId,
+  sourceFolderPath: bookmark.path, toFolderPath: index >= 3 && index <= 6 ? ["学校竞赛与科研", "保研"]
+    : index === 9 ? ["新一级目录", "长路径资料与研究工具"]
+    : ["开发", "工具"],
+  expectedTargetId: null, confidence: index === 7 ? 0.3 : index === 2 || index === 9 ? 0.8 : 0.97,
+  source: "ai", reason: index === 8 ? "可能重复，请独立核实" : "根据书签主题与目录用途提出建议",
+}));
+const scenario = new URLSearchParams(location.search).get("scenario");
+if (scenario === "multiple") plans[0].confidence = 0.8;
+if (scenario === "weak") plans[0].confidence = 0.6;
+mock.values[STORAGE_KEYS.previewPlan] = { id: "review-fixture", createdAt: Date.now(), bookmarkCount: plans.length,
+  whitelistFingerprint: whitelistFingerprint([]), model: "测试缓存模型", organizeMode: "quick", movePlan: plans,
+  tokenUsage: { totalTokens: 1234, promptTokens: 1000, completionTokens: 234 } };
+mock.runtime = chrome.runtime;
+chrome.runtime.getURL = (path) => new URL(path, location.origin).href;
+chrome.runtime.sendMessage = (_message, callback) => callback?.();
+globalThis.__reviewMock = mock;
+location.hash = "/preview";
+const view = new URLSearchParams(location.search).get("view") || "sidebar";
+createRoot(document.getElementById("root")).render(React.createElement(App, { defaultView: view }));
+</script></body></html>
