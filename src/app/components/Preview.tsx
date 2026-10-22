@@ -463,13 +463,13 @@ function getProgressPhaseLabel(phase?: PreviewTaskProgress["phase"]) {
     case "queued":
       return "等待开始";
     case "preparing":
-      return "正在生成预览";
+      return "正在准备书签数据";
     case "requesting_ai":
       return "正在请求 AI";
     case "parsing_results":
       return "正在解析结果";
     case "generating_preview":
-      return "正在生成预览";
+      return "正在整理分类结果";
     default:
       return "正在处理";
   }
@@ -713,7 +713,7 @@ export function Preview() {
     if (task.model) setSelectedModel(task.model);
     setProcessingBookmarkCount(0);
     setTaskProgress(undefined);
-    setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的预览结果`);
+    setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的整理方案`);
     setPhase("preview");
     setLoading(false);
     setActiveTaskId(null);
@@ -728,7 +728,7 @@ export function Preview() {
     setTaskProgress(task.progress);
     setOrganizeMode(task.organizeMode ?? "quick");
     if (task.model) setSelectedModel(task.model);
-    setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的分类建议，可收起后稍后返回`);
+    setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的整理方案，可收起后稍后返回`);
     setPhase("preview");
     setLoading(true);
   };
@@ -768,7 +768,7 @@ export function Preview() {
           setOrganizeMode(cached.organizeMode ?? "quick");
           if (cached.model) setSelectedModel(cached.model);
           setProcessingBookmarkCount(0);
-          setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的预览结果`);
+          setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的整理方案`);
           setPhase("preview");
           setLoading(false);
           return;
@@ -1213,7 +1213,7 @@ export function Preview() {
             preferenceFingerprint: getPreferenceFingerprint({ ...plan, toFolderPath: targetPath, source: "manual",
               expectedTargetId: existingFolders.find((folder) => JSON.stringify(folder.path) === JSON.stringify(targetPath))?.id ?? null }, preferenceProfile, fixedRules),
             confidence: 1,
-            reason: `人工修改预览目录：${targetPath.join(" / ")}`,
+            reason: `人工修改目标目录：${targetPath.join(" / ")}`,
             source: "manual" as const,
             keepInPlace: false,
           }
@@ -1233,7 +1233,7 @@ export function Preview() {
       });
       return next;
     });
-    setCacheMessage("已更新预览计划，正在保存调整...");
+    setCacheMessage("已更新整理方案，正在保存调整...");
 
     try {
       const fingerprint = whitelistFingerprint((await getCurrentWhitelist()).entries);
@@ -1260,7 +1260,7 @@ export function Preview() {
         }).catch(() => null),
         appendFolderImpression(sourcePlan.bookmarkUrl, targetPath).catch(() => undefined),
       ]);
-      setCacheMessage(learningNotice ?? "已更新预览计划，确认整理前不会移动书签");
+      setCacheMessage(learningNotice ?? "已更新整理方案，确认整理前不会移动书签");
       return true;
     } catch (err) {
       setPlans(previousPlans);
@@ -1477,7 +1477,7 @@ export function Preview() {
         selectedPlan === plan.bookmarkId ? "is-selected" : ""
       } ${draggedPlan?.bookmarkId === plan.bookmarkId ? "is-dragging" : ""}`}
       style={{ "--tree-depth": depth } as CSSProperties}
-      aria-label={`长按并拖动 ${plan.bookmarkTitle} 到预览文件夹`}
+      aria-label={`长按并拖动 ${plan.bookmarkTitle} 到目标文件夹`}
       onPointerDown={(event) => handlePreviewRowPointerDown(event, plan)}
       onPointerMove={handlePreviewRowPointerMove}
       onPointerUp={handlePreviewRowPointerUp}
@@ -1732,17 +1732,36 @@ export function Preview() {
     }
   };
 
+  const isReviewComplete = pendingDecisionCount === 0;
+  const pageTitle = phase === "selection"
+    ? "选择书签"
+    : loading
+      ? "正在生成整理方案"
+      : plans.length === 0
+        ? "整理方案"
+        : !isReviewComplete
+          ? "审核整理方案"
+          : approvedPlans.length > 0
+            ? "确认整理方案"
+            : "审核完成";
+  const pageSubtitle = phase === "selection"
+    ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
+    : loading
+      ? "生成建议不会移动书签"
+      : plans.length === 0
+        ? "可返回上一步重新选择书签"
+        : !isReviewComplete
+          ? `${pendingDecisionCount} 个审核决定待完成`
+          : approvedPlans.length > 0
+            ? `已批准移动 ${approvedPlans.length} 个书签`
+            : "所有书签保持原位";
+
   return (
     <div className="extension-page extension-page--preview">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title={phase === "selection" ? "选择书签" : "风险预览"} subtitle={loading
-                  ? "正在处理..."
-                  : phase === "selection"
-                    ? `已选 ${selectedIds.size}/${allBookmarks.length} 个书签`
-                    : pendingDecisionCount
-                      ? `${pendingDecisionCount} 个审核决定待完成`
-                      : `已批准移动 ${approvedPlans.length} 个书签`} />
+          <PageHeading title={pageTitle} subtitle={pageSubtitle} />
+          <p className="sr-only" role="status">{pageTitle}。{pageSubtitle}</p>
           {phase === "preview" && !loading && (
             <button
               onClick={() => setConfirmOpen(true)}
@@ -1750,7 +1769,7 @@ export function Preview() {
               className="extension-page__primary-button"
             >
               <Check className="w-4 h-4" />
-              {pendingDecisionCount ? `待确认 ${pendingDecisionCount}` : "确认整理"}
+              {pendingDecisionCount ? `待确认 ${pendingDecisionCount}` : "确认移动"}
             </button>
           )}
         </div>
@@ -1995,7 +2014,7 @@ export function Preview() {
                 <span>{remainingTimeText}</span>
                 <span>{progressBatchText}</span>
                 <span>{progressBookmarkText}</span>
-                <div className="preview-task-progress" aria-label="整理预览生成进度">
+                <div className="preview-task-progress" aria-label="整理方案生成进度">
                   <span style={{ width: `${progressPercent}%` }} />
                 </div>
                 {isTaskProgressStalled && (
@@ -2021,7 +2040,7 @@ export function Preview() {
                   <p>预计新增 {summary.newFolders.length} 个目录 · 尚需 {pendingDecisionCount} 个审核决定</p>
                   <p className="sidebar-muted-copy">先确认新文件夹，再审核需要判断的书签。审核数与条目数不能相加。</p>
                 </section>
-                <div className="preview-risk-overview" aria-label="整理风险概览">
+                <div className="preview-risk-overview" aria-label="审核概览">
                   <div>
                     <span>规则复用</span>
                     <strong>{riskAnalysis.auto.length}</strong>
@@ -2035,7 +2054,7 @@ export function Preview() {
                     <strong>{assignmentRiskCount}</strong>
                   </div>
                   <div>
-                    <span>需单独检查</span>
+                    <span>需逐项审核</span>
                     <strong>{riskAnalysis.review.length}</strong>
                   </div>
                 </div>
@@ -2221,20 +2240,24 @@ export function Preview() {
               </ul>
             </CollapsibleSection>
 
-            {pendingDecisionCount > 0 && <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop || loading} onClick={() => {
-              setFrameworkDecisions((previous) => Object.fromEntries(riskAnalysis.frameworkGroups.map((group) => [group.key, previous[group.key] ?? "keep"])));
-              setPlanDecisions((previous) => Object.fromEntries(plans.map((plan) => [plan.bookmarkId, previous[plan.bookmarkId] ?? "keep"])));
-            }}>其余未决项保持原位</button>}
-            <button
-              onClick={() => setConfirmOpen(true)}
-              disabled={!approvedPlans.length || pendingDecisionCount > 0 || loading || savingPreviewDrop}
-              className="extension-page__wide-primary"
-            >
-              <Check className="w-5 h-5" />
-              {pendingDecisionCount > 0
-                ? `完成 ${pendingDecisionCount} 个审核决定`
-                : `确认移动 ${approvedPlans.length} 个书签`}
-            </button>
+            {!loading && plans.length > 0 && (
+              <>
+                {pendingDecisionCount > 0 && <button type="button" className="extension-page__wide-secondary" disabled={savingPreviewDrop} onClick={() => {
+                  setFrameworkDecisions((previous) => Object.fromEntries(riskAnalysis.frameworkGroups.map((group) => [group.key, previous[group.key] ?? "keep"])));
+                  setPlanDecisions((previous) => Object.fromEntries(plans.map((plan) => [plan.bookmarkId, previous[plan.bookmarkId] ?? "keep"])));
+                }}>其余未决项保持原位</button>}
+                <button
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={!approvedPlans.length || pendingDecisionCount > 0 || savingPreviewDrop}
+                  className="extension-page__wide-primary"
+                >
+                  <Check className="w-5 h-5" />
+                  {pendingDecisionCount > 0
+                    ? `完成 ${pendingDecisionCount} 个审核决定`
+                    : `确认移动 ${approvedPlans.length} 个书签`}
+                </button>
+              </>
+            )}
           </>
         )}
 
@@ -2246,7 +2269,7 @@ export function Preview() {
           onClose={() => setConfirmOpen(false)}
           actions={<>
             <button type="button" data-dialog-return className="extension-page__wide-secondary" onClick={() => setConfirmOpen(false)}>返回审核</button>
-            <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认并执行 {executionSummary.moveCount} 项变更</button>
+            <button type="button" className="extension-page__wide-primary" disabled={phase === "submitting" || savingPreviewDrop || pendingDecisionCount > 0} onClick={() => { setConfirmOpen(false); void handleConfirm(); }}>确认移动 {executionSummary.moveCount} 个书签</button>
           </>}
         >
           <dl className="preview-dialog__metrics">
@@ -2258,9 +2281,9 @@ export function Preview() {
           <p className="preview-dialog__note">先创建完整本地备份，再逐项移动。会清理本次移动后变空的源目录、空祖先及新建空目录；外部变化项会停止移动并写入失败原因。</p>
         </PreviewDialog>}
         {editingPlan && <PreviewDialog
-          label="修改预览目录"
+          label="修改目标目录"
           title="修改目录"
-          description="搜索已有目录或输入新路径，仅修改预览，不移动书签。"
+          description="搜索已有目录或输入新路径，仅修改整理方案，不移动书签。"
           busy={savingPreviewDrop}
           onClose={() => setEditingPlan(null)}
           actions={<>

@@ -343,7 +343,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   } : !settings.provider.apiKey.trim() || !settings.provider.enabled ? {
     kind: "local", title: "先从本地书签开始", description: "无需连接 AI，也能搜索、管理书签和检查重复项。需要智能分类时再配置模型。", cta: "查看我的书签", to: "/manage",
   } : {
-    kind: "healthy", title: "当前没有待办事项", description: "暂时没有待审核建议或已检测出的异常。想让收藏更好找？可以生成一次分类预览。", cta: "生成智能整理预览", to: "/preview",
+    kind: "healthy", title: "当前没有待办事项", description: "暂时没有待审核建议或已检测出的异常。想让收藏更好找？可以生成一次整理方案。", cta: "生成整理方案", to: "/preview",
   });
   const taskKey = `${primary.kind}:${primary.title}:${primary.kind === "preview" ? previewIdentity : ""}`;
   const deferred = dismissedTask === taskKey;

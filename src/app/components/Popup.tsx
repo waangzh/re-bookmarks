@@ -72,7 +72,7 @@ export function Popup() {
           <Link to="/preview" className="bookmark-popup__action bookmark-popup__action--primary">
             <div className="bookmark-popup__action-main">
               <FileText className="bookmark-popup__action-icon" />
-              <span>{previewState === "running" ? "继续智能整理" : "继续上次预览"}</span>
+              <span>{previewState === "running" ? "查看整理进度" : "继续审核整理方案"}</span>
             </div>
             <span className="bookmark-popup__arrow">→</span>
           </Link>

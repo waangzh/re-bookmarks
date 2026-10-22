@@ -561,7 +561,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
               <button type="button" onClick={() => setStep(2)} disabled={sampleState === "running" || applyingSample}>返回</button>
               <div className="onboarding__sample-actions">
                 <button type="button" onClick={() => void handleContinueAfterSample()} disabled={sampleState !== "ready" || applyingSample}>
-                  继续完整预览 <ArrowRight aria-hidden="true" />
+                  继续生成整理方案 <ArrowRight aria-hidden="true" />
                 </button>
                 <button type="button" onClick={() => void handleApplyReviewedSample()} disabled={sampleState !== "ready" || applyingSample}>
                   {applyingSample ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
@@ -577,7 +577,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
             <span className="onboarding__finish-mark"><CheckCircle2 aria-hidden="true" /></span>
             <div className="onboarding__eyebrow">第四步 · 完整整理</div>
             <h1>继续检查完整整理方案</h1>
-            <p className="onboarding__lead">你已认可或修正代表样本。下一页会重新生成完整预览；只有再次确认后，ReMarks 才会创建备份并移动书签。</p>
+            <p className="onboarding__lead">你已认可或修正代表样本。下一页会重新生成完整整理方案；只有再次确认后，ReMarks 才会创建备份并移动书签。</p>
             <div className="onboarding__finish-summary">
               <span><BookOpenCheck aria-hidden="true" />可整理书签<strong>{stats.organizable}</strong></span>
               <span><ShieldCheck aria-hidden="true" />确认前不会移动<strong>安全预览</strong></span>
