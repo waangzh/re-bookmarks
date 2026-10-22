@@ -2169,15 +2169,15 @@ export function ManageBookmarks() {
   const handleBackfillImpressions = async () => {
     if (backfillRunning) return;
     if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
-      setMessage("补全印象索引需要先在设置中配置并启用 AI Provider。");
+      setMessage("补充书签用途前，请先在设置中连接并授权 AI 服务。");
       return;
     }
     if (missingImpressionCount === 0) {
-      setMessage("所有网页书签都已建立功能印象索引。");
+      setMessage("全部网页书签已支持按用途搜索。");
       return;
     }
     if (!confirm(
-      `将为 ${missingImpressionCount} 个尚未建立功能印象的书签调用 AI。\n\n` +
+      `将用 AI 为剩余 ${missingImpressionCount} 个书签补充用途信息，方便按用途搜索。\n\n` +
       "只会写入本地印象索引，不会移动、删除或改写任何书签，也不会创建备份或整理报告。\n\n" +
       "每个批次约 20 个书签，可按批次计费。是否继续？"
     )) return;
@@ -2196,17 +2196,17 @@ export function ManageBookmarks() {
       });
       setSemanticIndex(await getSemanticIndexMap());
       if (summary.canceled) {
-        setMessage(`已停止补全：本次新建立 ${summary.indexed} 条印象索引，${summary.failed} 条未完成。`);
+        setMessage(`已停止补充：本次已为 ${summary.indexed} 个书签补充用途，${summary.failed} 个处理失败，其余未处理的可下次继续。`);
       } else if (summary.total === 0) {
-        setMessage("所有网页书签都已建立功能印象索引。");
+        setMessage("全部网页书签已支持按用途搜索。");
       } else {
         setMessage(
-          `印象索引补全完成：新建立 ${summary.indexed} 条` +
-          (summary.failed ? `，${summary.failed} 条未能生成，可稍后重试。` : "。")
+          `用途信息${summary.failed ? "部分完成" : "补充完成"}：已为 ${summary.indexed} 个书签补充用途` +
+          (summary.failed ? `，${summary.failed} 个未能生成，可稍后重试。` : "。")
         );
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "补全印象索引失败");
+      setMessage(error instanceof Error ? error.message : "补充书签用途失败");
     } finally {
       backfillAbortRef.current = null;
       setBackfillProgress(null);
@@ -2228,7 +2228,7 @@ export function ManageBookmarks() {
     const query = searchQuery.trim();
     if (!query || deepSearchRunning) return;
     if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
-      setMessage("AI 深度回忆需要先在设置中配置并启用 AI Provider。");
+      setMessage("使用“帮我找找”前，请先在设置中连接并授权 AI 服务。");
       return;
     }
     // Firefox 要求权限请求保持在用户手势内，必须早于任何 await 存储读取。
@@ -2243,9 +2243,9 @@ export function ManageBookmarks() {
 
   const emptyMessage = useMemo(() => {
     if (searchQuery) {
-      if (deepSearchRunning) return "AI 正在根据功能描述深度回忆…";
-      if (deepSearchActive) return "AI 深度回忆没有找到更匹配的书签，可换个说法再试";
-      return "未找到匹配的书签，可按 Tab 让 AI 深度回忆";
+      if (deepSearchRunning) return "AI 正在根据描述查找书签…";
+      if (deepSearchActive) return "AI 没有找到更匹配的书签，可换个说法再试";
+      return "未找到匹配的书签，可点击“帮我找找”或按 Alt + Enter 用 AI 查找";
     }
     if (taskMode === "unsorted") {
       return pendingRecommendations.length > 0 ? "暂无未分类文件夹书签，可先处理上方 AI 推荐" : "暂无未分类书签";
@@ -2379,19 +2379,15 @@ export function ManageBookmarks() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 onKeyDown={(event) => {
-                  // Shift+Tab 保留原生焦点切换，避免键盘用户被困在搜索框内。
-                  if (event.key === "Tab" && !event.shiftKey && searchQuery.trim()) {
+                  if (event.nativeEvent.isComposing) return;
+                  if (event.key === "Enter" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
                     event.preventDefault();
-                    void handleDeepSearch();
-                    return;
-                  }
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    void handleDeepSearch();
+                    if (!event.repeat) void handleDeepSearch();
                   }
                 }}
                 placeholder={taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
                 className="extension-control extension-control--search"
+                aria-label="搜索书签"
               />
             </div>
             <button
@@ -2399,11 +2395,12 @@ export function ManageBookmarks() {
               className="impression-search-bar__ai"
               onClick={() => void handleDeepSearch()}
               disabled={!searchQuery.trim() || deepSearchRunning}
-              title="让 AI 根据功能描述深度回忆（快捷键：Tab 或 Ctrl / ⌘ + Enter）"
+              title="用 AI 根据描述查找书签（Alt + Enter）"
+              aria-keyshortcuts="Alt+Enter"
             >
               <BrainCircuit aria-hidden="true" />
-              <span>{deepSearchRunning ? "AI 联想中…" : "AI 深度回忆"}</span>
-              {!deepSearchRunning && <kbd>Tab</kbd>}
+              <span>{deepSearchRunning ? "查找中…" : "帮我找找"}</span>
+              {!deepSearchRunning && <kbd>Alt + Enter</kbd>}
             </button>
           </div>
         )}
@@ -2416,12 +2413,12 @@ export function ManageBookmarks() {
             >
               <span className="impression-deep-status__lead">
                 {deepSearchState.error
-                  ? <>AI 深度回忆失败：{deepSearchState.error}</>
+                  ? <>AI 查找失败：{deepSearchState.error}</>
                   : deepSearchState.stage === "expanding"
                     ? <><BrainCircuit aria-hidden="true" />正在联想相关功能与常见网站…</>
                     : deepSearchState.stage === "expanded_shown"
-                      ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在从候选书签中精筛…</>
-                      : <><Check aria-hidden="true" />AI 深度回忆完成</>}
+                      ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在筛选更匹配的书签…</>
+                      : <><Check aria-hidden="true" />AI 查找完成</>}
               </span>
               {deepSearchState.expandedTerms.length > 0 && deepSearchState.stage !== "error" && (
                 <span className="impression-deep-status__terms" aria-label="AI 联想词">
@@ -2435,7 +2432,7 @@ export function ManageBookmarks() {
           ) : impressionResults.length < 3 ? (
             <p className="impression-deep-hint">
               <Sparkles aria-hidden="true" />
-              没找到想要的书签？按 <kbd>Tab</kbd> 让 AI 根据功能描述帮你深度回忆
+              <span>没找到？点击“帮我找找”，或按 <kbd>Alt + Enter</kbd> 用 AI 根据描述查找。</span>
             </p>
           ) : null
         )}
@@ -2444,16 +2441,16 @@ export function ManageBookmarks() {
             <p className="impression-coverage__text">
               <Sparkles className="impression-coverage__icon" aria-hidden="true" />
               <span>
-                已为 <strong>{semanticCoverage.indexed}</strong> / {semanticCoverage.total} 个书签建立 AI 印象索引
-                {semanticCoverage.indexed < semanticCoverage.total && <small>未索引的书签仍可通过标题、网址和常见站点识别搜索</small>}
+                已有 <strong>{semanticCoverage.indexed}</strong> / {semanticCoverage.total} 个书签支持按用途搜索
+                {semanticCoverage.indexed < semanticCoverage.total && <small>其余书签仍可通过标题、网址和常见站点识别搜索</small>}
               </span>
             </p>
             {backfillRunning ? (
               <div className="impression-backfill">
                 <div className="impression-backfill__head">
                   <span>
-                    {backfillProgress.phase === "requesting_ai" ? "正在请求 AI…" : backfillProgress.phase === "saving" ? "正在写入索引…" : "正在准备…"}
-                    {" "}{backfillProgress.processed}/{backfillProgress.total}，已建立 {backfillProgress.indexed} 条
+                    {backfillProgress.phase === "requesting_ai" ? "正在分析书签用途…" : backfillProgress.phase === "saving" ? "正在保存用途信息…" : "正在准备…"}
+                    {" "}{backfillProgress.processed}/{backfillProgress.total}，已完成 {backfillProgress.indexed} 个
                     {backfillProgress.failed > 0 && `，${backfillProgress.failed} 条失败`}
                   </span>
                   <button type="button" onClick={() => backfillAbortRef.current?.abort()} className="extension-text-button">停止</button>
@@ -2468,13 +2465,13 @@ export function ManageBookmarks() {
                 className="extension-page__wide-secondary impression-coverage__action"
                 disabled={busy}
                 onClick={() => void handleBackfillImpressions()}
-                title="仅为未索引书签调用 AI 生成功能印象，不会移动或改写书签"
+                title={`用 AI 为剩余 ${missingImpressionCount} 个书签补充用途信息，会产生 AI 使用量，不会移动或改写书签`}
               >
                 <Sparkles aria-hidden="true" />
-                补全剩余 {missingImpressionCount} 个书签印象
+                让更多书签支持按用途搜索（剩余 {missingImpressionCount} 个）
               </button>
             ) : (
-              <span className="impression-coverage__done"><Check aria-hidden="true" />索引已覆盖全部网页书签</span>
+              <span className="impression-coverage__done"><Check aria-hidden="true" />全部网页书签已支持按用途搜索</span>
             )}
           </div>
         )}

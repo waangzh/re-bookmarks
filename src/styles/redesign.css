@@ -46,7 +46,7 @@
 .remarks-app .home-search-result__match { display: block; margin-top: 3px; color: #6d5bd0; font-size: 11px; font-style: normal; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remarks-app .home-search-result__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
 .remarks-app .home-search-result__tags b { padding: 1px 6px; border-radius: 999px; background: #f0edff; color: #6d5bd0; font-size: 10px; font-weight: 600; line-height: 1.6; }
-.remarks-app .home-search button.home-search__ai { color: #5b6fd6; }
+.remarks-app .home-search button.home-search__ai { display: inline-flex; gap: 4px; width: auto; padding: 0 5px; color: #5b6fd6; font-size: 12px; white-space: nowrap; }
 .remarks-app .home-search button.home-search__ai:hover:not(:disabled) { background: #eef2ff; }
 .remarks-app .home-search button.home-search__ai:disabled { opacity: 0.5; cursor: default; }
 .remarks-app .home-deep-status { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid #dbe7fb; border-radius: 10px; background: #f7faff; color: #3f5f9e; font-size: 12px; line-height: 1.5; }

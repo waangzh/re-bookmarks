@@ -860,9 +860,9 @@ export function Preview() {
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
   const isDeepSelectionTooLarge = organizeMode === "deep" && selectedIds.size > DEEP_ORGANIZE_BOOKMARK_LIMIT;
   const isQuickSelectionLarge = organizeMode === "quick" && selectedIds.size > QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT;
-  const deepSelectionLimitMessage = `深度整理单次最多建议选择 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速整理。`;
+  const deepSelectionLimitMessage = `“更细致地分析网页”单次最多建议选择 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速分类。`;
 
-  const quickSelectionLargeMessage = `当前选择 ${selectedIds.size} 个书签，快速整理建议单次不超过 ${QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT} 个。数量较大时建议按文件夹分批整理，避免 AI 请求排队过久。`;
+  const quickSelectionLargeMessage = `当前选择 ${selectedIds.size} 个书签，快速分类建议单次不超过 ${QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT} 个。数量较大时建议按文件夹分批整理，避免 AI 请求排队过久。`;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -1814,8 +1814,8 @@ export function Preview() {
               >
                 <Zap className="w-4 h-4" />
                 <span>
-                  <strong>快速整理</strong>
-                  <small>更快生成，网页元数据等待较短</small>
+                  <strong>快速分类</strong>
+                  <small>更快生成分类建议，较少等待网页信息</small>
                 </span>
               </button>
               <button
@@ -1825,8 +1825,8 @@ export function Preview() {
               >
                 <Globe2 className="w-4 h-4" />
                 <span>
-                  <strong>深度整理</strong>
-                  <small>等待更久，尽量抓取更多网页元数据</small>
+                  <strong>更细致地分析网页</strong>
+                  <small>多等一会，尝试获取更多网页信息后再分类</small>
                 </span>
               </button>
             </div>
@@ -2000,17 +2000,19 @@ export function Preview() {
             </div>
 
             {!loading && tokenUsage && (
-              <div className="token-usage-highlight" aria-label="本次智能整理 token 消耗">
-                <span className="token-usage-highlight__label">Token 消耗</span>
-                <strong>{formatTokenCount(tokenUsage.totalTokens)}</strong>
-                <span>输入 {formatTokenCount(tokenUsage.promptTokens)} / 输出 {formatTokenCount(tokenUsage.completionTokens)}</span>
-              </div>
+              <details className="token-usage-highlight">
+                <summary><span className="token-usage-highlight__label">本次 AI 使用量</span> 查看 Token 明细</summary>
+                <div className="token-usage-highlight__details">
+                  <strong>{formatTokenCount(tokenUsage.totalTokens)} Token</strong>
+                  <span>输入 {formatTokenCount(tokenUsage.promptTokens)} / 输出 {formatTokenCount(tokenUsage.completionTokens)}</span>
+                </div>
+              </details>
             )}
 
             {loading ? (
               <div className="extension-empty extension-empty--progress">
                 <p>{progressPhaseLabel}</p>
-                <span>{organizeMode === "deep" ? "深度整理会等待更多网页元数据..." : "AI 正在分析书签内容..."}</span>
+                <span>{organizeMode === "deep" ? "正在尝试获取更多网页信息，再生成分类建议..." : "AI 正在分析书签内容..."}</span>
                 <span>{remainingTimeText}</span>
                 <span>{progressBatchText}</span>
                 <span>{progressBookmarkText}</span>

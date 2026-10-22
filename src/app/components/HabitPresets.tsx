@@ -419,7 +419,7 @@ export function HabitPresets() {
           <div className="habit-section-heading habit-learning-heading">
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
             <div>
-              <h2 className="extension-section__title">自动学习</h2>
+              <h2 className="extension-section__title">记住我的分类习惯</h2>
             </div>
             <span className="habit-learning-badge">供 AI 参考</span>
           </div>

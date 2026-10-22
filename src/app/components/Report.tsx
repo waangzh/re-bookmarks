@@ -406,14 +406,16 @@ export function Report() {
         </section>
 
         {selectedReport.tokenUsage && (
-          <div className="token-usage-highlight" aria-label="本次智能整理 token 消耗">
-            <span className="token-usage-highlight__label">Token 消耗</span>
-            <strong>{formatTokenCount(selectedReport.tokenUsage.totalTokens)}</strong>
-            <span>
-              输入 {formatTokenCount(selectedReport.tokenUsage.promptTokens)} / 输出{" "}
-              {formatTokenCount(selectedReport.tokenUsage.completionTokens)}
-            </span>
-          </div>
+          <details className="token-usage-highlight">
+            <summary><span className="token-usage-highlight__label">本次 AI 使用量</span> 查看 Token 明细</summary>
+            <div className="token-usage-highlight__details">
+              <strong>{formatTokenCount(selectedReport.tokenUsage.totalTokens)} Token</strong>
+              <span>
+                输入 {formatTokenCount(selectedReport.tokenUsage.promptTokens)} / 输出{" "}
+                {formatTokenCount(selectedReport.tokenUsage.completionTokens)}
+              </span>
+            </div>
+          </details>
         )}
 
         <section className="extension-section">

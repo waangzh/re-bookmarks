@@ -3135,10 +3135,7 @@ textarea {
 }
 
 .token-usage-highlight {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
+  display: block;
   min-width: 0;
   border: 1px solid #c7d2fe;
   border-radius: 10px;
@@ -3147,6 +3144,18 @@ textarea {
   padding: 8px 10px;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.token-usage-highlight summary {
+  cursor: pointer;
+}
+
+.token-usage-highlight__details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
 }
 
 .token-usage-highlight__label {
