@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type ChangeEvent, type TextareaHTMLAttribu
 import {
   Ban,
   Bookmark,
-  Check,
   ChevronRight,
   Clock3,
   Download,
@@ -174,6 +173,7 @@ export function HabitPresets() {
   const [messageTone, setMessageTone] = useState<"success" | "warning" | "error">("success");
   const [openFolderGroups, setOpenFolderGroups] = useState<Set<string>>(() => new Set());
   const [openFolderMenu, setOpenFolderMenu] = useState<string | null>(null);
+  const [pathEditor, setPathEditor] = useState<{ index: number; groupTitle: string } | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -199,6 +199,7 @@ export function HabitPresets() {
     try {
       const next = await analyzeAndSaveFolderHabits();
       setProfile(next);
+      setPathEditor(null);
       setMessage(next.analysisWarning ?? "已重新分析当前书签分类习惯");
       setMessageTone(next.analysisWarning ? "warning" : "success");
     } catch (error) {
@@ -217,6 +218,7 @@ export function HabitPresets() {
     setMessageTone("success");
     try {
       const next = await saveEditedFolderHabitProfile(profile);
+      finishPathEditing();
       setProfile(next);
       setMessage("分类偏好调整已保存");
     } catch (error) {
@@ -253,6 +255,7 @@ export function HabitPresets() {
     try {
       const next = await importFolderHabitProfileJson(await file.text());
       setProfile(next);
+      setPathEditor(null);
       setMessage("分类规则已导入，旧预览缓存已清理");
     } catch (error) {
       setStatus("error");
@@ -283,7 +286,8 @@ export function HabitPresets() {
     learning && (learning.categoryCorrections.length || learning.domainPreferences.length || learning.rejectedFolderPaths.length)
   );
   const folderRuleGroups = current.folderRules.reduce<Array<{ title: string; indexes: number[] }>>((groups, rule, index) => {
-    const title = getFolderRuleGroupTitle(rule.folderPath);
+    // Keep the editor mounted while a first-level name is being changed.
+    const title = pathEditor?.index === index ? pathEditor.groupTitle : getFolderRuleGroupTitle(rule.folderPath);
     const existing = groups.find((group) => group.title === title);
     if (existing) {
       existing.indexes.push(index);
@@ -312,18 +316,39 @@ export function HabitPresets() {
     });
   };
 
+  const finishPathEditing = () => {
+    const rule = pathEditor ? current.folderRules[pathEditor.index] : undefined;
+    if (rule) setFolderGroupOpen(getFolderRuleGroupTitle(rule.folderPath), true);
+    setPathEditor(null);
+  };
+
+  const togglePathEditor = (index: number, groupTitle: string) => {
+    finishPathEditing();
+    if (pathEditor?.index !== index) setPathEditor({ index, groupTitle });
+  };
+
   const addFolderRule = (folderPath: string[] = [], openGroupTitle?: string) => {
+    finishPathEditing();
+    const groupTitle = openGroupTitle ?? getFolderRuleGroupTitle(folderPath);
+    setPathEditor({ index: current.folderRules.length, groupTitle });
     updateProfile((item) => ({
       ...item,
       folderRules: [...item.folderRules, { folderPath, pattern: "" }],
     }));
-    if (openGroupTitle) {
-      setFolderGroupOpen(openGroupTitle, true);
-    }
+    setFolderGroupOpen(groupTitle, true);
     setOpenFolderMenu(null);
   };
 
+  const removeFolderRule = (index: number) => {
+    finishPathEditing();
+    updateProfile((item) => ({
+      ...item,
+      folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  };
+
   const removeFolderRuleGroup = (indexes: number[]) => {
+    finishPathEditing();
     const removeIndexes = new Set(indexes);
     updateProfile((item) => ({
       ...item,
@@ -594,7 +619,7 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><FolderOpen className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">文件夹规则</h2>
-              <p>按父文件夹分组维护，避免重复输入完整路径</p>
+              <p>按父分类分组，修改后点击顶部“保存调整”生效。</p>
             </div>
             <button type="button" className="habit-outline-button" onClick={() => addFolderRule([""])}>
               <Plus className="w-3 h-3" />
@@ -676,18 +701,40 @@ export function HabitPresets() {
                 <div className="habit-folder-group__rows">
                   {group.indexes.map((ruleIndex) => {
                     const rule = current.folderRules[ruleIndex];
+                    const fullPath = pathToText(rule.folderPath) || "未命名目录";
+                    const ruleTitle = rule.folderPath.length > 1
+                      ? pathToText(rule.folderPath.slice(1)) || "未命名子目录"
+                      : rule.folderPath[0]?.trim() ? "当前父分类" : "未命名目录";
+                    const isEditingPath = pathEditor?.index === ruleIndex;
                     return (
-                      <div key={`${pathToText(rule.folderPath)}-${ruleIndex}`} className="habit-rule-row">
-                        <div className="extension-field habit-rule-row__path">
-                          <label>文件夹路径</label>
-                          <FolderPathBuilder
-                            value={rule.folderPath}
-                            onChange={(folderPath) => updateFolderRule(ruleIndex, (value) => ({ ...value, folderPath }))}
-                          />
+                      <div key={ruleIndex} className="habit-rule-row">
+                        <div className="habit-rule-row__header">
+                          <strong className="habit-rule-row__name" title={fullPath}>{ruleTitle}</strong>
+                          <button
+                            type="button"
+                            className="habit-rule-row__edit"
+                            aria-label={`${isEditingPath ? "收起" : "编辑"}路径：${fullPath}`}
+                            aria-expanded={isEditingPath}
+                            aria-controls={`habit-rule-path-${ruleIndex}`}
+                            disabled={isBusy}
+                            onClick={() => togglePathEditor(ruleIndex, group.title)}
+                          >
+                            {isEditingPath ? "收起编辑" : "编辑路径"}
+                          </button>
                         </div>
+                        {isEditingPath && (
+                          <div id={`habit-rule-path-${ruleIndex}`} className="extension-field habit-rule-row__path">
+                            <label>文件夹路径</label>
+                            <FolderPathBuilder
+                              value={rule.folderPath}
+                              onChange={(folderPath) => updateFolderRule(ruleIndex, (value) => ({ ...value, folderPath }))}
+                            />
+                          </div>
+                        )}
                         <div className="extension-field habit-rule-row__pattern">
-                          <label>适用内容特征</label>
+                          <label htmlFor={`habit-rule-pattern-${ruleIndex}`}>适用内容</label>
                           <AutoResizeTextarea
+                            id={`habit-rule-pattern-${ruleIndex}`}
                             value={rule.pattern}
                             onChange={(event) => updateFolderRule(ruleIndex, (value) => ({ ...value, pattern: event.target.value }))}
                             placeholder="例如：工具官网、资源站、导航站"
@@ -696,34 +743,21 @@ export function HabitPresets() {
                         <div className="habit-rule-row__actions">
                           <button
                             type="button"
-                            className="extension-icon-action extension-icon-action--blue"
-                            aria-label="保存规则"
-                            title="保存规则"
+                            className="habit-rule-row__delete"
+                            aria-label={`删除规则：${fullPath}`}
                             disabled={isBusy}
-                            onClick={handleSave}
+                            onClick={() => removeFolderRule(ruleIndex)}
                           >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className="extension-icon-action extension-icon-action--red"
-                            aria-label="删除规则"
-                            title="删除规则"
-                            onClick={() =>
-                              updateProfile((item) => ({
-                                ...item,
-                                folderRules: item.folderRules.filter((_, itemIndex) => itemIndex !== ruleIndex),
-                              }))
-                            }
-                          >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3 h-3" aria-hidden="true" />
+                            删除规则
                           </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </details>            ))}
+              </details>
+            ))}
             {!folderRuleGroups.length && <p className="habit-empty-text">暂无文件夹规则，点击“新建父分类”添加第一条规则。</p>}
           </div>
           <button type="button" className="habit-add-wide" onClick={() => addFolderRule([""])}>

@@ -7854,26 +7854,99 @@ select.extension-control option,
 
 .habit-folder-group__rows {
   display: grid;
-  gap: 8px;
+  gap: 0;
   border-top: 1px solid #eef3f8;
-  padding: 10px 12px 12px;
+  padding: 0 14px;
 }
 
 .habit-rule-row {
   display: grid;
-  grid-template-columns: minmax(240px, 0.9fr) minmax(220px, 1fr) auto;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  padding: 9px;
-  border: 1px solid #edf2f7;
-  border-radius: 9px;
-  background: #fbfdff;
+  padding: 16px 0;
+}
+
+.habit-rule-row + .habit-rule-row {
+  border-top: 1px solid #edf2f7;
+}
+
+.habit-rule-row__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.habit-rule-row__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.habit-rule-row__edit,
+.habit-rule-row__delete {
+  display: inline-flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 3px 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.habit-rule-row__edit {
+  color: #2563eb;
+}
+
+.habit-rule-row__delete {
+  color: #dc2626;
+}
+
+.habit-rule-row__edit:hover,
+.habit-rule-row__delete:hover {
+  text-decoration: underline;
+}
+
+.habit-rule-row__edit:focus-visible,
+.habit-rule-row__delete:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+.habit-rule-row__edit:disabled,
+.habit-rule-row__delete:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.habit-rule-row__path {
+  border-left: 2px solid #dbeafe;
+  padding: 2px 0 2px 10px;
+}
+
+.habit-rule-row__path > label,
+.habit-rule-row__pattern > label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .habit-rule-row__actions {
   display: flex;
+  justify-content: flex-end;
   gap: 6px;
-  padding-top: 23px;
 }
 
 .habit-path-builder {
@@ -8000,7 +8073,6 @@ select.extension-control option,
 }
 
 @media (max-width: 760px) {
-  .habit-rule-row,
   .habit-avoid-grid {
     grid-template-columns: 1fr;
   }
@@ -8052,10 +8124,6 @@ select.extension-control option,
     flex: 0 0 auto;
     justify-content: flex-end;
     margin-left: auto;
-  }
-
-  .habit-rule-row__actions {
-    padding-top: 0;
   }
 
   .habit-avoid-grid {
