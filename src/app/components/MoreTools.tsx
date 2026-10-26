@@ -13,7 +13,7 @@ export function MoreTools() {
   ];
   return <main className="extension-page extension-page--tools">
     <div className="extension-page__inner">
-      <header className="extension-page__header"><PageHeading title="更多工具" subtitle="需要时再打开，让日常维护保持简单。" /></header>
+      <header className="extension-page__header"><PageHeading title="更多工具" /></header>
       <nav className="remarks-tool-directory" aria-label="更多工具">
         {entries.map(({ to, label, description, icon: Icon }) => <Link key={to} to={to}><span className="remarks-tool-directory__icon"><Icon aria-hidden="true" /></span><span><strong>{label}</strong><small>{description}</small></span><ChevronRight aria-hidden="true" /></Link>)}
       </nav>

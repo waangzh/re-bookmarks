@@ -1565,8 +1565,6 @@ textarea {
 .report-history-card:hover,
 .report-history-card--active {
   border-color: #bfdbfe;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
 }
 
 .report-history-card--active {
@@ -3378,23 +3376,12 @@ textarea {
   border: 1px solid #e3eaf2;
   border-radius: 8px;
   background: #ffffff;
-  padding: 10px 11px 9px 14px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.history-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: linear-gradient(180deg, #3b82f6, #f59e0b);
+  padding: 12px;
+  transition: border-color 160ms ease;
 }
 
 .history-card:hover {
   border-color: #bfdbfe;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
 }
 
 .history-card__topline {
@@ -5825,7 +5812,6 @@ select.extension-control option,
   width: 100%;
   border: 0;
   padding: 10px 11px;
-  border-left: 3px solid #94a3b8;
   background: #f8fafc;
   text-align: left;
   cursor: pointer;
@@ -7941,8 +7927,7 @@ select.extension-control option,
 }
 
 .habit-rule-row__path {
-  border-left: 2px solid #dbeafe;
-  padding: 2px 0 2px 10px;
+  padding: 2px 0;
 }
 
 .habit-rule-row__path > label,
@@ -8316,18 +8301,16 @@ select.extension-control option,
 
 .onboarding__metric {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 5px 8px;
+  align-content: start;
+  gap: 8px;
   min-width: 0;
-  min-height: 86px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fbfdff;
-  padding: 12px;
+  padding: 8px 0;
 }
 
 .onboarding__metric svg {
+  display: none;
   width: 17px;
   height: 17px;
   color: #64748b;
@@ -8338,6 +8321,7 @@ select.extension-control option,
   color: #64748b;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .onboarding__metric strong {
@@ -8349,11 +8333,16 @@ select.extension-control option,
 
 .onboarding__metric--hero {
   grid-template-columns: auto auto 1fr;
+  gap: 5px 8px;
+  min-height: 86px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--remarks-radius-control);
   background: #eff6ff;
-  border-color: #bfdbfe;
 }
 
 .onboarding__metric--hero svg {
+  display: block;
   color: #2563eb;
 }
 

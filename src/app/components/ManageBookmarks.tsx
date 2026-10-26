@@ -2322,7 +2322,7 @@ export function ManageBookmarks() {
                                 return next;
                               })}
                             />
-                            <span title={item?.path.join(" / ")}>{entry.type === "folder" ? "文件夹" : "书签"} · {item?.title ?? "已删除的项目"}</span>
+                            <span title={item?.path.join(" / ")}>{entry.type === "folder" ? "文件夹" : "书签"}，{item?.title ?? "已删除的项目"}</span>
                             <button type="button" disabled={!item} onClick={() => locateWhitelistEntry(entry)}>定位</button>
                             <button type="button" disabled={busy} onClick={() => void toggleWhitelist(entry.type, entry.id)}>解除</button>
                           </div>

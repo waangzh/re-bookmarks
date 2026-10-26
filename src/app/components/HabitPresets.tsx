@@ -361,7 +361,7 @@ export function HabitPresets() {
     <div className="extension-page extension-page--habits">
       <div className="extension-page__inner habit-page-shell">
         <div className="extension-page__header habit-page-hero">
-          <PageHeading title="分类偏好" subtitle="查看和管理 ReMarks 学到的分类偏好" />
+          <PageHeading title="分类偏好" />
         </div>
 
         <div className="extension-button-row habit-presets-actions">
@@ -475,7 +475,7 @@ export function HabitPresets() {
                 <div key={`${item.domain}-${pathToText(item.folderPath)}`} className="habit-learned-row">
                   <div>
                     <strong>{item.domain}</strong>
-                    <span>优先归入 {pathToText(item.folderPath)} · {item.count} 次</span>
+                    <span>优先归入 {pathToText(item.folderPath)}，{item.count} 次</span>
                   </div>
                   <button
                     type="button"

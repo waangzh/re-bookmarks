@@ -24,8 +24,8 @@ export function getHomeTasks(input: {
   const recommendations = input.recommendations.filter((item) => existingIds.has(item.bookmarkId));
   const pendingCount = getUnsortedTaskCount(input.bookmarks, recommendations, input.ignoredIds);
   const tasks: Array<{ label: string; to: string; title: string; description: string; cta: string; kind: string; count?: number }> = [];
-  if (input.task?.status === "running") tasks.push({ label: "正在生成整理方案 · 查看进度", to: "/preview", kind: "running", title: "整理方案正在生成", description: "可以继续浏览书签，稍后回来检查分类建议。生成建议不会移动书签。", cta: "查看整理进度" });
-  else if (input.task?.status === "failed") tasks.push({ label: "上次生成未完成 · 查看原因并重试", to: "/preview", kind: "failed", title: "上次的整理方案尚未完成", description: "查看失败原因后再重试。书签仍保留在原来的位置。", cta: "查看原因与恢复选项" });
+  if (input.task?.status === "running") tasks.push({ label: "正在生成整理方案，查看进度", to: "/preview", kind: "running", title: "整理方案正在生成", description: "可以继续浏览书签，稍后回来检查分类建议。生成建议不会移动书签。", cta: "查看整理进度" });
+  else if (input.task?.status === "failed") tasks.push({ label: "上次生成未完成，查看原因并重试", to: "/preview", kind: "failed", title: "上次的整理方案尚未完成", description: "查看失败原因后再重试。书签仍保留在原来的位置。", cta: "查看原因与恢复选项" });
   else if (input.hasPreview) tasks.push({ label: "继续审核已保存的整理方案", to: "/preview", kind: "preview", title: "上次的分类建议，等你确认", description: "先检查分类结构、移动建议和异常项，再决定是否应用。", cta: "继续审核整理方案" });
   if (input.failedCount) tasks.push({ label: `${input.failedCount} 项整理失败需要复查`, to: "/report", kind: "report", count: input.failedCount, title: `有 ${input.failedCount} 项操作需要复查`, description: "部分书签未能完成操作。检查执行记录与原因，再决定下一步。", cta: "查看执行记录" });
   if (pendingCount) tasks.push({ label: `${pendingCount} 个书签待归档`, to: "/manage?task=unsorted", kind: "archive", count: pendingCount, title: `${pendingCount} 个书签，等待归档`, description: "核对已有建议，也可以直接指定目录。接受、修改或暂不处理，由你决定。", cta: `查看这 ${pendingCount} 个书签` });

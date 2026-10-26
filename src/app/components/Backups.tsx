@@ -223,7 +223,7 @@ export function Backups() {
     <div className="extension-page extension-page--backups">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="书签备份" subtitle="保存书签，随时恢复" />
+          <PageHeading title="书签备份" />
           <div className="backup-header-actions">
             <Link to="/import" className="extension-page__wide-secondary backup-header-actions__link">
               <FileUp className="w-4 h-4" />
@@ -345,7 +345,7 @@ export function Backups() {
                               <div key={folder.name} className="backup-folder-summary">
                                 <div>
                                   <strong title={folder.name}>{folder.name}</strong>
-                                  <span>{folder.bookmarkCount} 个书签 · {folder.folderCount} 个子文件夹</span>
+                                  <span>{folder.bookmarkCount} 个书签，{folder.folderCount} 个子文件夹</span>
                                 </div>
                                 {folder.samples.length > 0 && (
                                   <p>{folder.samples.join(" / ")}</p>

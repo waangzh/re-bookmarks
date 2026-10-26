@@ -370,7 +370,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
 
         {step === 1 && (
           <section className="onboarding__panel">
-            <div className="onboarding__eyebrow"><ScanSearch aria-hidden="true" /> 第一步 · 扫描</div>
+            <div className="onboarding__eyebrow"><ScanSearch aria-hidden="true" /> 第一步：扫描</div>
             <h1>先看看你的书签现状</h1>
             <p className="onboarding__lead">ReMarks 已在本地扫描书签，不会上传浏览历史。</p>
             <div className="onboarding__metrics">
@@ -391,14 +391,14 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
             <button className="onboarding__primary" type="button" onClick={() => setStep(2)} disabled={loading}>
               连接 AI 整理 <ArrowRight aria-hidden="true" />
             </button>
-            <button className="onboarding__later" type="button" disabled={loading} onClick={() => void completeOnboarding("local").catch((error) => setMessage(error instanceof Error ? error.message : "保存失败，请重试"))}>先检查书签 · 无需 API Key</button>
+            <button className="onboarding__later" type="button" disabled={loading} onClick={() => void completeOnboarding("local").catch((error) => setMessage(error instanceof Error ? error.message : "保存失败，请重试"))}>先检查书签，无需 API Key</button>
             {message && <p role="alert">{message}</p>}
           </section>
         )}
 
         {step === 2 && (
           <section className="onboarding__panel">
-            <div className="onboarding__eyebrow"><Sparkles aria-hidden="true" /> 第二步 · 连接 AI</div>
+            <div className="onboarding__eyebrow"><Sparkles aria-hidden="true" /> 第二步：连接 AI</div>
             <h1>连接 AI 服务</h1>
             <p className="onboarding__lead">ReMarks 使用 AI 判断书签内容并生成整理建议。</p>
             <div className="onboarding__form">
@@ -499,7 +499,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
 
         {step === 3 && (
           <section className="onboarding__panel">
-            <div className="onboarding__eyebrow"><Files aria-hidden="true" /> 第三步 · 生成小样本</div>
+            <div className="onboarding__eyebrow"><Files aria-hidden="true" /> 第三步：生成小样本</div>
             <h1>先试整理 {sampleSize} 个书签</h1>
             <p className="onboarding__lead">先检查并修正几条代表性建议。只有你主动应用后，已检查的书签才会移动。</p>
             {sampleState === "idle" || sampleState === "error" ? (
@@ -530,7 +530,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                     <div className="onboarding__suggestion" key={plan.bookmarkId}>
                       <div className="onboarding__suggestion-copy">
                         <span title={plan.bookmarkTitle}>{plan.bookmarkTitle}</span>
-                        <small title={plan.reason}>{confidenceLabel(plan)} · {plan.reason || "根据标题、网址与现有目录生成"}</small>
+                        <small title={plan.reason}>{confidenceLabel(plan)}，{plan.reason || "根据标题、网址与现有目录生成"}</small>
                       </div>
                       <ArrowRight aria-hidden="true" />
                       <div className="onboarding__suggestion-target">
@@ -575,7 +575,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
         {step === 4 && (
           <section className="onboarding__panel onboarding__panel--finish">
             <span className="onboarding__finish-mark"><CheckCircle2 aria-hidden="true" /></span>
-            <div className="onboarding__eyebrow">第四步 · 完整整理</div>
+            <div className="onboarding__eyebrow">第四步：完整整理</div>
             <h1>继续检查完整整理方案</h1>
             <p className="onboarding__lead">你已认可或修正代表样本。下一页会重新生成完整整理方案；只有再次确认后，ReMarks 才会创建备份并移动书签。</p>
             <div className="onboarding__finish-summary">

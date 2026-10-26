@@ -247,7 +247,7 @@ export function ImportBookmarks() {
                   <h2 className="extension-section__title">导入预览</h2>
                   <p className="backup-section-copy">
                     目标文件夹：{preview.targetRootName}
-                    {preview.sourceFileName ? ` · 来源：${preview.sourceFileName}` : ""}
+                    {preview.sourceFileName ? `，来源：${preview.sourceFileName}` : ""}
                   </p>
                 </div>
                 <span className="extension-pill">{preview.bookmarkCount} 个书签</span>

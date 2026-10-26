@@ -400,7 +400,7 @@ export function Report() {
         <section className="extension-success">
           <CheckCircle className="extension-success__icon" />
           <div>
-            <h2>{selectedReport.failedItems.length ? selectedReport.movedCount ? "部分完成 · 有项目未执行" : "执行失败 · 请查看原因" : selectedMeta.title}</h2>
+            <h2>{selectedReport.failedItems.length ? selectedReport.movedCount ? "部分完成，有项目未执行" : "执行失败，请查看原因" : selectedMeta.title}</h2>
             <p>{message && isLatestReport ? message : isLatestReport ? selectedMeta.subtitle : "历史报告仅用于查看，撤销和重新应用只支持最新一次操作"}</p>
           </div>
         </section>
@@ -420,7 +420,7 @@ export function Report() {
 
         <section className="extension-section">
           <h3 className="extension-section__title">本次执行记录</h3>
-          <p className="sidebar-muted-copy">新增目录 {selectedReport.createdFolderCount ?? "旧记录未统计"} · 复用目录 {selectedReport.reusedFolderCount ?? "旧记录未统计"} · 保持原位 {selectedReport.keptCount ?? selectedReport.movePlan.filter((plan) => plan.keepInPlace).length}；本地备份与报告各保留最近 5 份。</p>
+          <p className="sidebar-muted-copy">新增目录 {selectedReport.createdFolderCount ?? "旧记录未统计"}，复用目录 {selectedReport.reusedFolderCount ?? "旧记录未统计"}，保持原位 {selectedReport.keptCount ?? selectedReport.movePlan.filter((plan) => plan.keepInPlace).length}；本地备份与报告各保留最近 5 份。</p>
           <div className="extension-metrics">
             <div className="extension-metric">
               <FileText className="extension-metric__icon extension-metric__icon--blue" />
@@ -470,7 +470,7 @@ export function Report() {
         </section>
 
         {selectedReport.failedItems.length > 0 && (
-          <CollapsibleSection title="失败明细" count={selectedReport.failedItems.length} hint="查看未完成移动的书签和原因">
+          <CollapsibleSection title="失败明细" count={selectedReport.failedItems.length}>
             <div className="extension-compact-list">
               {selectedReport.failedItems.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
@@ -483,7 +483,7 @@ export function Report() {
         )}
 
         {skippedFolderCleanup.length > 0 && (
-          <CollapsibleSection title="未清理的目标文件夹" count={skippedFolderCleanup.length} hint="查看本次保留的文件夹和原因">
+          <CollapsibleSection title="未清理的目标文件夹" count={skippedFolderCleanup.length}>
             <div className="extension-compact-list">
               {skippedFolderCleanup.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
@@ -495,10 +495,10 @@ export function Report() {
           </CollapsibleSection>
         )}
 
-        <CollapsibleSection title="隐私说明" hint="查看本次整理的数据使用和备份范围">
+        <CollapsibleSection title="隐私说明">
           <ul className="extension-copy-list">
             {selectedReport.privacySummary.map((item) => (
-              <li key={item}>· {item}</li>
+              <li key={item}>{item}</li>
             ))}
           </ul>
         </CollapsibleSection>

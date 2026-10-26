@@ -18,7 +18,6 @@ import {
   Plus,
   Search,
   Settings,
-  ShieldCheck,
   Sparkles,
   X,
   BrainCircuit,
@@ -418,7 +417,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       <header className="home-heading">
         <Link to="/home" className="remarks-brand" aria-label="ReMarks 首页">
           <span className="remarks-brand__mark"><Bookmark aria-hidden="true" /></span>
-          <span><strong>ReMarks</strong><small>{busy ? "正在读取书签…" : `${bookmarks.length} 个书签 · 轻松打理`}</small></span>
+          <span><strong>ReMarks</strong><small>{busy ? "正在读取书签…" : `${bookmarks.length} 个书签`}</small></span>
         </Link>
         <Link to="/options" className="sidebar-icon-button" aria-label="设置"><Settings aria-hidden="true" /></Link>
       </header>
@@ -435,7 +434,6 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           </button>
           <h1 className="extension-page__title">任务中心</h1>
         </div>
-        <p className="extension-page__subtitle">查看待办，按需继续处理。</p>
       </div>}
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
@@ -446,7 +444,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
             event.preventDefault();
             if (!event.repeat) void handleDeepSearch();
           }
-        }} aria-label="搜索书签" placeholder="搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）…" autoComplete="off" />
+        }} aria-label="搜索书签" placeholder="搜索标题、网址或用途" autoComplete="off" />
         {query ? <>
           <button type="button" className="home-search__ai" onClick={() => void handleDeepSearch()} disabled={!queryText || deepSearchRunning} aria-keyshortcuts="Alt+Enter" title="用 AI 根据描述查找书签（Alt + Enter）"><BrainCircuit aria-hidden="true" /><span>{deepSearchRunning ? "查找中…" : "帮我找找"}</span></button>
           <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button>
@@ -468,14 +466,13 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           })}
           <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
         </> : deepSearchRunning ? <p>AI 正在根据描述查找书签…</p> : <>
-          <p>没有找到匹配的书签，试试标题、网址、目录名称或功能印象（如“视频网站”）。</p>
+          <p>没有找到匹配的书签</p>
           <button type="button" className="home-search-deep" onClick={() => void handleDeepSearch()}><BrainCircuit aria-hidden="true" />帮我找找「{queryText}」</button>
         </>}
       </section>}
-      {queryText && !deepSearchRunning && searchMatches.length < 3 && deepSearchState.stage === "idle" && !deepSearchState.error && <p className="home-deep-hint"><Sparkles aria-hidden="true" /><span>没找到？点击“帮我找找”，或按 <kbd>Alt + Enter</kbd> 用 AI 根据描述查找。</span></p>}
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
-        <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span><small>聚焦一件事</small></div>
+        <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
         <h1 id="home-task-title">{busy ? "正在读取你的任务…" : deferred ? "稍后再处理也没关系" : primary.title}</h1>
         <p>{busy ? "正在同步书签、分类建议和最近的执行记录。" : deferred ? "待办仍保留在任务中心。需要时，可重新显示刚才的建议。" : primary.description}</p>
         {!busy && <div className="home-featured-task__actions">
@@ -484,7 +481,6 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
             {model.tasks.length > 0 && !["running", "failed"].includes(primary.kind) && <button type="button" className="home-quiet-button" onClick={() => setDismissedTask(taskKey)}>稍后</button>}
           </>}
         </div>}
-        <div className="home-safety-note"><ShieldCheck aria-hidden="true" /><span>敏感操作需确认，批量更改前自动备份</span></div>
       </section>}
       {(showAllTasks || model.tasks.length > 1) && <section className="home-task-queue" aria-busy={busy}>
         <div className="home-section-heading"><h2>{showAllTasks ? "全部待办" : "其他待办"}</h2>{!showAllTasks && <Link to="/tasks">查看全部 <ArrowRight aria-hidden="true" /></Link>}</div>
@@ -507,8 +503,8 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       <section className="home-regular">
         <div className="home-section-heading"><h2>常用操作</h2></div>
         <div className="home-quick-grid">
-          <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick"><span className="home-quick__mark">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span><span><strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong><small>{primary.kind === "healthy" ? "本地访问统计" : "先预览，再确认"}</small></span></Link>
-          <Link to="/manage" className="home-quick"><span className="home-quick__mark"><Folder aria-hidden="true" /></span><span><strong>管理书签</strong><small>搜索、编辑与保护</small></span></Link>
+          {(primary.kind === "healthy" || primary.to !== action.to) && <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick"><span className="home-quick__mark">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span><span><strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong></span></Link>}
+          <Link to="/manage" className="home-quick"><span className="home-quick__mark"><Folder aria-hidden="true" /></span><span><strong>管理书签</strong></span></Link>
         </div>
       </section>
       {currentPage && currentPage.related.length > 0 && <details className="home-related"><summary>同网站的 {currentPage.related.length} 个书签</summary>{currentPage.related.map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span><ChevronRight aria-hidden="true" /></a>)}</details>}
@@ -518,10 +514,9 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         {!(historyGranted ? frequentBookmarks.length : recentBookmarks.length) && <p className="sidebar-muted-copy">{busy ? "正在读取书签…" : historyGranted ? "暂时没有已收藏网站的访问记录" : "收藏网页后，会在这里显示"}</p>}
       </section>
       <div className="home-tools">
-        <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><span>报告 · 备份 · 导入 · 偏好</span><ChevronDown aria-hidden="true" /></button>
+        <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><span>报告、备份、导入和偏好</span><ChevronDown aria-hidden="true" /></button>
         {toolsOpen && <nav id="home-tool-list" className="home-tool-list" aria-label="更多工具" onClickCapture={rememberHomeScroll}>{toolEntries.map(({ to, label, icon: Icon }) => <Link key={to} to={to}><Icon aria-hidden="true" /><span>{label}</span><ChevronRight aria-hidden="true" /></Link>)}<Link to="/more"><Grid2X2 aria-hidden="true" /><span>查看全部工具</span><ChevronRight aria-hidden="true" /></Link></nav>}
       </div>
-      <footer className="home-footer"><ShieldCheck aria-hidden="true" /><span>分类建议由你审核，批量操作可回退</span></footer>
     </main>
   );
 }

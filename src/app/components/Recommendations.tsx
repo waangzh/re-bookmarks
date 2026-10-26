@@ -397,7 +397,7 @@ export function Recommendations() {
                           )}
                         </div>
                         {rec.bookmarkUrl && <p className="extension-list__url">{rec.bookmarkUrl}</p>}
-                        <p className="extension-list__meta">{formatTime(rec.createdAt)} · 当前：{rec.currentFolderPath?.join(" / ") || "根目录"}</p>
+                        <p className="extension-list__meta">{formatTime(rec.createdAt)}，当前：{rec.currentFolderPath?.join(" / ") || "根目录"}</p>
                       </div>
                       <span className={["recommendation-kind", "recommendation-kind--" + kind].join(" ")}>
                         {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : isBatchSafeRecommendation(rec) ? "可批量确认" : "需单独确认"}

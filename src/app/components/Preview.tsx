@@ -1301,7 +1301,7 @@ export function Preview() {
       : plans.length === 0
         ? "可返回上一步重新选择书签"
         : !isReviewComplete
-          ? `${review.pending.length} 条书签待决定${review.pendingFrameworks.length ? ` · ${review.pendingFrameworks.length} 个目录待确认` : ""}`
+          ? `${review.pending.length} 条书签待决定${review.pendingFrameworks.length ? `，${review.pendingFrameworks.length} 个目录待确认` : ""}`
           : approvedPlans.length > 0
             ? `已批准移动 ${approvedPlans.length} 个书签`
             : "所有书签保持原位";

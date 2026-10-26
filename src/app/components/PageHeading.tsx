@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { ArrowLeft, Bookmark } from "lucide-react";
 
-export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle: ReactNode }) {
+export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
   const navigate = useNavigate();
 
   const handleBack = () => {
@@ -18,7 +18,7 @@ export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle: R
     <div className="extension-page__heading">
       <Link to="/home" className="remarks-brand" aria-label="ReMarks 首页">
         <span className="remarks-brand__mark"><Bookmark aria-hidden="true" /></span>
-        <span><strong>ReMarks</strong><small>让书签整理更省心</small></span>
+        <span><strong>ReMarks</strong></span>
       </Link>
       <div className="remarks-page-intro">
         <div className="remarks-page-intro__row">
@@ -33,7 +33,7 @@ export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle: R
           </button>
           <h1 className="extension-page__title">{title}</h1>
         </div>
-        <p className="extension-page__subtitle">{subtitle}</p>
+        {subtitle && <p className="extension-page__subtitle">{subtitle}</p>}
       </div>
     </div>
   );

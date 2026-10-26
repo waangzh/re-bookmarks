@@ -110,7 +110,6 @@ export function ReviewWorkbench(props: Props) {
         <div><span>原位</span><strong>{pathKey(item.sourcePath) || "当前根目录"}</strong></div>
         <div><span>建议</span><strong>{pathKey(plan.toFolderPath) || "保持原位"}</strong></div>
       </div>
-      {!choice && <p className={item.level === "review" ? "review-risk-note" : "review-muted"}>{item.reasons.join("；")}</p>}
       <div className="review-item__tools">
         <details className="review-evidence">
           <summary>查看依据 <ChevronDown size={14} /></summary>
@@ -130,10 +129,9 @@ export function ReviewWorkbench(props: Props) {
   };
 
   return <div className="review-workbench">
-    <p className="review-intro">把注意力留给真正需要判断的变更。</p>
-    <div className="review-promise"><ShieldCheck size={18} /><p><strong>整理前不会改动书签。</strong>低依据建议默认保留原位，只有已批准的移动才进入最终执行清单。</p></div>
+    <div className="review-promise"><ShieldCheck size={18} /><p>低依据建议保留原位，仅执行已批准的移动。</p></div>
     <section className="review-overview" aria-label="变更概览">
-      <p>本次方案 · 共 {review.total} 条有效书签</p>
+      <p>本次方案，共 {review.total} 条有效书签</p>
       <div className="review-metrics">
         <div><strong>{review.approvedPlans.length}</strong><span>已批准移动</span></div>
         <div><strong>{review.keepCount}</strong><span>确定保留</span></div>
@@ -146,11 +144,10 @@ export function ReviewWorkbench(props: Props) {
       <div className="review-section-heading"><h2>需要你的判断</h2><span className="review-tag">{remaining ? `${pendingCount} 条待决定` : "审核已完成"}</span></div>
       {analysis.frameworkGroups.length > 0 && <Progress label="目录结构" done={analysis.frameworkGroups.length - pendingFrameworks} total={analysis.frameworkGroups.length} />}
       <Progress label="书签变更" done={decisionItems.length - pendingCount} total={decisionItems.length} />
-      <p className="review-muted">目录与书签分别确认 · 支持中途离开后继续</p>
       {review.pendingFrameworks.map((group) => <article key={group.key} className="review-card" tabIndex={-1} data-review-pending="" aria-label={`新一级目录 ${group.topLevel}`}>
         <span className="review-tag"><FolderPlus size={13} /> 新一级目录</span>
         <h3>{group.topLevel}</h3>
-        <p className="review-muted">{group.items.length} 条建议 · {group.targetPathCount} 个目标目录</p>
+        <p className="review-muted">{group.items.length} 条建议，{group.targetPathCount} 个目标目录</p>
         <div className="review-route">{[...new Set(group.items.map((item) => pathKey(item.plan.toFolderPath)))].map((path) => <div key={path}><Folder size={14} /><strong>{path}</strong></div>)}</div>
         <p className="review-muted">采用目录只确认结构，其中的书签仍需独立审核。</p>
         <div className="review-actions">
@@ -182,7 +179,6 @@ export function ReviewWorkbench(props: Props) {
       })}
       {activeReview.length > 0 && <>
         <div className="review-section-heading"><h2>逐项判断</h2><span className="review-tag review-tag--risk">{activeReview.length} 条待决定</span></div>
-        <p className="review-muted">跨一级目录或偏好冲突需逐项确认，未批准的移动不会执行。</p>
         {visibleReview.map((item) => renderItem(item))}
         {activeReview.length > 2 && <button type="button" className="review-fold" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
           {showAll ? "收起其余建议" : `查看其余 ${activeReview.length - 2} 条审核建议`} <ChevronDown size={14} />
@@ -192,7 +188,7 @@ export function ReviewWorkbench(props: Props) {
     </div>
 
     <details className="review-safe">
-      <summary><ShieldCheck size={20} /><span><strong>已安全处理的建议</strong><small>低风险 {analysis.auto.length} 条 · 默认保留 {analysis.keep.length} 条</small></span><ChevronDown size={16} /></summary>
+      <summary><ShieldCheck size={20} /><span><strong>已安全处理的建议</strong><small>低风险 {analysis.auto.length} 条，默认保留 {analysis.keep.length} 条</small></span><ChevronDown size={16} /></summary>
       <p className="review-muted">低风险建议复用现有目录、符合已有分类习惯且未跨一级目录。所有条目均可检查。</p>
       <label className="review-search"><span>搜索安全建议</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题、URL 或目录" /></label>
       {analysis.auto.some((item) => review.effective[item.plan.bookmarkId] === "move") && <button className="review-text-button" disabled={busy}
@@ -205,7 +201,7 @@ export function ReviewWorkbench(props: Props) {
     <details className="review-details">
       <summary>执行清单与目标树 <span>{review.approvedPlans.length} 条移动</span><ChevronDown size={16} /></summary>
       <label className="review-search"><span>搜索实际移动的目标树</span><input value={props.treeQuery} onChange={(event) => props.onTreeQuery(event.target.value)} placeholder="书签标题、URL 或目标目录" /></label>
-      <p className="review-muted">{props.folderCount} 个匹配目标目录 · 点击书签可修改目标，修改后须重新审核</p>
+      <p className="review-muted">{props.folderCount} 个匹配目标目录；修改目标后须重新审核</p>
       <div className="preview-tree">{props.tree}</div>
       {!review.approvedPlans.length && <p className="review-muted">没有已批准的移动，书签保持原位。</p>}
       <details className="review-evidence"><summary>已决定的全部条目（{decidedItems.length}）<ChevronDown size={14} /></summary>
@@ -214,17 +210,17 @@ export function ReviewWorkbench(props: Props) {
       {analysis.frameworkGroups.some((group) => frameworks[group.key]) && <details className="review-evidence">
         <summary>已决定的目录结构 <ChevronDown size={14} /></summary>
         {analysis.frameworkGroups.filter((group) => frameworks[group.key]).map((group) => <div key={group.key} className="review-structure-decision">
-          <p>{group.topLevel} · {frameworks[group.key] === "approve" ? "已采用" : "不新建"}</p>
+          <p>{group.topLevel}，{frameworks[group.key] === "approve" ? "已采用" : "不新建"}</p>
           <button className="review-text-button" disabled={busy} onClick={() => props.onFramework(group, frameworks[group.key] === "approve" ? "keep" : "approve")}>更改目录决定（重新审核其中书签）</button>
         </div>)}
       </details>}
     </details>
-    <div className="review-strategy"><span>无法可靠分类时</span><Link to="/options">查看设置 <ArrowRight size={13} /></Link><p>{props.unclassifiedHandling === "collect" ? "当前设置：集中至「未分类」；本次低依据建议安全保留，可自愿修改目标。" : "保留原位置（推荐）· 避免打乱已有收藏结构"}</p></div>
+    <div className="review-strategy"><span>无法可靠分类时</span><Link to="/options">查看设置 <ArrowRight size={13} /></Link><p>{props.unclassifiedHandling === "collect" ? "当前设置：集中至「未分类」；本次低依据建议保留原位。" : "保留原位置"}</p></div>
     <details className="review-details">
       <summary>方案详情与执行说明 <ChevronDown size={16} /></summary>
       {props.cacheMessage && <p>{props.cacheMessage}</p>}
       <p>本次模型：{props.model || "缓存未记录"}</p>
-      {props.tokenUsage && <p>Token：{props.tokenUsage.totalTokens.toLocaleString()} · 输入 {props.tokenUsage.promptTokens.toLocaleString()} / 输出 {props.tokenUsage.completionTokens.toLocaleString()}</p>}
+      {props.tokenUsage && <p>Token：{props.tokenUsage.totalTokens.toLocaleString()}，输入 {props.tokenUsage.promptTokens.toLocaleString()} / 输出 {props.tokenUsage.completionTokens.toLocaleString()}</p>}
       <p>整理前创建完整本地备份，失败则停止。只执行批准的移动，执行后前往报告查看成功与失败详情。</p>
       <p>会清理本次移动后变空的源目录、空祖先与新建空目录；撤销可移回原目录，但不恢复原排序。</p>
       <p>删除或变化项会在执行前再次校验；已不存在的书签不计入有效参与数。</p>
@@ -233,9 +229,9 @@ export function ReviewWorkbench(props: Props) {
     <p className="review-announcement" role="status" aria-live="polite">{notice}</p>
 
     <footer className="review-footer">
-      <div><span>{review.approvedPlans.length} 条移动已批准</span><strong>{remaining ? `待定 ${pendingCount} 条${pendingFrameworks ? ` · ${pendingFrameworks} 个目录` : ""}` : "可进行最终确认"}</strong></div>
+      <div><span>{review.approvedPlans.length} 条移动已批准</span><strong>{remaining ? `待定 ${pendingCount} 条${pendingFrameworks ? `，${pendingFrameworks} 个目录` : ""}` : "可进行最终确认"}</strong></div>
       <button type="button" className="review-primary" disabled={busy || (!remaining && !review.approvedPlans.length)}
-        onClick={continueReview}>{busy ? "正在保存与校验…" : remaining ? "继续审核" : review.approvedPlans.length ? `检查并应用 · ${review.approvedPlans.length} 条移动` : "审核完成 · 全部保留原位"}<ArrowRight size={17} /></button>
+        onClick={continueReview}>{busy ? "正在保存与校验…" : remaining ? "继续审核" : review.approvedPlans.length ? `检查并应用（${review.approvedPlans.length} 条）` : "全部保留原位"}<ArrowRight size={17} /></button>
       {remaining && <button type="button" className="review-text-button" disabled={busy} onClick={() => setKeepOpen(true)}>其余待定全部保留原位</button>}
       {!remaining && !review.approvedPlans.length && <Link className="review-text-button" to="/home">返回首页</Link>}
     </footer>

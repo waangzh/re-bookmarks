@@ -302,7 +302,7 @@ export function Options() {
     <div className="extension-page extension-page--settings">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="设置" subtitle="AI、整理规则与隐私权限" />
+          <PageHeading title="设置" />
         </div>
 
         <section className="extension-section settings-section settings-section--provider settings-simple">
@@ -778,12 +778,12 @@ export function Options() {
               </div>
 
               <div className="extension-privacy">
-                <p>
-                  · API Key 仅保存到浏览器本地<br />
-                  · 默认不发送完整 URL 到 AI<br />
-                  · 浏览历史不会发送给 AI<br />
-                  · 所有书签移动都在用户确认后执行
-                </p>
+                <ul className="extension-copy-list">
+                  <li>API Key 仅保存到浏览器本地</li>
+                  <li>默认不发送完整 URL 到 AI</li>
+                  <li>浏览历史不会发送给 AI</li>
+                  <li>所有书签移动都在用户确认后执行</li>
+                </ul>
               </div>
             </div>
             </div>

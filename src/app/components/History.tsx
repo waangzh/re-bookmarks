@@ -109,20 +109,19 @@ export function History() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="常访问书签" subtitle="按本地访问频率整理" />
+          <PageHeading title="常访问书签" />
         </div>
 
         {!enabled ? (
           <section className="extension-section extension-section--center">
             <AlertCircle className="extension-empty__icon extension-empty__icon--amber" />
             <h2>功能未启用</h2>
-            <p>启用后可以查看您经常访问的已收藏网址，帮助更好地整理和管理。</p>
             <div className="extension-notice extension-notice--amber extension-notice--left">
               <p className="extension-notice__label">需要浏览历史权限</p>
               <ul className="extension-copy-list">
-                <li>· 仅统计已收藏网址的访问次数</li>
-                <li>· 浏览历史不会发送给 AI</li>
-                <li>· 所有数据仅在本地处理</li>
+                <li>仅统计已收藏网址的访问次数</li>
+                <li>浏览历史不会发送给 AI</li>
+                <li>所有数据仅在本地处理</li>
               </ul>
             </div>
             {message && <p>{message}</p>}
@@ -200,8 +199,8 @@ export function History() {
 
             <CollapsibleSection title="统计说明" hint="访问频率和整理建议的计算范围">
               <ul className="extension-copy-list">
-                <li>· 仅统计已收藏网址的访问记录</li>
-                <li>· 建议来自本地规则，不会自动移动书签</li>
+                <li>仅统计已收藏网址的访问记录</li>
+                <li>建议来自本地规则，不会自动移动书签</li>
               </ul>
             </CollapsibleSection>
           </>
