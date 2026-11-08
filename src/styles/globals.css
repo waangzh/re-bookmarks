@@ -130,6 +130,8 @@
 
 html {
   font-size: var(--font-size);
+  /* 提前预留纵向滚动条槽位，避免页面变长后内容突然向左挤压。 */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -2470,7 +2472,14 @@ textarea {
 .collapsible-section:has(.ui-select),
 .provider-advanced:has(.ui-select),
 .habit-card:has(.ui-select),
-.preview-risk-section:has(.ui-select) {
+.preview-risk-section:has(.ui-select),
+.extension-section:has(.organize-model-picker),
+.settings-section:has(.organize-model-picker),
+.settings-disclosure:has(.organize-model-picker),
+.collapsible-section:has(.organize-model-picker),
+.provider-advanced:has(.organize-model-picker),
+.habit-card:has(.habit-folder-group__menu),
+.preview-risk-section:has(.organize-model-picker) {
   overflow: visible;
 }
 
@@ -2481,7 +2490,14 @@ textarea {
 .provider-advanced:has(.ui-select__menu),
 .habit-card:has(.ui-select__menu),
 .preview-risk-section:has(.ui-select__menu),
-.preview-risk-section:has(.ui-cascade__menu) {
+.preview-risk-section:has(.ui-cascade__menu),
+.extension-section:has(.organize-model-picker.is-open),
+.settings-section:has(.organize-model-picker.is-open),
+.settings-disclosure:has(.organize-model-picker.is-open),
+.collapsible-section:has(.organize-model-picker.is-open),
+.provider-advanced:has(.organize-model-picker.is-open),
+.habit-card:has(.habit-folder-group__menu),
+.preview-risk-section:has(.organize-model-picker.is-open) {
   position: relative;
   z-index: 50;
 }

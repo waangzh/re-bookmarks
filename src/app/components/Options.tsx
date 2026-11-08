@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AIProviderConfig, AIProviderType, Settings } from "../types";
-import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, endpointFor, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, endpointFor, getAIOutputTokenLimit, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { requestClearPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
@@ -66,6 +66,10 @@ export function Options() {
   currentProvider.current = draft.provider;
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
   const effectiveTemperature = draft.provider.temperature ?? providerProfile.defaultTemperature;
+  const defaultOutputTokens = getAIOutputTokenLimit(draft.provider);
+  const inheritedOutputPlaceholder = defaultOutputTokens === undefined
+    ? "继承默认（按任务自动）"
+    : `继承默认：${defaultOutputTokens}`;
   const effectiveTokenParam = draft.provider.tokenParam && draft.provider.tokenParam !== "auto"
     ? draft.provider.tokenParam
     : providerProfile.tokenParam;
@@ -561,7 +565,7 @@ export function Options() {
                     />
                   </div>
                   <div className="extension-field">
-                    <label htmlFor="provider-max-tokens">Max tokens</label>
+                    <label htmlFor="provider-max-tokens">默认回复上限（tokens）</label>
                     <input
                       id="provider-max-tokens"
                       type="number"
@@ -573,8 +577,10 @@ export function Options() {
                         event.target.value === "" ? undefined : Number(event.target.value)
                       )}
                       placeholder="按任务自动"
+                      aria-describedby="provider-max-tokens-help"
                       className="extension-control"
                     />
+                    <small id="provider-max-tokens-help">没有单独覆盖的 AI 任务使用此值；留空时按任务自动分配。限制每次回复长度，不是书签数量或累计用量。</small>
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-token-param">Token 参数</label>
@@ -608,6 +614,49 @@ export function Options() {
                         { value: "off", label: "始终关闭" },
                       ]}
                     />
+                  </div>
+                </div>
+
+                <div className="extension-field">
+                  <strong>按任务覆盖回复上限（可选）</strong>
+                  <small>留空继承默认回复上限；默认也留空时，使用该任务的自动预算。覆盖值可高于或低于默认值。</small>
+                </div>
+                <div className="provider-form__grid">
+                  <div className="extension-field">
+                    <label htmlFor="provider-classification-max-tokens">书签分类上限（tokens）</label>
+                    <input
+                      id="provider-classification-max-tokens"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={draft.provider.classificationMaxTokens ?? ""}
+                      onChange={(event) => updateProviderConfig(
+                        "classificationMaxTokens",
+                        event.target.value === "" ? undefined : Number(event.target.value)
+                      )}
+                      placeholder={inheritedOutputPlaceholder}
+                      aria-describedby="provider-classification-max-tokens-help"
+                      className="extension-control"
+                    />
+                    <small id="provider-classification-max-tokens-help">用于整理书签和分类推荐，不影响用途识别。</small>
+                  </div>
+                  <div className="extension-field">
+                    <label htmlFor="provider-impression-max-tokens">用途识别上限（tokens）</label>
+                    <input
+                      id="provider-impression-max-tokens"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={draft.provider.impressionMaxTokens ?? ""}
+                      onChange={(event) => updateProviderConfig(
+                        "impressionMaxTokens",
+                        event.target.value === "" ? undefined : Number(event.target.value)
+                      )}
+                      placeholder={inheritedOutputPlaceholder}
+                      aria-describedby="provider-impression-max-tokens-help"
+                      className="extension-control"
+                    />
+                    <small id="provider-impression-max-tokens-help">用于“让更多书签支持按用途搜索”，批次大小随此值调整。画像分析、AI 查找等任务仍使用默认上限。</small>
                   </div>
                 </div>
 

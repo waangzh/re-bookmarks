@@ -33,7 +33,7 @@ import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { countDuplicateGroups, getLinkHealthProblemResults } from "../services/bookmarkTasks";
 import { saveCurrentPage } from "../services/currentPage";
 import { getHomeTasks, getOrganizeAction } from "../services/homeTasks";
-import { getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan } from "../services/storage";
+import { getIgnoredManualTaskBookmarkIds, getLinkHealthReport, getPreviewPlan, getStorageValue, setStorageValue, STORAGE_KEYS } from "../services/storage";
 import { getPreviewTask } from "../services/previewTask";
 import { sanitizeUrl } from "../services/rules";
 import { useAppStore } from "../store/useAppStore";
@@ -170,7 +170,26 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const [frequentBookmarks, setFrequentBookmarks] = useState<FrequentBookmark[]>([]);
   const [semanticIndex, setSemanticIndex] = useState<Record<string, BookmarkImpressionMeta>>({});
   const [searchFocused, setSearchFocused] = useState(false);
+  const [savedSearchKeywords, setSavedSearchKeywords] = useState<string[] | null>(null);
+  const [editingKeywords, setEditingKeywords] = useState(false);
+  const [keywordDraft, setKeywordDraft] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState("");
+  const [keywordError, setKeywordError] = useState("");
+  const [savingKeywords, setSavingKeywords] = useState(false);
   const [historyGranted, setHistoryGranted] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => void getStorageValue<unknown>(STORAGE_KEYS.homeSearchKeywords, null).then((value) => {
+      if (alive) setSavedSearchKeywords(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : null);
+    });
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === "local" && changes[STORAGE_KEYS.homeSearchKeywords]) load();
+    };
+    load();
+    chrome.storage?.onChanged?.addListener(changed);
+    return () => { alive = false; chrome.storage?.onChanged?.removeListener(changed); };
+  }, []);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -402,7 +421,26 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     }
     runDeepSearch(queryText);
   };
-  const impressionSuggestions = useMemo(() => getTopImpressionKeywords(semanticIndex, 6), [semanticIndex]);
+  const automaticSuggestions = useMemo(() => getTopImpressionKeywords(semanticIndex, 6), [semanticIndex]);
+  const impressionSuggestions = savedSearchKeywords ?? automaticSuggestions;
+  const saveKeywords = async () => {
+    const keywords = [...keywordDraft, newKeyword].map((keyword) => keyword.trim()).filter(Boolean);
+    if (new Set(keywords.map((keyword) => keyword.toLocaleLowerCase())).size !== keywords.length) {
+      setKeywordError("标签不能重复");
+      return;
+    }
+    setSavingKeywords(true);
+    setKeywordError("");
+    try {
+      await setStorageValue(STORAGE_KEYS.homeSearchKeywords, keywords);
+      setSavedSearchKeywords(keywords);
+      setEditingKeywords(false);
+    } catch {
+      setKeywordError("保存失败，请重试");
+    } finally {
+      setSavingKeywords(false);
+    }
+  };
   const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
   const toolEntries = [
@@ -435,9 +473,10 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           <h1 className="extension-page__title">任务中心</h1>
         </div>
       </div>}
+      <div onFocus={() => setSearchFocused(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSearchFocused(false); }}>
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
-        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onKeyDown={(event) => {
+        <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return;
           if (event.key === "Escape") { setQuery(""); return; }
           if (event.key === "Enter" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -450,9 +489,21 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button>
         </> : <kbd>Ctrl / ⌘ K</kbd>}
       </form>
-      {!queryText && searchFocused && impressionSuggestions.length > 0 && <div className="home-impression-chips" aria-label="功能印象快捷搜索">
-        {impressionSuggestions.map((keyword) => <button key={keyword} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setQuery(keyword); searchRef.current?.focus(); }}>{keyword}</button>)}
+      {!queryText && (searchFocused || editingKeywords) && <div className="home-impression-chips" aria-label="快捷搜索标签">
+        {editingKeywords ? <div className="home-keyword-editor">
+          {keywordDraft.map((keyword, index) => <div className="home-keyword-editor__row" key={index}>
+            <input aria-label={`编辑标签 ${index + 1}`} value={keyword} maxLength={40} onChange={(event) => setKeywordDraft((draft) => draft.map((item, i) => i === index ? event.target.value : item))} />
+            <button type="button" aria-label={`删除标签 ${keyword || index + 1}`} onClick={() => setKeywordDraft((draft) => draft.filter((_, i) => i !== index))}><X aria-hidden="true" /></button>
+          </div>)}
+          <div className="home-keyword-editor__row"><input aria-label="新标签" placeholder="输入新标签" maxLength={40} value={newKeyword} onChange={(event) => setNewKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); if (newKeyword.trim()) { setKeywordDraft((draft) => [...draft, newKeyword.trim()]); setNewKeyword(""); } } }} /><button type="button" onClick={() => { if (newKeyword.trim()) { setKeywordDraft((draft) => [...draft, newKeyword.trim()]); setNewKeyword(""); } }}><Plus aria-hidden="true" />添加</button></div>
+          {keywordError && <p role="alert">{keywordError}</p>}
+          <div className="home-keyword-editor__actions"><button type="button" disabled={savingKeywords} onClick={() => { setEditingKeywords(false); setKeywordError(""); }}>取消</button><button type="button" disabled={savingKeywords} onClick={() => void saveKeywords()}>{savingKeywords ? "保存中…" : "保存"}</button></div>
+        </div> : <>
+          {impressionSuggestions.map((keyword) => <button key={keyword} type="button" onClick={() => { setQuery(keyword); searchRef.current?.focus(); }}>{keyword}</button>)}
+          <button type="button" onClick={() => { setKeywordDraft([...impressionSuggestions]); setNewKeyword(""); setKeywordError(""); setEditingKeywords(true); }}>编辑标签</button>
+        </>}
       </div>}
+      </div>
       {queryText && (deepSearchState.stage !== "idle" || deepSearchState.error) && <div className={`home-deep-status home-deep-status--${deepSearchState.error ? "error" : deepSearchState.stage}`} role="status" aria-live="polite">
         <span>{deepSearchState.error ? `AI 查找失败：${deepSearchState.error}` : deepSearchState.stage === "expanding" ? <><BrainCircuit aria-hidden="true" />正在联想相关功能与常见网站…</> : deepSearchState.stage === "expanded_shown" ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在筛选更匹配的书签…</> : <><CheckCircle2 aria-hidden="true" />AI 查找完成</>}</span>
         {deepSearchState.expandedTerms.length > 0 && deepSearchState.stage !== "error" && <span className="home-deep-status__terms">{deepSearchState.expandedTerms.map((term) => <b key={term}>{term}</b>)}</span>}

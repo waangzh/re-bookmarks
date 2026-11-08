@@ -1,4 +1,5 @@
 import type {
+  AIOutputTask,
   AIProviderConfig,
   AIProviderType,
   AIQueryExpansionResult,
@@ -198,6 +199,18 @@ export const AI_DATA_AUTHORIZATION_REQUIRED_MESSAGE = "尚未授权向 AI 服务
 
 export function isAIProviderAuthorized(config: AIProviderConfig) {
   return Boolean(config.apiKey && config.enabled);
+}
+
+export function getAIOutputTokenLimit(config: AIProviderConfig, task?: AIOutputTask): number | undefined {
+  const override = task === "classification"
+    ? config.classificationMaxTokens
+    : task === "impression" ? config.impressionMaxTokens : undefined;
+  for (const value of [override, config.maxTokens]) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.max(1, Math.round(value));
+    }
+  }
+  return undefined;
 }
 
 function profileFor(type: AIProviderType) {
@@ -430,6 +443,14 @@ export type BookmarkImpressionSuggestion = {
   summary: string;
 };
 
+export const IMPRESSION_TOKENS_PER_BOOKMARK = 180;
+
+export type ImpressionExtractionResult = {
+  suggestions: BookmarkImpressionSuggestion[];
+  incompleteReason: string;
+  retryable: boolean;
+};
+
 function parseImpressionResults(content: string): BookmarkImpressionSuggestion[] {
   const jsonText = extractJson(content);
   const results: BookmarkImpressionSuggestion[] = [];
@@ -448,7 +469,10 @@ function parseImpressionResults(content: string): BookmarkImpressionSuggestion[]
       const value = item as Record<string, unknown>;
       const id = typeof value.id === "string" ? value.id.trim() : "";
       if (!id) continue;
-      const keywords = normalizeKeywords(value.keywords ?? value.tags ?? value.impressions);
+      const rawKeywords = value.keywords ?? value.tags ?? value.impressions;
+      const keywords = normalizeKeywords(Array.isArray(rawKeywords)
+        ? rawKeywords.filter((keyword) => typeof keyword === "string")
+        : typeof rawKeywords === "string" ? rawKeywords : []);
       const summary = typeof value.summary === "string"
         ? value.summary.trim()
         : typeof value.reason === "string" ? value.reason.trim() : "";
@@ -478,8 +502,9 @@ export async function extractImpressionsWithAI(
   config: AIProviderConfig,
   bookmarks: BookmarkForAI[],
   options?: { signal?: AbortSignal; onTokenUsage?: (usage: TokenUsage) => void }
-) {
-  if (!bookmarks.length || !config.apiKey) return [];
+): Promise<ImpressionExtractionResult> {
+  if (!bookmarks.length) return { suggestions: [], incompleteReason: "", retryable: false };
+  if (!config.apiKey) throw new Error("缺少 API Key");
 
   const completion = await chatCompletion(
     config,
@@ -490,29 +515,48 @@ export async function extractImpressionsWithAI(
           "你是浏览器书签功能印象标注助手。必须输出合法 JSON，不要 Markdown，不要解释。" +
           "请为每个书签生成：summary（一句话说明网站核心功能，15~35字）和 keywords（3~5 个功能印象词）。" +
           "keywords 要站在“用户忘记网站名字时，会在搜索框输入什么功能词或品类词来找它”的角度生成，例如 Cupfox → [\"视频网站\",\"在线看剧\",\"影视搜索\",\"电影网站\"]，Squoosh → [\"图片压缩\",\"图像优化\",\"WebP转换\"]。" +
-          "不要只重复书签标题里已有的词；无法判断时 keywords 返回空数组，不要编造。" +
-          "输出格式为 {\"results\":[{\"id\":\"输入 id\",\"keywords\":[\"功能印象词\"],\"summary\":\"网站功能简述\"}]}，每一项必须对应输入中的一个 id。",
+          "不要只重复书签标题里已有的词；无法判断时 keywords 返回空数组、summary 返回空字符串，不要编造。" +
+          "输出格式为 {\"results\":[{\"id\":\"输入 id\",\"keywords\":[\"功能印象词\"],\"summary\":\"网站功能简述\"}]}，每个输入 id 必须原样返回一次，不能遗漏或重复。" +
+          "metadata 不可用时可结合标题、域名和 URL 判断，证据不足时保留空结果。",
       },
       {
         role: "user",
         content: `请为这些书签生成功能印象，只返回 JSON：\n${JSON.stringify(bookmarks)}`,
       },
     ],
-    2400,
+    Math.max(1200, bookmarks.length * IMPRESSION_TOKENS_PER_BOOKMARK),
     true,
     CLASSIFICATION_REQUEST_TIMEOUT_MS,
-    options?.signal
+    options?.signal,
+    "impression"
   );
 
   if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);
 
-  const results = parseImpressionResults(completion.content);
+  if (completion.finishReason === "content_filter" || completion.refusal) {
+    return { suggestions: [], incompleteReason: "AI 服务拒绝生成用途信息或触发内容过滤。", retryable: false };
+  }
+
+  const inputIds = new Set(bookmarks.map((bookmark) => bookmark.id));
+  const results = [...new Map(
+    parseImpressionResults(completion.content)
+      .filter((result) => inputIds.has(result.id))
+      .map((result) => [result.id, result])
+  ).values()];
   debugAI("parsed impressions", {
     inputCount: bookmarks.length,
     outputCount: results.length,
     ids: results.map((result) => result.id),
   });
-  return results;
+  return {
+    suggestions: results,
+    incompleteReason: completion.finishReason === "length"
+      ? "AI 回复达到输出上限，未返回该书签的完整用途信息；请检查高级设置中的用途识别上限或默认回复上限。"
+      : results.length
+        ? "AI 遗漏了该书签，或返回的 ID、关键词与简介无效。"
+        : "AI 未返回可解析的有效用途信息，或无法根据现有信息判断用途。",
+    retryable: true,
+  };
 }
 
 const EMPTY_QUERY_EXPANSION: AIQueryExpansionResult = {
@@ -857,7 +901,8 @@ async function chatCompletion(
   maxTokens = 800,
   jsonMode = false,
   timeoutMs = CLASSIFICATION_REQUEST_TIMEOUT_MS,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  task?: AIOutputTask
 ) {
   if (!config.apiKey) throw new Error("缺少 API Key");
   if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
@@ -876,9 +921,7 @@ async function chatCompletion(
   const tokenParam = config.tokenParam && config.tokenParam !== "auto"
     ? config.tokenParam
     : profile.tokenParam;
-  const configuredMaxTokens = Number.isFinite(config.maxTokens) && (config.maxTokens ?? 0) > 0
-    ? Math.round(config.maxTokens as number)
-    : maxTokens;
+  const configuredMaxTokens = getAIOutputTokenLimit(config, task) ?? maxTokens;
   body[tokenParam] = configuredMaxTokens;
 
   const wantsJsonMode = config.jsonMode === "on"
@@ -1174,7 +1217,8 @@ export async function classifyWithAI(
     4000,
     true,
     CLASSIFICATION_REQUEST_TIMEOUT_MS,
-    options?.signal
+    options?.signal,
+    "classification"
   );
 
   if (completion.tokenUsage) options?.onTokenUsage?.(completion.tokenUsage);

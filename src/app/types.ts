@@ -313,6 +313,8 @@ export type BookmarkLinkHealthReport = {
 
 export type AIProviderType = "openai" | "deepseek" | "zhipu" | "kimi" | "gemini" | "minimax" | "qwen" | "doubao" | "custom";
 
+export type AIOutputTask = "classification" | "impression";
+
 export type AIProviderConfig = {
   type: AIProviderType;
   apiKey: string;
@@ -320,6 +322,8 @@ export type AIProviderConfig = {
   endpoint?: string;
   temperature?: number;
   maxTokens?: number;
+  classificationMaxTokens?: number;
+  impressionMaxTokens?: number;
   tokenParam?: "auto" | "max_tokens" | "max_completion_tokens";
   jsonMode?: "auto" | "on" | "off";
   enabled?: boolean;

@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   previewReview: "remarks.previewReview",
   modelCatalog: "remarks.modelCatalog",
   semanticIndex: "remarks.semanticIndex",
+  homeSearchKeywords: "remarks.homeSearchKeywords",
 } as const;
 
 /** 模型列表缓存的过期时间：24 小时 */

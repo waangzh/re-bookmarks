@@ -48,7 +48,7 @@ import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../servi
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
 import { appendFolderImpression, getSemanticIndexCoverage, getSemanticIndexMap } from "../services/semanticIndex";
-import { backfillImpressions, getMissingImpressionBookmarks, type ImpressionBackfillProgress } from "../services/impressionBackfill";
+import { backfillImpressions, getImpressionBackfillBatchSize, getMissingImpressionBookmarks, type ImpressionBackfillFailure, type ImpressionBackfillProgress } from "../services/impressionBackfill";
 import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
 import {
@@ -302,6 +302,7 @@ export function ManageBookmarks() {
   const [whitelistEntries, setWhitelistEntries] = useState<BookmarkWhitelistEntry[]>([]);
   const [semanticIndex, setSemanticIndex] = useState<Record<string, BookmarkImpressionMeta>>({});
   const [backfillProgress, setBackfillProgress] = useState<ImpressionBackfillProgress | null>(null);
+  const [backfillFailures, setBackfillFailures] = useState<ImpressionBackfillFailure[]>([]);
   const backfillAbortRef = useRef<AbortController | null>(null);
   const [whitelistSearchQuery, setWhitelistSearchQuery] = useState("");
   const [selectedWhitelistKeys, setSelectedWhitelistKeys] = useState<Set<string>>(() => new Set());
@@ -2167,7 +2168,7 @@ export function ManageBookmarks() {
   };
 
   const handleBackfillImpressions = async () => {
-    if (backfillRunning) return;
+    if (backfillRunning || backfillAbortRef.current) return;
     if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
       setMessage("补充书签用途前，请先在设置中连接并授权 AI 服务。");
       return;
@@ -2179,12 +2180,13 @@ export function ManageBookmarks() {
     if (!confirm(
       `将用 AI 为剩余 ${missingImpressionCount} 个书签补充用途信息，方便按用途搜索。\n\n` +
       "只会写入本地印象索引，不会移动、删除或改写任何书签，也不会创建备份或整理报告。\n\n" +
-      "每个批次约 20 个书签，可按批次计费。是否继续？"
+      `每批最多 ${getImpressionBackfillBatchSize(settings.provider)} 个书签。遗漏或无效结果最多自动重试一次，每批最多 5 个，追加请求可能增加费用。是否继续？`
     )) return;
 
     const controller = new AbortController();
     backfillAbortRef.current = controller;
-    setBackfillProgress({ phase: "preparing", processed: 0, total: missingImpressionCount, indexed: 0, failed: 0 });
+    setBackfillProgress({ phase: "preparing", processed: 0, total: missingImpressionCount, indexed: 0, failed: 0, retried: 0 });
+    setBackfillFailures([]);
     setMessage("");
     try {
       // Firefox 需要权限请求保持在用户手势内，先于任何存储读取调用。
@@ -2194,6 +2196,7 @@ export function ManageBookmarks() {
         bookmarks,
         onProgress: setBackfillProgress,
       });
+      setBackfillFailures(summary.failures);
       setSemanticIndex(await getSemanticIndexMap());
       if (summary.canceled) {
         setMessage(`已停止补充：本次已为 ${summary.indexed} 个书签补充用途，${summary.failed} 个处理失败，其余未处理的可下次继续。`);
@@ -2202,7 +2205,8 @@ export function ManageBookmarks() {
       } else {
         setMessage(
           `用途信息${summary.failed ? "部分完成" : "补充完成"}：已为 ${summary.indexed} 个书签补充用途` +
-          (summary.failed ? `，${summary.failed} 个未能生成，可稍后重试。` : "。")
+          (summary.retried ? `（重试 ${summary.retried} 个，其中 ${summary.recovered} 个补充成功）` : "") +
+          (summary.failed ? `，${summary.failed} 个失败，可展开查看原因。` : "。")
         );
       }
     } catch (error) {
@@ -2274,6 +2278,20 @@ export function ManageBookmarks() {
           <div className="extension-notice extension-notice--amber">
             <p>{message}</p>
           </div>
+        )}
+
+        {backfillFailures.length > 0 && (
+          <details className="extension-notice extension-notice--amber">
+            <summary>上次用途识别：{backfillFailures.length} 个失败，查看原因</summary>
+            <ul className="mt-2 space-y-2" style={{ overflowWrap: "anywhere" }}>
+              {backfillFailures.map((failure) => (
+                <li key={failure.bookmarkId}>
+                  <strong>{failure.title}</strong>
+                  <p>{failure.reason}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
 
         {!taskMode && (
@@ -2449,7 +2467,7 @@ export function ManageBookmarks() {
               <div className="impression-backfill">
                 <div className="impression-backfill__head">
                   <span>
-                    {backfillProgress.phase === "requesting_ai" ? "正在分析书签用途…" : backfillProgress.phase === "saving" ? "正在保存用途信息…" : "正在准备…"}
+                    {backfillProgress.phase === "retrying_ai" ? "正在小批量重试未完成的书签…" : backfillProgress.phase === "requesting_ai" ? "正在分析书签用途…" : backfillProgress.phase === "saving" ? "正在保存用途信息…" : "正在准备…"}
                     {" "}{backfillProgress.processed}/{backfillProgress.total}，已完成 {backfillProgress.indexed} 个
                     {backfillProgress.failed > 0 && `，${backfillProgress.failed} 条失败`}
                   </span>

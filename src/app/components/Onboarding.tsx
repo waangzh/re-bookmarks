@@ -437,8 +437,9 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                     <input type="number" min="0" max="2" step="0.1" value={draft.provider.temperature ?? ""} onChange={(event) => updateProviderConfig("temperature", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="默认 0.1" />
                   </label>
                   <label>
-                    <span>Max tokens</span>
+                    <span>默认回复上限（tokens）</span>
                     <input type="number" min="1" step="1" value={draft.provider.maxTokens ?? ""} onChange={(event) => updateProviderConfig("maxTokens", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="按任务自动" />
+                    <small>留空时按任务自动分配。分类和用途识别可在设置的高级选项中单独覆盖；限制的是每次回复长度。</small>
                   </label>
                   <label>
                     <span>Token 参数</span>
