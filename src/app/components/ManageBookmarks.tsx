@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router";
 import {
@@ -621,6 +622,9 @@ export function ManageBookmarks() {
     () => filteredPendingRecommendations.filter(isBatchSafeRecommendation),
     [filteredPendingRecommendations]
   );
+  const batchArchiveHint = actionablePendingRecommendations.length === 0
+    ? "当前建议需逐条确认"
+    : `归档当前列表中可批量处理的 ${actionablePendingRecommendations.length} 条建议，其余建议需逐条确认`;
 
   const linkHealthResultById = useMemo(() => {
     const lookup = new Map<string, BookmarkLinkHealthResult>();
@@ -663,7 +667,7 @@ export function ManageBookmarks() {
 
 
   const pageTitle = useMemo(() => {
-    if (taskMode === "unsorted") return "未分类书签";
+    if (taskMode === "unsorted") return "待整理书签";
     if (taskMode === "duplicate") return "重复链接";
     if (taskMode === "invalid") return "失效链接";
     return "管理书签";
@@ -671,13 +675,13 @@ export function ManageBookmarks() {
 
   const pageSubtitle = useMemo(() => {
     if (taskMode === "duplicate") return `${duplicateGroups.length} 组重复 URL，涉及 ${taskBookmarks.length} 个书签`;
-    if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理：${pendingRecommendations.length} 条 AI 建议，${visibleTaskBookmarks.length} 个待手动归档`;
+    if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
       return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${countLinkHealthProblems(linkHealthReport, bookmarks)} 个`;
     }
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks, duplicateGroups.length, linkHealthReport, pendingRecommendations.length, taskBookmarks.length, taskMode, unsortedTaskTotal, visibleTaskBookmarks.length]);
+  }, [bookmarks, duplicateGroups.length, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -1299,10 +1303,10 @@ export function ManageBookmarks() {
       setMessage(
         report.failedItems.length > 0
           ? `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败；详情已写入整理报告`
-          : `已归档 ${actionablePendingRecommendations.length} 条 AI 建议，操作前备份和整理报告已保存`
+          : `已归档 ${actionablePendingRecommendations.length} 条分类建议，操作前备份和整理报告已保存`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "一键接受失败");
+      setMessage(error instanceof Error ? error.message : "批量归档失败");
     } finally {
       setBulkRecommendationAction(null);
     }
@@ -1326,10 +1330,10 @@ export function ManageBookmarks() {
       setMessage(
         failed.length > 0
           ? `部分建议忽略失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
-          : `已忽略 ${filteredPendingRecommendations.length} 条 AI 建议，未记录分类偏好`
+          : `已忽略 ${filteredPendingRecommendations.length} 条分类建议，未记录分类偏好`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "一键忽略失败");
+      setMessage(error instanceof Error ? error.message : "批量忽略失败");
     } finally {
       setBulkRecommendationAction(null);
     }
@@ -1651,6 +1655,7 @@ export function ManageBookmarks() {
     const isActionable = isActionableRecommendation(recommendation);
     const isNewFolder = kind === "create_folder";
     const hasError = kind === "error";
+    const signalLabel = getRecommendationSignalLabel(recommendation);
 
     return (
       <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
@@ -1696,8 +1701,8 @@ export function ManageBookmarks() {
             ) : isActionable ? (
               <div className={["bookmark-unsorted-target", isNewFolder ? "bookmark-unsorted-target--new" : ""].filter(Boolean).join(" ")}>
                 <Folder className="w-4 h-4" />
-                <span>{isNewFolder ? "建议新建：" : "建议归档："}{recommendation.suggestedFolderPath.join(" / ")}</span>
-                <b title="依据仅作相对参考，不代表分类正确率">{getRecommendationSignalLabel(recommendation)}</b>
+                <span>{isNewFolder ? "归档至新文件夹：" : "归档至："}{recommendation.suggestedFolderPath.join(" / ")}</span>
+                {signalLabel !== "需要确认" && <b title="依据仅作相对参考，不代表分类正确率">{signalLabel}</b>}
               </div>
             ) : (
               <div className={["bookmark-unsorted-target", hasError ? "bookmark-unsorted-target--error" : "bookmark-unsorted-target--manual"].join(" ")}>
@@ -1808,45 +1813,32 @@ export function ManageBookmarks() {
 
     return (
       <div className="bookmark-unsorted-layout">
-        <section className="bookmark-unsorted-summary">
-          <div className="bookmark-unsorted-summary__item bookmark-unsorted-summary__item--ai">
-            <Sparkles className="w-4 h-4" />
-            <span>AI 建议</span>
-            <strong>{pendingRecommendations.length}</strong>
-          </div>
-          <div className="bookmark-unsorted-summary__item bookmark-unsorted-summary__item--manual">
-            <Folder className="w-4 h-4" />
-            <span>待手动归档</span>
-            <strong>{visibleTaskBookmarks.length}</strong>
-          </div>
-        </section>
-
         {filteredPendingRecommendations.length > 0 && (
           <section className="bookmark-unsorted-section">
-            <div className="bookmark-unsorted-section__head">
-              <div>
-                <h3>待归档建议</h3>
-                <p>接受前会自动备份；忽略只移除推荐且不记录偏好；分类不合适时可明确反馈。</p>
-              </div>
+            <div className="bookmark-unsorted-section__head bookmark-unsorted-section__head--suggestions">
+              <h3>分类建议</h3>
+              <span>{filteredPendingRecommendations.length}</span>
               <div className="bookmark-unsorted-section__tools">
-                <span>{filteredPendingRecommendations.length}</span>
-                <button
-                  type="button"
-                  onClick={() => void handleAcceptVisibleRecommendations()}
-                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || actionablePendingRecommendations.length === 0}
-                  className="extension-page__wide-primary"
-                >
-                  <Check className="w-4 h-4" />
-                  {bulkRecommendationAction === "accept" ? "归档中" : "归档安全候选项"}
-                </button>
+                <div className="bookmark-unsorted-batch-action" role="group" title={batchArchiveHint} aria-label={batchArchiveHint} tabIndex={actionablePendingRecommendations.length === 0 ? 0 : undefined}>
+                  <button
+                    type="button"
+                    onClick={() => void handleAcceptVisibleRecommendations()}
+                    disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || actionablePendingRecommendations.length === 0}
+                    className="extension-page__wide-primary"
+                  >
+                    <Check className="w-4 h-4" />
+                    {bulkRecommendationAction === "accept" ? "归档中" : `批量归档（${actionablePendingRecommendations.length}）`}
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => void handleIgnoreVisibleRecommendations()}
                   disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
                   className="extension-page__wide-secondary"
+                  title={`忽略当前列表中的 ${filteredPendingRecommendations.length} 条建议，不记录分类偏好`}
                 >
                   <X className="w-4 h-4" />
-                  {bulkRecommendationAction === "ignore" ? "忽略中" : "一键忽略"}
+                  {bulkRecommendationAction === "ignore" ? "忽略中" : "批量忽略"}
                 </button>
               </div>
             </div>
@@ -1860,7 +1852,7 @@ export function ManageBookmarks() {
           <section className="bookmark-unsorted-section">
             <div className="bookmark-unsorted-section__head">
               <div className="bookmark-unsorted-section__copy">
-                <h3>待整理位置中的书签</h3>
+                <h3>待手动分类</h3>
                 <p>这些书签仍在根目录、待整理或未分类文件夹中，可直接指定目标路径。</p>
               </div>
               <div className="bookmark-unsorted-section__tools bookmark-unsorted-section__tools--manual">
@@ -2252,7 +2244,7 @@ export function ManageBookmarks() {
       return "未找到匹配的书签，可点击“帮我找找”或按 Alt + Enter 用 AI 查找";
     }
     if (taskMode === "unsorted") {
-      return pendingRecommendations.length > 0 ? "暂无未分类文件夹书签，可先处理上方 AI 推荐" : "暂无未分类书签";
+      return "暂无待整理书签";
     }
     if (taskMode === "duplicate") return "暂无重复链接";
     if (taskMode === "invalid") {
@@ -2390,9 +2382,12 @@ export function ManageBookmarks() {
 
         {taskMode !== "invalid" && (
           <div className="impression-search-bar">
+            <SearchKeywordDropdown className="manage-search-shell" query={searchQuery} onQueryChange={setSearchQuery} semanticIndex={semanticIndex}>
+            {(inputProps) => (
             <div className="extension-search-field manage-bookmarks-search">
               <Search className="extension-search-field__icon" />
               <input
+                {...inputProps}
                 type="text"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -2403,12 +2398,14 @@ export function ManageBookmarks() {
                     if (!event.repeat) void handleDeepSearch();
                   }
                 }}
-                placeholder={taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
+                placeholder={taskMode === "unsorted" ? "搜索当前列表…" : taskMode ? "在当前任务中搜索..." : "搜索标题、网址，或输入功能印象（如：视频网站、图片压缩）"}
                 className="extension-control extension-control--search"
                 aria-label="搜索书签"
               />
             </div>
-            <button
+            )}
+            </SearchKeywordDropdown>
+            {searchQuery.trim() && <button
               type="button"
               className="impression-search-bar__ai"
               onClick={() => void handleDeepSearch()}
@@ -2419,7 +2416,7 @@ export function ManageBookmarks() {
               <BrainCircuit aria-hidden="true" />
               <span>{deepSearchRunning ? "查找中…" : "帮我找找"}</span>
               {!deepSearchRunning && <kbd>Alt + Enter</kbd>}
-            </button>
+            </button>}
           </div>
         )}
         {taskMode !== "invalid" && searchQuery.trim() && (
@@ -2454,7 +2451,7 @@ export function ManageBookmarks() {
             </p>
           ) : null
         )}
-        {taskMode !== "invalid" && (
+        {taskMode !== "invalid" && taskMode !== "unsorted" && (
           <div className="impression-coverage" role="status">
             <p className="impression-coverage__text">
               <Sparkles className="impression-coverage__icon" aria-hidden="true" />

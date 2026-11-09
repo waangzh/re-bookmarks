@@ -5399,62 +5399,6 @@ select.extension-control option,
   gap: 12px;
 }
 
-.bookmark-unsorted-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-
-.bookmark-unsorted-summary__item {
-  min-width: 0;
-  border: 1px solid #e5eaf0;
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 11px;
-}
-
-.bookmark-unsorted-summary__item {
-  display: grid;
-  gap: 5px;
-}
-
-.bookmark-unsorted-summary__item svg {
-  color: #64748b;
-}
-
-.bookmark-unsorted-summary__item span {
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.bookmark-unsorted-summary__item strong {
-  color: #0f172a;
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.bookmark-unsorted-summary__item--ai {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.bookmark-unsorted-summary__item--ai svg,
-.bookmark-unsorted-summary__item--ai strong {
-  color: #2563eb;
-}
-
-.bookmark-unsorted-summary__item--manual {
-  border-color: #fde68a;
-  background: #fffbeb;
-}
-
-.bookmark-unsorted-summary__item--manual svg,
-.bookmark-unsorted-summary__item--manual strong {
-  color: #d97706;
-}
-
 .bookmark-unsorted-section {
   overflow: hidden;
   border: 1px solid #e5eaf0;
@@ -5484,6 +5428,17 @@ select.extension-control option,
   line-height: 1.25;
 }
 
+.bookmark-unsorted-section__head--suggestions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.bookmark-unsorted-section__head--suggestions h3 {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
 .bookmark-unsorted-section__head p {
   margin: 4px 0 0;
   color: #64748b;
@@ -5510,6 +5465,29 @@ select.extension-control option,
   justify-content: flex-end;
   gap: 7px;
   max-width: 170px;
+}
+
+.bookmark-unsorted-section__head--suggestions .bookmark-unsorted-section__tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-column: 1 / -1;
+  max-width: none;
+}
+
+.bookmark-unsorted-batch-action {
+  display: flex;
+  min-width: 0;
+  border-radius: 6px;
+}
+
+.bookmark-unsorted-batch-action:focus-visible {
+  outline: 3px solid #9db9ff;
+  outline-offset: 3px;
+}
+
+.bookmark-unsorted-batch-action > button {
+  flex: 1;
+  min-width: 0;
 }
 
 .bookmark-unsorted-section__tools--manual {
