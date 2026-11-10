@@ -298,7 +298,7 @@ export async function saveReportToHistory(report: OrganizeReport): Promise<void>
 }
 
 /**
- * 读取模型列表缓存。仅在 provider 类型与 endpoint 都匹配且未过期时返回。
+ * 读取模型列表缓存。endpoint 保存完整模型列表 URL，仅在类型与 URL 都匹配且未过期时返回。
  * @param allowStale 为 true 时忽略过期时间（用于网络失败后的降级展示）
  */
 export async function getModelCatalog(

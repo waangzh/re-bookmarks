@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ReMarks AI 设置测试</title></head>
+<body><div id="root"></div><script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "../src/app/App.tsx";
+import "../src/styles/globals.css";
+import { setupBrowser } from "./browser-mock.mjs";
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../src/app/services/storage.ts";
+
+const mock = setupBrowser();
+const params = new URLSearchParams(location.search);
+mock.values[STORAGE_KEYS.settings] = {
+  ...DEFAULT_SETTINGS, onboardingCompleted: params.get("onboarding") !== "true",
+  provider: { type: "custom", apiKey: "simulation-only", model: "simulation-model", endpoint: "http://localhost:18317/v1", enabled: false },
+};
+chrome.runtime.getURL = (path) => new URL(path, location.origin).href;
+chrome.runtime.sendMessage = (_message, callback) => callback?.();
+globalThis.__settingsMock = mock;
+globalThis.__settingsRequests = [];
+globalThis.fetch = async (url, options = {}) => {
+  const body = options.body ? JSON.parse(options.body) : undefined;
+  globalThis.__settingsRequests.push({ url: String(url), body });
+  if (options.method === "GET") return Response.json({ data: [{ id: "simulation-model" }] });
+  if (params.get("delay") === "true") await new Promise((resolve) => { globalThis.__resolveSettingsResponse = resolve; });
+  if (params.get("empty") === "true") return Response.json(body?.input ? { status: "completed", output: [] } : { choices: [{ message: { content: "" } }] });
+  return Response.json(body?.input
+    ? { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok" }] }] }
+    : { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+};
+location.hash = params.get("onboarding") === "true" ? "/" : "/options";
+createRoot(document.getElementById("root")).render(React.createElement(App, { defaultView: params.get("view") || "options" }));
+</script></body></html>

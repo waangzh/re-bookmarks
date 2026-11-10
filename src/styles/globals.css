@@ -4248,6 +4248,24 @@ textarea {
 .extension-field {
   display: grid;
   gap: 7px;
+  min-width: 0;
+}
+
+.extension-field label.provider-temperature-toggle,
+.onboarding__form label.provider-temperature-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.provider-temperature-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex-shrink: 0;
+  padding: 0;
+  accent-color: #2563eb;
 }
 
 .extension-field label {
@@ -8512,7 +8530,8 @@ select.extension-control option,
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
 }
 
-.onboarding__form label > small {
+.onboarding__form label > small,
+.onboarding__custom-fields .extension-field > small {
   color: #64748b;
   font-size: 12px;
   font-weight: 500;

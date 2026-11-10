@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   AlertCircle,
@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AIProviderConfig, AIProviderType, MovePlan, PreviewTaskProgress, Settings, TokenUsage } from "../types";
-import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, testAIConnection } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, protocolFor, testAIConnection } from "../services/aiProvider";
 import { countDuplicateGroups, isUnsortedBookmark } from "../services/bookmarkTasks";
 import { getAllBookmarkFolders, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
@@ -26,6 +26,7 @@ import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { clearPreviewPlan } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 import { Select } from "./Select";
+import { AIProtocolFields } from "./AIProtocolFields";
 import { filterAvailableBookmarks, getCurrentWhitelist, type WhitelistIndex } from "../services/whitelist";
 
 type OnboardingProps = {
@@ -72,6 +73,8 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   const [folderCount, setFolderCount] = useState(0);
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
   const [draft, setDraft] = useState<Settings>(settings);
+  const currentProvider = useRef(draft.provider);
+  currentProvider.current = draft.provider;
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [sampleState, setSampleState] = useState<SampleState>("idle");
   const [samplePlans, setSamplePlans] = useState<MovePlan[]>([]);
@@ -134,6 +137,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
   }), [bookmarks, folderCount, whitelistIndex]);
 
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
+  const usesResponses = protocolFor(draft.provider) === "responses";
   const sample = useMemo(() => selectRepresentativeSample(
     whitelistIndex ? filterAvailableBookmarks(bookmarks, whitelistIndex) : [], SAMPLE_SIZE
   ), [bookmarks, whitelistIndex]);
@@ -216,10 +220,13 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     }
     setConnectionStatus("testing");
     setMessage("");
+    const providerToTest = draft.provider;
     try {
       await ensureRequiredHostPermission();
-      await testAIConnection(draft.provider);
-      const provider = { ...draft.provider, testedAt: Date.now() };
+      if (currentProvider.current !== providerToTest) return;
+      await testAIConnection(providerToTest);
+      if (currentProvider.current !== providerToTest) return;
+      const provider = { ...providerToTest, testedAt: Date.now() };
       const nextDraft = {
         ...draft,
         provider,
@@ -229,6 +236,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
       setDraft(nextDraft);
       setConnectionStatus("success");
     } catch (error) {
+      if (currentProvider.current !== providerToTest) return;
       setConnectionStatus("error");
       setMessage(error instanceof Error ? error.message : "连接失败，请检查 API Key");
     }
@@ -409,7 +417,6 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                   onChange={(next) => updateProvider(next as AIProviderType)}
                   options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
                 />
-                <small>{draft.provider.type === "custom" ? "请在下方填写兼容 OpenAI 接口的配置" : "模型与请求参数已使用 " + providerProfile.label + " 推荐值"}</small>
               </label>
               <label>
                 <span className="onboarding__label-row"><span><KeyRound aria-hidden="true" />API Key</span><em>仅保存在本地</em></span>
@@ -426,28 +433,32 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                   <label>
                     <span>Base URL</span>
                     <input type="url" value={draft.provider.endpoint ?? ""} onChange={(event) => updateProviderConfig("endpoint", event.target.value)} placeholder="https://example.com/v1" />
-                    <small>填写接口根地址；请求会发送到 /chat/completions。</small>
                   </label>
+                  <AIProtocolFields config={draft.provider} idPrefix="onboarding-provider" onChange={updateProviderConfig} />
                   <label>
                     <span>模型</span>
                     <input type="text" value={draft.provider.model} onChange={(event) => updateProviderConfig("model", event.target.value)} placeholder="输入服务支持的模型名称" />
                   </label>
                   <label>
                     <span>Temperature</span>
-                    <input type="number" min="0" max="2" step="0.1" value={draft.provider.temperature ?? ""} onChange={(event) => updateProviderConfig("temperature", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="默认 0.1" />
+                    <input type="number" min="0" max="2" step="0.1" disabled={draft.provider.sendTemperature === false} value={draft.provider.temperature ?? ""} onChange={(event) => updateProviderConfig("temperature", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="默认 0.1" />
+                  </label>
+                  <label className="provider-temperature-toggle">
+                    <input type="checkbox" checked={draft.provider.sendTemperature !== false} onChange={(event) => updateProviderConfig("sendTemperature", event.target.checked)} />
+                    发送 Temperature（模型不支持时关闭）
                   </label>
                   <label>
                     <span>默认回复上限（tokens）</span>
-                    <input type="number" min="1" step="1" value={draft.provider.maxTokens ?? ""} onChange={(event) => updateProviderConfig("maxTokens", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="按任务自动" />
-                    <small>留空时按任务自动分配。分类和用途识别可在设置的高级选项中单独覆盖；限制的是每次回复长度。</small>
+                    <input type="number" min={usesResponses ? 16 : 1} step="1" value={draft.provider.maxTokens ?? ""} onChange={(event) => updateProviderConfig("maxTokens", event.target.value === "" ? undefined : Number(event.target.value))} placeholder="按任务自动" />
                   </label>
                   <label>
                     <span>Token 参数</span>
                     <Select
-                      value={draft.provider.tokenParam ?? "auto"}
+                      value={usesResponses ? "auto" : draft.provider.tokenParam ?? "auto"}
+                      disabled={usesResponses}
                       onChange={(next) => updateProviderConfig("tokenParam", next as AIProviderConfig["tokenParam"])}
                       options={[
-                        { value: "auto", label: `自动（${providerProfile.tokenParam}）` },
+                        { value: "auto", label: `自动（${usesResponses ? "max_output_tokens" : providerProfile.tokenParam}）` },
                         { value: "max_tokens", label: "max_tokens" },
                         { value: "max_completion_tokens", label: "max_completion_tokens" },
                       ]}

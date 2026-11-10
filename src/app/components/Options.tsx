@@ -1,10 +1,10 @@
 import { PageHeading } from "./PageHeading";
 import { Select } from "./Select";
+import { AIProtocolFields } from "./AIProtocolFields";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   AlertCircle,
-  Bot,
   Check,
   ChevronDown,
   ChevronRight,
@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AIProviderConfig, AIProviderType, Settings } from "../types";
-import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, endpointFor, getAIOutputTokenLimit, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
+import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, modelListUrlFor, protocolFor, getAIOutputTokenLimit, listAIModels, testAIConnection, type AIModelOption } from "../services/aiProvider";
 import { requestHistoryPermission } from "../services/history";
 import { requestClearPreviewTask } from "../services/previewTask";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
@@ -65,14 +65,16 @@ export function Options() {
   const currentProvider = useRef(draft.provider);
   currentProvider.current = draft.provider;
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
-  const effectiveTemperature = draft.provider.temperature ?? providerProfile.defaultTemperature;
+  const usesResponses = protocolFor(draft.provider) === "responses";
+  const effectiveTemperature = draft.provider.sendTemperature === false || !providerProfile.supportsTemperature
+    ? undefined : draft.provider.temperature ?? providerProfile.defaultTemperature;
   const defaultOutputTokens = getAIOutputTokenLimit(draft.provider);
   const inheritedOutputPlaceholder = defaultOutputTokens === undefined
     ? "继承默认（按任务自动）"
     : `继承默认：${defaultOutputTokens}`;
-  const effectiveTokenParam = draft.provider.tokenParam && draft.provider.tokenParam !== "auto"
-    ? draft.provider.tokenParam
-    : providerProfile.tokenParam;
+  const effectiveTokenParam = usesResponses ? "max_output_tokens"
+    : draft.provider.tokenParam && draft.provider.tokenParam !== "auto"
+      ? draft.provider.tokenParam : providerProfile.tokenParam;
 
   useEffect(() => {
     void loadSettings();
@@ -94,7 +96,10 @@ export function Options() {
     let cancelled = false;
     const provider = draft.provider;
     if (provider.apiKey.trim()) {
-      void getModelCatalog(provider.type, endpointFor(provider)).then((cached) => {
+      // 用户正在输入不完整地址时不读取缓存，也不把无效 URL 变成未处理异常。
+      let catalogUrl: string;
+      try { catalogUrl = modelListUrlFor(provider); } catch { return; }
+      void getModelCatalog(provider.type, catalogUrl).then((cached) => {
         if (cancelled || !cached) return;
         setModels(cached.models);
         setModelStatus("success");
@@ -106,7 +111,7 @@ export function Options() {
       cancelled = true;
       modelRequest.current?.abort();
     };
-  }, [draft.provider.type, draft.provider.apiKey, draft.provider.endpoint]);
+  }, [draft.provider.type, draft.provider.apiKey, draft.provider.endpoint, draft.provider.modelsPath]);
 
   useEffect(() => {
     if (!modelMenuOpen) return;
@@ -143,7 +148,8 @@ export function Options() {
     const isCurrent = () => !controller.signal.aborted &&
       currentProvider.current.type === provider.type &&
       currentProvider.current.apiKey === provider.apiKey &&
-      currentProvider.current.endpoint === provider.endpoint;
+      currentProvider.current.endpoint === provider.endpoint &&
+      currentProvider.current.modelsPath === provider.modelsPath;
     setModels([]);
     setModelMenuOpen(false);
     setModelStatus("loading");
@@ -158,14 +164,20 @@ export function Options() {
       setModelMessage(`已获取 ${available.length} 个模型。列表不保证均支持书签分类，请选择后测试连接。`);
       void saveModelCatalog({
         providerType: provider.type,
-        endpoint: endpointFor(provider),
+        endpoint: modelListUrlFor(provider),
         fetchedAt: Date.now(),
         models: available,
       });
     } catch (error) {
       if (!isCurrent()) return;
       // 网络或鉴权失败时，降级展示上次成功检测的列表（可能已过期）
-      const stale = await getModelCatalog(provider.type, endpointFor(provider), { allowStale: true });
+      let catalogUrl: string;
+      try { catalogUrl = modelListUrlFor(provider); } catch {
+        setModelStatus("error");
+        setModelMessage(error instanceof Error ? error.message : "请检查 Base URL 和模型列表路径");
+        return;
+      }
+      const stale = await getModelCatalog(provider.type, catalogUrl, { allowStale: true });
       if (!isCurrent()) return;
       const reason = error instanceof Error ? error.message : "模型检测失败，请稍后重试或手动输入模型名称";
       if (stale?.models.length) {
@@ -331,7 +343,6 @@ export function Options() {
                 onChange={(next) => updateProvider(next as AIProviderType)}
                 options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
               />
-              <p>模型、Endpoint 和请求参数将使用推荐值。</p>
             </div>
 
             <div className="extension-field">
@@ -442,9 +453,11 @@ export function Options() {
                 <RefreshCw aria-hidden="true" />
                 {modelStatus === "loading" ? "正在检测模型..." : "检测可用模型"}
               </button>
-              <p role={modelStatus === "error" ? "alert" : "status"} aria-live="polite">
-                {modelMessage || "使用当前 API Key 和 Endpoint 查询最新模型；也可手动输入。修改模型后需重新测试连接。"}
-              </p>
+              {modelMessage && (
+                <p role={modelStatus === "error" ? "alert" : "status"} aria-live="polite">
+                  {modelMessage}
+                </p>
+              )}
             </div>
 
             <div className="settings-simple__actions">
@@ -518,10 +531,6 @@ export function Options() {
               <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
             </summary>
             <div className="settings-disclosure__body">
-              <div className="settings-expert__notice">
-                <Bot aria-hidden="true" />
-                <span>仅在使用代理服务、自定义模型或调试兼容性时修改。默认推荐值适合大多数用户。</span>
-              </div>
               <div className="extension-form provider-form">
                 <div className="provider-form__grid">
                   <div className="extension-field">
@@ -535,8 +544,9 @@ export function Options() {
                 </div>
 
                 <div className="extension-field">
-                  <label>Endpoint</label>
+                  <label htmlFor="provider-endpoint">Base URL</label>
                   <input
+                    id="provider-endpoint"
                     type="url"
                     value={draft.provider.endpoint ?? ""}
                     onChange={(event) => updateProviderConfig("endpoint", event.target.value)}
@@ -544,6 +554,8 @@ export function Options() {
                     className="extension-control"
                   />
                 </div>
+
+                <AIProtocolFields config={draft.provider} idPrefix="provider" onChange={updateProviderConfig} />
 
                 <div className="provider-form__grid">
                   <div className="extension-field">
@@ -555,7 +567,7 @@ export function Options() {
                       max="2"
                       step="0.1"
                       value={effectiveTemperature ?? ""}
-                      disabled={!providerProfile.supportsTemperature}
+                      disabled={!providerProfile.supportsTemperature || draft.provider.sendTemperature === false}
                       onChange={(event) => updateProviderConfig(
                         "temperature",
                         event.target.value === "" ? undefined : Number(event.target.value)
@@ -563,13 +575,20 @@ export function Options() {
                       placeholder="不发送"
                       className="extension-control"
                     />
+                    {providerProfile.supportsTemperature && (
+                      <label className="provider-temperature-toggle">
+                        <input type="checkbox" checked={draft.provider.sendTemperature !== false}
+                          onChange={(event) => updateProviderConfig("sendTemperature", event.target.checked)} />
+                        发送 Temperature（模型不支持时关闭）
+                      </label>
+                    )}
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-max-tokens">默认回复上限（tokens）</label>
                     <input
                       id="provider-max-tokens"
                       type="number"
-                      min="1"
+                      min={usesResponses ? 16 : 1}
                       step="1"
                       value={draft.provider.maxTokens ?? ""}
                       onChange={(event) => updateProviderConfig(
@@ -577,22 +596,21 @@ export function Options() {
                         event.target.value === "" ? undefined : Number(event.target.value)
                       )}
                       placeholder="按任务自动"
-                      aria-describedby="provider-max-tokens-help"
                       className="extension-control"
                     />
-                    <small id="provider-max-tokens-help">没有单独覆盖的 AI 任务使用此值；留空时按任务自动分配。限制每次回复长度，不是书签数量或累计用量。</small>
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-token-param">Token 参数</label>
                     <Select
                       id="provider-token-param"
-                      value={draft.provider.tokenParam ?? "auto"}
+                      value={usesResponses ? "auto" : draft.provider.tokenParam ?? "auto"}
+                      disabled={usesResponses}
                       onChange={(next) => updateProviderConfig(
                         "tokenParam",
                         next as AIProviderConfig["tokenParam"]
                       )}
                       options={[
-                        { value: "auto", label: `自动（${providerProfile.tokenParam}）` },
+                        { value: "auto", label: `自动（${usesResponses ? "max_output_tokens" : providerProfile.tokenParam}）` },
                         { value: "max_tokens", label: "max_tokens" },
                         { value: "max_completion_tokens", label: "max_completion_tokens" },
                       ]}
@@ -619,7 +637,6 @@ export function Options() {
 
                 <div className="extension-field">
                   <strong>按任务覆盖回复上限（可选）</strong>
-                  <small>留空继承默认回复上限；默认也留空时，使用该任务的自动预算。覆盖值可高于或低于默认值。</small>
                 </div>
                 <div className="provider-form__grid">
                   <div className="extension-field">
@@ -627,7 +644,7 @@ export function Options() {
                     <input
                       id="provider-classification-max-tokens"
                       type="number"
-                      min="1"
+                      min={usesResponses ? 16 : 1}
                       step="1"
                       value={draft.provider.classificationMaxTokens ?? ""}
                       onChange={(event) => updateProviderConfig(
@@ -635,17 +652,15 @@ export function Options() {
                         event.target.value === "" ? undefined : Number(event.target.value)
                       )}
                       placeholder={inheritedOutputPlaceholder}
-                      aria-describedby="provider-classification-max-tokens-help"
                       className="extension-control"
                     />
-                    <small id="provider-classification-max-tokens-help">用于整理书签和分类推荐，不影响用途识别。</small>
                   </div>
                   <div className="extension-field">
                     <label htmlFor="provider-impression-max-tokens">用途识别上限（tokens）</label>
                     <input
                       id="provider-impression-max-tokens"
                       type="number"
-                      min="1"
+                      min={usesResponses ? 16 : 1}
                       step="1"
                       value={draft.provider.impressionMaxTokens ?? ""}
                       onChange={(event) => updateProviderConfig(
@@ -653,10 +668,8 @@ export function Options() {
                         event.target.value === "" ? undefined : Number(event.target.value)
                       )}
                       placeholder={inheritedOutputPlaceholder}
-                      aria-describedby="provider-impression-max-tokens-help"
                       className="extension-control"
                     />
-                    <small id="provider-impression-max-tokens-help">用于“让更多书签支持按用途搜索”，批次大小随此值调整。画像分析、AI 查找等任务仍使用默认上限。</small>
                   </div>
                 </div>
 
@@ -683,8 +696,6 @@ export function Options() {
                 </div>
 
                 <div className="extension-summary-panel provider-summary">
-                  <p>{providerProfile.endpointHint}</p>
-                  <p>{providerProfile.modelHint}</p>
                   <div className="provider-summary__chips" aria-label="当前请求配置">
                     <span>{effectiveTokenParam}</span>
                     <span>{providerProfile.supportsJsonMode ? "JSON 可用" : "Prompt JSON"}</span>

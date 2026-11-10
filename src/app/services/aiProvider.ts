@@ -1,6 +1,7 @@
 import type {
   AIOutputTask,
   AIProviderConfig,
+  AIProtocol,
   AIProviderType,
   AIQueryExpansionResult,
   AIRerankCandidateInput,
@@ -186,9 +187,9 @@ export const AI_PROVIDER_PROFILES: Record<AIProviderType, AIProviderProfile> = {
     supportsJsonMode: true,
     supportsTemperature: true,
     defaultTemperature: 0.1,
-    endpointHint: "自定义 Provider 需兼容 /chat/completions。",
+    endpointHint: "自定义 Provider 支持 Chat Completions 或 Responses 协议。",
     modelHint: "填写目标服务支持的模型名。",
-    limitations: ["按 OpenAI-compatible 响应解析 choices[0].message.content"],
+    limitations: ["文本、非流式 OpenAI-compatible 请求；按所选协议解析响应"],
     statusMessages: {},
   },
 };
@@ -218,13 +219,45 @@ function profileFor(type: AIProviderType) {
 }
 
 export function endpointFor(config: AIProviderConfig) {
-  const endpoint = config.endpoint?.replace(/\/$/, "");
+  const endpoint = config.endpoint?.trim().replace(/\/+$/, "");
   const profile = profileFor(config.type);
   if (config.type === "deepseek" && endpoint?.endsWith("/v1")) {
     return endpoint.slice(0, -3);
   }
   if (endpoint) return endpoint;
   return profile.endpoint;
+}
+
+export function protocolFor(config: AIProviderConfig): AIProtocol {
+  return config.apiProtocol === "responses" ? "responses" : "chat_completions";
+}
+
+/** 路径相对于 Base URL 追加；禁止通过路径把携带 Key 的请求改发到其他站点。 */
+function providerUrlFor(config: AIProviderConfig, path: string) {
+  const base = new URL(endpointFor(config));
+  if (!/^https?:$/.test(base.protocol) || base.username || base.password || base.search || base.hash) {
+    throw new Error("Base URL 必须是 HTTP(S) 接口根地址，不能包含账号、密码、查询参数或片段");
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith("//") || path.includes("\\") || path.includes("#")) {
+    throw new Error("接口路径请填写相对于 Base URL 的路径，不要填写完整网址或片段");
+  }
+  const prefix = `${base.pathname.replace(/\/+$/, "")}/`;
+  const url = new URL(`${prefix}${path.replace(/^\/+/, "")}`, base.origin);
+  if (url.origin !== base.origin || !url.pathname.startsWith(prefix)) {
+    throw new Error("接口路径不能跳出 Base URL 的路径范围");
+  }
+  return url.toString();
+}
+
+export function requestUrlFor(config: AIProviderConfig) {
+  const path = protocolFor(config) === "responses"
+    ? config.responsesPath?.trim() || "/responses"
+    : config.chatCompletionsPath?.trim() || "/chat/completions";
+  return providerUrlFor(config, path);
+}
+
+export function modelListUrlFor(config: AIProviderConfig) {
+  return providerUrlFor(config, config.modelsPath?.trim() || "/models");
 }
 
 function compactResponseDetail(detail: string) {
@@ -383,8 +416,8 @@ function normalizeClassificationDecision(value: unknown, categoryPath: string[])
 function normalizeTokenUsage(value: unknown): TokenUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
-  const promptTokens = Number(usage.prompt_tokens ?? usage.promptTokens ?? 0);
-  const completionTokens = Number(usage.completion_tokens ?? usage.completionTokens ?? 0);
+  const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? usage.promptTokens ?? 0);
+  const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? usage.completionTokens ?? 0);
   const totalTokens = Number(usage.total_tokens ?? usage.totalTokens ?? promptTokens + completionTokens);
 
   if (![promptTokens, completionTokens, totalTokens].some((item) => Number.isFinite(item) && item > 0)) {
@@ -895,6 +928,58 @@ export function parseResults(content: string): ClassificationResult[] {
   });
 }
 
+function recordOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+}
+
+function parseCompletionResponse(value: unknown, protocol: AIProtocol) {
+  const data = recordOf(value);
+  const texts: string[] = [];
+  const refusals: string[] = [];
+  let finishReason: string | undefined;
+  if (data.error || (protocol === "responses" && data.status === "failed")) {
+    throw new Error("AI 服务返回了错误状态，请检查服务配置或服务端日志");
+  }
+
+  if (protocol === "responses") {
+    if (!Array.isArray(data.output)) throw new Error("响应缺少 Responses output 数组，请检查所选 API 协议");
+    if (data.status && !["completed", "incomplete"].includes(String(data.status))) {
+      throw new Error("AI 服务尚未完成响应；当前只支持非流式、同步请求");
+    }
+    for (const item of data.output) {
+      const message = recordOf(item);
+      // reasoning 等输出项不属于用户可见答案，不能混入待解析的分类 JSON。
+      if (message.type !== "message" || message.role !== "assistant" || !Array.isArray(message.content)) continue;
+      for (const part of message.content) {
+        const content = recordOf(part);
+        if (content.type === "output_text" && typeof content.text === "string") texts.push(content.text);
+        if (content.type === "refusal" && typeof content.refusal === "string") refusals.push(content.refusal);
+      }
+    }
+    if (data.status === "incomplete") {
+      const reason = recordOf(data.incomplete_details).reason;
+      if (reason === "max_output_tokens") finishReason = "length";
+      else if (reason === "content_filter") finishReason = "content_filter";
+      else throw new Error("AI 服务返回了未完成的响应，请检查服务状态后重试");
+    } else {
+      finishReason = "stop";
+    }
+  } else {
+    if (!Array.isArray(data.choices) || !data.choices.length) {
+      throw new Error("响应缺少 Chat Completions choices 数组，请检查所选 API 协议");
+    }
+    const choice = recordOf(data.choices[0]);
+    const message = recordOf(choice.message);
+    if (typeof message.content === "string") texts.push(message.content);
+    if (typeof message.refusal === "string") refusals.push(message.refusal);
+    if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
+  }
+  const content = texts.join("");
+  const refusal = refusals.join("\n") || undefined;
+  return { content, finishReason, refusal, tokenUsage: normalizeTokenUsage(data.usage) };
+}
+
 async function chatCompletion(
   config: AIProviderConfig,
   messages: Array<{ role: string; content: string }>,
@@ -908,21 +993,26 @@ async function chatCompletion(
   if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
 
   const profile = profileFor(config.type);
-  const endpoint = endpointFor(config);
+  const protocol = protocolFor(config);
+  const endpoint = requestUrlFor(config);
   const body: Record<string, unknown> = {
     model: config.model,
-    messages,
     stream: false,
   };
+  if (protocol === "responses") {
+    body.input = messages.map(({ role, content }) => ({ role, content }));
+    body.store = false;
+  } else {
+    body.messages = messages;
+  }
   const temperature = config.temperature ?? profile.defaultTemperature;
-  if (profile.supportsTemperature && temperature !== undefined) {
+  if (config.sendTemperature !== false && profile.supportsTemperature && temperature !== undefined) {
     body.temperature = temperature;
   }
-  const tokenParam = config.tokenParam && config.tokenParam !== "auto"
-    ? config.tokenParam
-    : profile.tokenParam;
+  const tokenParam = protocol === "responses" ? "max_output_tokens"
+    : config.tokenParam && config.tokenParam !== "auto" ? config.tokenParam : profile.tokenParam;
   const configuredMaxTokens = getAIOutputTokenLimit(config, task) ?? maxTokens;
-  body[tokenParam] = configuredMaxTokens;
+  body[tokenParam] = protocol === "responses" ? Math.max(16, configuredMaxTokens) : configuredMaxTokens;
 
   const wantsJsonMode = config.jsonMode === "on"
     ? true
@@ -931,7 +1021,8 @@ async function chatCompletion(
       : jsonMode;
   const usesJsonMode = wantsJsonMode && profile.supportsJsonMode;
   if (usesJsonMode) {
-    body.response_format = { type: "json_object" };
+    if (protocol === "responses") body.text = { format: { type: "json_object" } };
+    else body.response_format = { type: "json_object" };
   }
 
   debugAI("request", {
@@ -941,21 +1032,22 @@ async function chatCompletion(
     maxTokens: configuredMaxTokens,
     temperature,
     provider: config.type,
+    protocol,
     tokenParam,
     messageCount: messages.length,
   });
 
   const controller = new AbortController();
   const abortForExternalSignal = () => controller.abort();
-  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   if (signal?.aborted) {
     throw new DOMException("AI request canceled", "AbortError");
   }
   signal?.addEventListener("abort", abortForExternalSignal, { once: true });
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    response = await fetch(`${endpoint}/chat/completions`, {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -979,27 +1071,24 @@ async function chatCompletion(
     const detail = await response.text().catch(() => "");
     globalThis.clearTimeout(timer);
     signal?.removeEventListener("abort", abortForExternalSignal);
-    throw new Error(providerStatusMessage(profile, response.status, detail));
+    const hint = response.status === 404
+      ? ` 请核对 API 协议和请求路径（${new URL(endpoint).pathname}）；模型列表可用不代表生成接口可用。` : "";
+    throw new Error(providerStatusMessage(profile, response.status, detail) + hint);
   }
 
   try {
-    const data = (await response.json()) as {
-      choices?: Array<{ finish_reason?: string; message?: { content?: string; refusal?: string | null } }>;
-      usage?: unknown;
-    };
-    const content = data.choices?.[0]?.message?.content ?? "";
-    debugAI("raw response content", content);
-    return {
-      content,
-      finishReason: data.choices?.[0]?.finish_reason,
-      refusal: data.choices?.[0]?.message?.refusal,
-      tokenUsage: normalizeTokenUsage(data.usage),
-    };
+    const completion = parseCompletionResponse(await response.json(), protocol);
+    debugAI("raw response content", completion.content);
+    return completion;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (signal?.aborted) throw new DOMException("AI request canceled", "AbortError");
       throw new Error("AI 请求超时，请稍后重试或检查模型服务");
     }
-    throw new Error(`${profile.label} 返回了非 OpenAI-compatible JSON：请检查 endpoint 是否为 /chat/completions 兼容接口。`);
+    if (error instanceof SyntaxError) {
+      throw new Error(`${profile.label} 未返回有效 JSON，请检查所选 API 协议和请求路径`);
+    }
+    throw error;
   } finally {
     signal?.removeEventListener("abort", abortForExternalSignal);
     globalThis.clearTimeout(timer);
@@ -1009,12 +1098,20 @@ async function chatCompletion(
 export async function testAIConnection(config: AIProviderConfig) {
   const completion = await chatCompletion(
     config,
-    [{ role: "user", content: "Return only the word ok." }],
-    8,
+    [{ role: "user", content: config.jsonMode === "on"
+      ? 'Return a JSON object with a single field "status" set to "ok".' : "Return only the word ok." }],
+    protocolFor(config) === "responses" ? 256 : 8,
     false,
     CONNECTION_TEST_TIMEOUT_MS
   );
-  return completion.content.trim().length > 0;
+  if (completion.refusal || completion.finishReason === "content_filter") {
+    throw new Error("AI 服务拒绝了测试请求，请检查模型或服务限制");
+  }
+  if (completion.finishReason === "length") {
+    throw new Error("AI 测试响应达到回复上限而未完成，请提高默认回复上限后重试");
+  }
+  if (!completion.content.trim()) throw new Error("AI 服务未返回有效测试文本");
+  return true;
 }
 
 export async function listAIModels(config: AIProviderConfig, signal?: AbortSignal): Promise<AIModelOption[]> {
@@ -1023,7 +1120,6 @@ export async function listAIModels(config: AIProviderConfig, signal?: AbortSigna
   if (!(await hasRequiredHostPermission())) throw new Error(HOST_PERMISSION_REQUIRED_MESSAGE);
 
   const profile = profileFor(config.type);
-  const endpoint = endpointFor(config);
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
@@ -1032,7 +1128,7 @@ export async function listAIModels(config: AIProviderConfig, signal?: AbortSigna
 
   try {
     // Google 原生列表提供生成能力和分页字段；代理地址仍使用其兼容接口。
-    const url = new URL(`${endpoint}/models`);
+    const url = new URL(modelListUrlFor(config));
     const nativeGemini = config.type === "gemini" &&
       url.hostname === "generativelanguage.googleapis.com" &&
       /\/openai\/models$/.test(url.pathname);

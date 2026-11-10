@@ -200,6 +200,7 @@ function optionsHarness(settings, storage, provider) {
     "lucide-react": require("lucide-react"),
     "./PageHeading": { PageHeading: () => null },
     "./Select": { Select: () => null },
+    "./AIProtocolFields": { AIProtocolFields: () => null },
     "../services/aiProvider": provider,
     "../services/history": {},
     "../services/previewTask": { requestClearPreviewTask: async () => {} },

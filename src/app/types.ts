@@ -12,7 +12,7 @@ export type BookmarkNode = {
 
 export type OrganizeMode = "quick" | "deep";
 
-/** 模型列表缓存：按 provider 类型 + endpoint 区分，避免跨服务串用 */
+/** 模型列表缓存：按 provider 类型 + 完整模型列表 URL 区分，避免跨路径串用 */
 export type ModelCatalogCache = {
   providerType: string;
   endpoint: string;
@@ -315,12 +315,19 @@ export type AIProviderType = "openai" | "deepseek" | "zhipu" | "kimi" | "gemini"
 
 export type AIOutputTask = "classification" | "impression";
 
+export type AIProtocol = "chat_completions" | "responses";
+
 export type AIProviderConfig = {
   type: AIProviderType;
   apiKey: string;
   model: string;
   endpoint?: string;
+  apiProtocol?: AIProtocol;
+  chatCompletionsPath?: string;
+  responsesPath?: string;
+  modelsPath?: string;
   temperature?: number;
+  sendTemperature?: boolean;
   maxTokens?: number;
   classificationMaxTokens?: number;
   impressionMaxTokens?: number;
