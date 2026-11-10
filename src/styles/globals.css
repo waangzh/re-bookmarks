@@ -5772,6 +5772,40 @@ select.extension-control option,
   font-size: 13px;
 }
 
+.bookmark-health-results__head {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.bookmark-health-results__head > div:first-child {
+  flex: 0 0 auto;
+}
+
+.bookmark-health-results__head .bookmark-tree-panel__actions {
+  flex: 1 1 190px;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.remarks-app .extension-page .bookmark-health-results__head .bookmark-tree-panel__actions button {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.bookmark-duplicates__card {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bookmark-duplicates__card .bookmark-tree {
+  min-width: 0;
+}
+
+.bookmark-duplicates__card .bookmark-unsorted-card__reason {
+  overflow-wrap: anywhere;
+}
+
 .bookmark-tree-panel__delete-button {
   background: #dc2626;
   box-shadow: 0 8px 18px rgba(220, 38, 38, 0.16);

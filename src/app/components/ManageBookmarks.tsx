@@ -1939,7 +1939,7 @@ export function ManageBookmarks() {
 
     return (
       <section className="bookmark-health-panel">
-        <div className="bookmark-tree-panel__head">
+        <div className="bookmark-tree-panel__head bookmark-health-results__head">
           <div>
             <h3>重复检测结果</h3>
             <p>已选 {selectedDuplicateCount} / {filteredDuplicateBookmarkCount}</p>
@@ -1970,7 +1970,7 @@ export function ManageBookmarks() {
         </div>
         <div className="bookmark-unsorted-list">
           {filteredDuplicateGroups.map((group) => (
-            <article key={group.id} className="bookmark-unsorted-card">
+            <article key={group.id} className="bookmark-unsorted-card bookmark-duplicates__card">
               <div className="bookmark-unsorted-card__content">
                 <div className="bookmark-unsorted-card__title-row">
                   <h4>{getDuplicateGroupKindLabel(group)}</h4>
@@ -2052,7 +2052,7 @@ export function ManageBookmarks() {
 
     return (
       <section className="bookmark-health-panel">
-        <div className="bookmark-tree-panel__head">
+        <div className="bookmark-tree-panel__head bookmark-health-results__head">
           <div>
             <h3>任务结果</h3>
             <p>已选 {selectedInvalidCount} / {filteredBookmarks.length}</p>
@@ -2351,10 +2351,10 @@ export function ManageBookmarks() {
             <div className="bookmark-task-panel__main">
               <strong>手动检测链接</strong>
               <p>
-                仅检测 http/https 书签。401、403、429 视为可到达；超时和 5xx 会标记为暂时无法确认。
+                仅检测 http/https 书签，401、403、429 视为可到达。
               </p>
               {linkHealthReport && (
-                <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}，{formatLinkHealthSummary(linkHealthReport)}</span>
+                <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}</span>
               )}
             </div>
             <button
@@ -2451,7 +2451,7 @@ export function ManageBookmarks() {
             </p>
           ) : null
         )}
-        {taskMode !== "invalid" && taskMode !== "unsorted" && (
+        {taskMode !== "invalid" && taskMode !== "unsorted" && taskMode !== "duplicate" && (
           <div className="impression-coverage" role="status">
             <p className="impression-coverage__text">
               <Sparkles className="impression-coverage__icon" aria-hidden="true" />
