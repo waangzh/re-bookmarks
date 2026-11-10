@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Check, ChevronDown, FileText, Folder, FolderPlus, ShieldCheck } from "lucide-react";
-import type { MovePlan, PreviewBatchGroup, PreviewFrameworkDecision, PreviewPlanDecision, PreviewRiskItem, Settings, TokenUsage } from "../types";
+import { ArrowRight, Check, ChevronDown, FileText, Folder, FolderPlus, RefreshCw, ShieldCheck } from "lucide-react";
+import type { MovePlan, PreviewFrameworkDecision, PreviewPlanDecision, PreviewRiskItem, Settings, TokenUsage } from "../types";
 import { buildPreviewRiskAnalysis, derivePreviewReview, pathKey } from "../services/previewReview";
 import { getPlanSummary } from "../services/previewSafety";
 import { PreviewDialog } from "./PreviewDialog";
@@ -11,7 +11,6 @@ type Review = ReturnType<typeof derivePreviewReview>;
 type Props = {
   analysis: Analysis;
   review: Review;
-  groups: PreviewBatchGroup[];
   frameworks: Record<string, PreviewFrameworkDecision>;
   busy: boolean;
   cacheMessage: string;
@@ -54,10 +53,12 @@ function Progress({ label, done, total }: { label: string; done: number; total: 
 }
 
 export function ReviewWorkbench(props: Props) {
-  const { analysis, review, groups, frameworks, busy, onDecision, onEdit } = props;
+  const { analysis, review, frameworks, busy, onDecision, onEdit } = props;
   const [showAll, setShowAll] = useState(false);
+  const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [keepOpen, setKeepOpen] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const workspace = useRef<HTMLDivElement>(null);
   const awaiting = new Set(review.pending.map((item) => item.plan.bookmarkId));
@@ -65,17 +66,40 @@ export function ReviewWorkbench(props: Props) {
   const pendingCount = review.pending.length;
   const remaining = pendingCount > 0 || pendingFrameworks > 0;
   const decisionItems = review.items.filter((item) => item.level !== "auto" && item.level !== "keep");
-  const activeGroups = groups.filter((group) => group.items.some((item) => awaiting.has(item.plan.bookmarkId)));
-  const activeReview = analysis.review.filter((item) => awaiting.has(item.plan.bookmarkId) &&
-    !analysis.frameworkGroups.some((group) => group.items.includes(item) && frameworks[group.key] !== "approve"));
-  const visibleReview = showAll ? activeReview : activeReview.slice(0, 2);
+  const pendingItems = review.pending.filter((item) =>
+    !analysis.frameworkGroups.some((group) => group.items.includes(item) && frameworks[group.key] !== "approve")
+  );
+  const visibleReview = showAll ? pendingItems : pendingItems.slice(0, 2);
+  const pendingIds = new Set(pendingItems.map((item) => item.plan.bookmarkId));
+  const selectedPendingIds = [...selectedReviewIds].filter((id) => pendingIds.has(id));
+  const selectedReviewCount = selectedPendingIds.length;
+  const allReviewSelected = pendingItems.length > 0 && selectedReviewCount === pendingItems.length;
   const safeItems = review.items.filter((item) => item.level === "auto" || item.level === "keep");
   const decidedItems = review.items.filter((item) => !awaiting.has(item.plan.bookmarkId));
   const weakCount = analysis.keep.filter((item) => item.plan.source !== "manual" && item.plan.confidence < 0.55).length;
 
   const decide = (ids: string[], choice: PreviewPlanDecision) => {
     onDecision(ids, choice);
+    setSelectedReviewIds((previous) => {
+      const next = new Set(previous);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
     setNotice(choice === "move" ? "已加入待执行清单，尚未移动书签。" : "已保留在原目录。");
+  };
+  const toggleReviewSelection = (bookmarkId: string) => {
+    setSelectedReviewIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(bookmarkId)) next.delete(bookmarkId);
+      else next.add(bookmarkId);
+      return next;
+    });
+  };
+  const toggleAllReviewSelection = () => {
+    setSelectedReviewIds(() => {
+      if (allReviewSelected) return new Set();
+      return new Set(pendingItems.map((item) => item.plan.bookmarkId));
+    });
   };
   const continueReview = () => {
     if (!remaining) { props.onConfirm(); return; }
@@ -87,17 +111,20 @@ export function ReviewWorkbench(props: Props) {
       next?.focus({ preventScroll: true });
     });
   };
-  const renderItem = (item: PreviewRiskItem, editable = true) => {
+  const renderItem = (item: PreviewRiskItem, editable = true, selectable = false) => {
     const { plan } = item;
     const choice = review.effective[plan.bookmarkId];
+    const selected = selectedReviewIds.has(plan.bookmarkId) && pendingIds.has(plan.bookmarkId);
     const riskLabels = item.level === "review"
       ? item.reasons.map((reason) => reviewReasonLabels[reason] ?? reason)
       : [];
-    return <article key={plan.bookmarkId} className="review-card review-item" tabIndex={-1}
+    return <article key={plan.bookmarkId} className={`review-card review-item${selected ? " is-selected" : ""}`} tabIndex={-1}
       data-review-pending={awaiting.has(plan.bookmarkId) ? "" : undefined}
       aria-label={`${plan.bookmarkTitle}，${choice === "move" ? "已批准移动" : choice === "keep" ? "确定保留" : "待决定"}`}>
       <div className="review-card__top">
         <div className="review-card__labels">
+          {selectable && <label className="review-select"><input type="checkbox" checked={selected} disabled={busy}
+            onChange={() => toggleReviewSelection(plan.bookmarkId)} aria-label={`选择 ${plan.bookmarkTitle}`} /></label>}
           {choice && <span className="review-tag review-tag--safe">{choice === "move" ? "已批准移动" : "确定保留"}</span>}
           {riskLabels.map((label) => <span key={label} className="review-tag review-tag--risk">{label}</span>)}
           {!choice && riskLabels.length === 0 && <span className="review-tag">一级目录内调整</span>}
@@ -129,6 +156,12 @@ export function ReviewWorkbench(props: Props) {
   };
 
   return <div className="review-workbench">
+    <div className="review-toolbar">
+      <p>方案不合适，或想换一批书签重新整理？</p>
+      <button type="button" className="review-toolbar__button" disabled={busy} onClick={() => setRegenerateOpen(true)}>
+        <RefreshCw size={14} /> 重新整理
+      </button>
+    </div>
     <div className="review-promise"><ShieldCheck size={18} /><p>低依据建议保留原位，仅执行已批准的移动。</p></div>
     <section className="review-overview" aria-label="变更概览">
       <p>本次方案，共 {review.total} 条有效书签</p>
@@ -159,29 +192,21 @@ export function ReviewWorkbench(props: Props) {
           {group.items.map((item) => <button className="review-text-button" key={item.plan.bookmarkId} disabled={busy} onClick={() => onEdit(item.plan)}>修改 {item.plan.bookmarkTitle} 的目标</button>)}
         </details>
       </article>)}
-      {activeGroups.map((group) => {
-        const items = group.items.filter((item) => awaiting.has(item.plan.bookmarkId));
-        if (items.length === 1) return renderItem(items[0]);
-        const sampleIndexes = [...new Set([0, Math.floor((items.length - 1) / 2), items.length - 1])];
-        return <article className="review-card" key={group.key} tabIndex={-1} data-review-pending="" aria-label={`批量审核 ${group.key}`}>
-          <span className="review-tag">批量审核</span>
-          <div className="review-card__title"><span className="review-folder-icon"><Folder size={18} /></span><div><h3>{items.length} 条书签建议归入同一目录</h3><p className="review-muted">目标：{pathKey(group.targetPath)}</p></div></div>
-          <div className="review-route">{sampleIndexes.map((index, i) => <div key={index}><span>{i === 0 ? "典型" : i === sampleIndexes.length - 1 ? "较弱" : "边界"}</span><strong>{items[index].plan.bookmarkTitle}</strong></div>)}</div>
-          <div className="review-actions">
-            <button type="button" disabled={busy} onClick={() => decide(items.map((item) => item.plan.bookmarkId), "keep")}>保留原位</button>
-            <button type="button" disabled={busy} className="review-primary" onClick={() => decide(items.map((item) => item.plan.bookmarkId), "move")}>批量接受（{items.length} 条）</button>
-          </div>
-          <details className="review-evidence"><summary>查看分组依据与全部条目 <ChevronDown size={14} /></summary>
-            <p>按同一目标目录分组，模型自评仅作排序参考。跨一级目录项目独立处理。</p>
-            {items.map((item) => renderItem(item))}
-          </details>
-        </article>;
-      })}
-      {activeReview.length > 0 && <>
-        <div className="review-section-heading"><h2>逐项判断</h2><span className="review-tag review-tag--risk">{activeReview.length} 条待决定</span></div>
-        {visibleReview.map((item) => renderItem(item))}
-        {activeReview.length > 2 && <button type="button" className="review-fold" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
-          {showAll ? "收起其余建议" : `查看其余 ${activeReview.length - 2} 条审核建议`} <ChevronDown size={14} />
+      {pendingItems.length > 0 && <>
+        <div className="review-section-heading review-section-heading--review">
+          <div><h2>待你决定</h2><span className="review-tag review-tag--risk">{pendingItems.length} 条待决定</span></div>
+          <button type="button" className="review-select-all" disabled={busy} onClick={toggleAllReviewSelection}>
+            {allReviewSelected ? "取消全选" : "全选待决定"}
+          </button>
+        </div>
+        {selectedReviewCount > 0 && <div className="review-bulk-actions" role="group" aria-label="批量处理所选待决定书签">
+          <span>已选 {selectedReviewCount} 条</span>
+          <button type="button" disabled={busy} onClick={() => decide(selectedPendingIds, "keep")}>保留所选</button>
+          <button type="button" className="review-primary" disabled={busy} onClick={() => decide(selectedPendingIds, "move")}>同意移动所选</button>
+        </div>}
+        {visibleReview.map((item) => renderItem(item, true, true))}
+        {pendingItems.length > 2 && <button type="button" className="review-fold" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
+          {showAll ? "收起其余建议" : `查看其余 ${pendingItems.length - 2} 条待决定`} <ChevronDown size={14} />
         </button>}
       </>}
       {!remaining && <div className="review-complete"><Check size={20} /><div><strong>所有建议均已处理</strong><p>检查实际移动清单后，再确认执行。</p></div></div>}
@@ -241,5 +266,11 @@ export function ReviewWorkbench(props: Props) {
         <button className="extension-page__wide-secondary" data-dialog-return disabled={busy} onClick={() => setKeepOpen(false)}>继续审核</button>
         <button className="extension-page__wide-primary" disabled={busy} onClick={() => { props.onKeepRemaining(); setKeepOpen(false); setNotice("其余待定项已明确保留原位。"); }}>确认保留原位</button>
       </>}><p>此操作仅保存审核决定，不会移动或删除书签。</p></PreviewDialog>}
+    {regenerateOpen && <PreviewDialog label="重新整理方案" title="重新整理这批书签？"
+      description="当前审核决定、目标目录调整和待定项会被清除，需要重新选择书签并生成方案。书签本身不会被移动。"
+      busy={busy} onClose={() => setRegenerateOpen(false)} actions={<>
+        <button className="extension-page__wide-secondary" data-dialog-return disabled={busy} onClick={() => setRegenerateOpen(false)}>继续审核</button>
+        <button className="extension-page__wide-primary" disabled={busy} onClick={() => { setRegenerateOpen(false); props.onRegenerate(); }}>重新整理</button>
+      </>}><p>如果只是想修改少数建议，可以继续使用每条卡片中的“修改目标目录”。</p></PreviewDialog>}
   </div>;
 }

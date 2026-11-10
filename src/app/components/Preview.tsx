@@ -50,7 +50,7 @@ import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../serv
 import { getFixedDomainRules } from "../services/fixedRules";
 import { getPreferenceConflict, getPreferenceFingerprint } from "../services/preferenceSafety";
 import { ReviewWorkbench } from "./ReviewWorkbench";
-import { buildPreviewRiskAnalysis, derivePreviewReview, groupRiskItemsByTarget, pathKey } from "../services/previewReview";
+import { buildPreviewRiskAnalysis, derivePreviewReview, pathKey } from "../services/previewReview";
 import "../../styles/preview-review.css";
 export { buildPreviewRiskAnalysis } from "../services/previewReview";
 
@@ -826,11 +826,6 @@ export function Preview() {
   );
   const review = useMemo(() => derivePreviewReview(riskAnalysis, planDecisions, frameworkDecisions), [riskAnalysis, planDecisions, frameworkDecisions]);
   const approvedPlans = review.approvedPlans;
-  const assignmentGroups = groupRiskItemsByTarget([
-    ...riskAnalysis.batchGroups.flatMap((group) => group.items),
-    ...riskAnalysis.frameworkGroups.filter((group) => frameworkDecisions[group.key] === "approve")
-      .flatMap((group) => group.items.filter((item) => item.level === "framework")),
-  ]);
   const pendingDecisionCount = review.pending.length + review.pendingFrameworks.length;
   const summary = getPlanSummary(review.items.map((item) => item.plan), allBookmarks, existingFolders);
   const executionSummary = getPlanSummary(approvedPlans, allBookmarks, existingFolders);
@@ -1553,7 +1548,7 @@ export function Preview() {
               </div>
             ) : (
               <ReviewWorkbench
-                analysis={riskAnalysis} review={review} groups={assignmentGroups}
+                analysis={riskAnalysis} review={review}
                 frameworks={frameworkDecisions}
                 busy={savingPreviewDrop || !reviewLoaded} cacheMessage={cacheMessage}
                 summary={summary} tree={previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
