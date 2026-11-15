@@ -13,7 +13,6 @@ import {
   Folder,
   ExternalLink,
   Check,
-  AlertCircle,
   ChevronDown,
   ChevronRight,
   Cpu,
@@ -1305,7 +1304,7 @@ export function Preview() {
     <div className={`extension-page extension-page--preview${phase === "preview" && !loading && plans.length ? " review-page" : ""}`}>
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title={pageTitle} subtitle={pageSubtitle} />
+          <PageHeading title={pageTitle} subtitle={loading ? pageSubtitle : undefined} />
           <p className="sr-only" role="status">{pageTitle}。{pageSubtitle}</p>
 
         </div>
@@ -1325,14 +1324,6 @@ export function Preview() {
         {/* 选择阶段 */}
         {phase === "selection" && !loading && (
           <>
-            <div className="extension-notice extension-notice--blue">
-              <div className="extension-notice__title">
-                <AlertCircle className="extension-notice__icon" />
-                <span>选择要整理的书签</span>
-              </div>
-              <p>勾选需要整理的书签，未勾选的书签将保持原位置不变。</p>
-            </div>
-
             <div className="extension-selection-actions">
               <button onClick={toggleSelectAll} className="extension-text-button">
                 {selectedIds.size === allBookmarks.length ? "取消全选" : "全选"}
@@ -1346,23 +1337,23 @@ export function Preview() {
               <button
                 type="button"
                 className={`organize-mode-picker__button ${organizeMode === "quick" ? "is-active" : ""}`}
+                aria-pressed={organizeMode === "quick"}
                 onClick={() => setOrganizeMode("quick")}
               >
                 <Zap className="w-4 h-4" />
                 <span>
                   <strong>快速分类</strong>
-                  <small>更快生成分类建议，较少等待网页信息</small>
                 </span>
               </button>
               <button
                 type="button"
                 className={`organize-mode-picker__button ${organizeMode === "deep" ? "is-active" : ""}`}
+                aria-pressed={organizeMode === "deep"}
                 onClick={() => setOrganizeMode("deep")}
               >
                 <Globe2 className="w-4 h-4" />
                 <span>
-                  <strong>更细致地分析网页</strong>
-                  <small>多等一会，尝试获取更多网页信息后再分类</small>
+                  <strong>网页深度分析</strong>
                 </span>
               </button>
             </div>

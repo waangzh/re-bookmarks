@@ -408,7 +408,6 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
           <section className="onboarding__panel">
             <div className="onboarding__eyebrow"><Sparkles aria-hidden="true" /> 第二步：连接 AI</div>
             <h1>连接 AI 服务</h1>
-            <p className="onboarding__lead">ReMarks 使用 AI 判断书签内容并生成整理建议。</p>
             <div className="onboarding__form">
               <label>
                 <span>AI 服务</span>
@@ -500,7 +499,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
               <div className="onboarding__status onboarding__status--error"><AlertCircle aria-hidden="true" />{message}</div>
             )}
             <button className="onboarding__later" type="button" onClick={() => void completeOnboarding("home")}>
-              没有 API Key？先使用本地搜索与重复检查
+              先使用本地工具
             </button>
             <div className="onboarding__nav-row">
               <button type="button" onClick={() => setStep(1)}>返回</button>
@@ -518,7 +517,6 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
               <div className="onboarding__sample-empty">
                 <span><Sparkles aria-hidden="true" /></span>
                 <strong>从不同文件夹抽取代表性书签</strong>
-                <small>展示 3—5 条代表性建议供你判断</small>
                 <button className="onboarding__primary" type="button" onClick={() => void handleGenerateSample()}>
                   生成 {sampleSize} 条试分类
                 </button>

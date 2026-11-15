@@ -156,15 +156,13 @@ export function ReviewWorkbench(props: Props) {
   };
 
   return <div className="review-workbench">
-    <div className="review-toolbar">
-      <p>方案不合适，或想换一批书签重新整理？</p>
-      <button type="button" className="review-toolbar__button" disabled={busy} onClick={() => setRegenerateOpen(true)}>
-        <RefreshCw size={14} /> 重新整理
-      </button>
-    </div>
-    <div className="review-promise"><ShieldCheck size={18} /><p>低依据建议保留原位，仅执行已批准的移动。</p></div>
     <section className="review-overview" aria-label="变更概览">
-      <p>本次方案，共 {review.total} 条有效书签</p>
+      <div className="review-overview__heading">
+        <span>{review.total} 条书签</span>
+        <button type="button" className="review-toolbar__button" disabled={busy} onClick={() => setRegenerateOpen(true)}>
+          <RefreshCw size={14} /> 重新整理
+        </button>
+      </div>
       <div className="review-metrics">
         <div><strong>{review.approvedPlans.length}</strong><span>已批准移动</span></div>
         <div><strong>{review.keepCount}</strong><span>确定保留</span></div>
@@ -182,7 +180,7 @@ export function ReviewWorkbench(props: Props) {
         <h3>{group.topLevel}</h3>
         <p className="review-muted">{group.items.length} 条建议，{group.targetPathCount} 个目标目录</p>
         <div className="review-route">{[...new Set(group.items.map((item) => pathKey(item.plan.toFolderPath)))].map((path) => <div key={path}><Folder size={14} /><strong>{path}</strong></div>)}</div>
-        <p className="review-muted">采用目录只确认结构，其中的书签仍需独立审核。</p>
+        <p className="review-muted">仅采用结构，书签另行审核</p>
         <div className="review-actions">
           <button type="button" disabled={busy} onClick={() => props.onFramework(group, "keep")}>不采用，保留原位</button>
           <button type="button" disabled={busy} className="review-primary" onClick={() => props.onFramework(group, "approve")}>采用此目录</button>
@@ -209,12 +207,11 @@ export function ReviewWorkbench(props: Props) {
           {showAll ? "收起其余建议" : `查看其余 ${pendingItems.length - 2} 条待决定`} <ChevronDown size={14} />
         </button>}
       </>}
-      {!remaining && <div className="review-complete"><Check size={20} /><div><strong>所有建议均已处理</strong><p>检查实际移动清单后，再确认执行。</p></div></div>}
+      {!remaining && <div className="review-complete"><Check size={20} /><strong>所有建议均已处理</strong></div>}
     </div>
 
     <details className="review-safe">
       <summary><ShieldCheck size={20} /><span><strong>已安全处理的建议</strong><small>低风险 {analysis.auto.length} 条，默认保留 {analysis.keep.length} 条</small></span><ChevronDown size={16} /></summary>
-      <p className="review-muted">低风险建议复用现有目录、符合已有分类习惯且未跨一级目录。所有条目均可检查。</p>
       <label className="review-search"><span>搜索安全建议</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题、URL 或目录" /></label>
       {analysis.auto.some((item) => review.effective[item.plan.bookmarkId] === "move") && <button className="review-text-button" disabled={busy}
         onClick={() => decide(analysis.auto.filter((item) => review.effective[item.plan.bookmarkId] === "move").map((item) => item.plan.bookmarkId), "keep")}>取消全部低风险自动建议</button>}
@@ -271,6 +268,6 @@ export function ReviewWorkbench(props: Props) {
       busy={busy} onClose={() => setRegenerateOpen(false)} actions={<>
         <button className="extension-page__wide-secondary" data-dialog-return disabled={busy} onClick={() => setRegenerateOpen(false)}>继续审核</button>
         <button className="extension-page__wide-primary" disabled={busy} onClick={() => { setRegenerateOpen(false); props.onRegenerate(); }}>重新整理</button>
-      </>}><p>如果只是想修改少数建议，可以继续使用每条卡片中的“修改目标目录”。</p></PreviewDialog>}
+      </>} />}
   </div>;
 }

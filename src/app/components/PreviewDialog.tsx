@@ -8,7 +8,7 @@ type PreviewDialogProps = {
   description?: string;
   busy?: boolean;
   onClose: () => void;
-  children: ReactNode;
+  children?: ReactNode;
   actions?: ReactNode;
 };
 
@@ -39,7 +39,7 @@ export function PreviewDialog({
           <Dialog.Title className="preview-dialog__title">{title ?? label}</Dialog.Title>
           {description && <Dialog.Description className="preview-dialog__description">{description}</Dialog.Description>}
         </div>
-        <div className="preview-dialog__body">{children}</div>
+        {children && <div className="preview-dialog__body">{children}</div>}
         {actions && <div className="preview-dialog__actions">{actions}</div>}
       </Dialog.Content>
     </Dialog.Portal>

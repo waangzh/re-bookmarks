@@ -461,7 +461,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
         <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
-        <h1 id="home-task-title">{busy ? "正在读取你的任务…" : deferred ? "稍后再处理也没关系" : primary.title}</h1>
+        <h1 id="home-task-title">{busy ? "正在读取你的任务…" : deferred ? "已暂缓这项任务" : primary.title}</h1>
         <p>{busy ? "正在同步书签、分类建议和最近的执行记录。" : deferred ? "待办仍保留在任务中心。需要时，可重新显示刚才的建议。" : primary.description}</p>
         {!busy && <div className="home-featured-task__actions">
           {deferred ? <button type="button" className="home-primary" onClick={() => setDismissedTask("")}>重新显示建议 <ArrowRight aria-hidden="true" /></button> : <>
@@ -502,7 +502,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         {!(historyGranted ? frequentBookmarks.length : recentBookmarks.length) && <p className="sidebar-muted-copy">{busy ? "正在读取书签…" : historyGranted ? "暂时没有已收藏网站的访问记录" : "收藏网页后，会在这里显示"}</p>}
       </section>
       <div className="home-tools">
-        <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><span>报告、备份、导入和偏好</span><ChevronDown aria-hidden="true" /></button>
+        <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><ChevronDown aria-hidden="true" /></button>
         {toolsOpen && <nav id="home-tool-list" className="home-tool-list" aria-label="更多工具" onClickCapture={rememberHomeScroll}>{toolEntries.map(({ to, label, icon: Icon }) => <Link key={to} to={to}><Icon aria-hidden="true" /><span>{label}</span><ChevronRight aria-hidden="true" /></Link>)}<Link to="/more"><Grid2X2 aria-hidden="true" /><span>查看全部工具</span><ChevronRight aria-hidden="true" /></Link></nav>}
       </div>
     </main>

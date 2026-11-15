@@ -190,7 +190,7 @@ export function ImportBookmarks() {
     <div className="extension-page extension-page--import">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="导入书签" subtitle="导入浏览器导出的 HTML 书签文件，先预览再写入。" />
+          <PageHeading title="导入书签" />
         </div>
 
         {message && (
@@ -205,7 +205,7 @@ export function ImportBookmarks() {
           </div>
           <div className="import-file-card__main">
             <h2>选择书签 HTML 文件</h2>
-            <p>支持 Chrome、Edge、Firefox 导出的 bookmarks.html。文件只会在本地解析。</p>
+            <p>浏览器导出的 bookmarks.html，仅在本地解析</p>
             {selectedFileName && <span title={selectedFileName}>当前文件：{selectedFileName}</span>}
           </div>
           <label className="extension-page__wide-primary import-file-card__button">
@@ -270,7 +270,7 @@ export function ImportBookmarks() {
                   onClick={() => void handleImport()}
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  {busy ? `导入中 ${progress.processed}/${progress.total}` : "确认导入"}
+                  {busy ? `导入中 ${progress.processed}/${progress.total}` : `确认导入 ${preview.readyCount} 个书签`}
                 </button>
                 <button type="button" className="extension-page__wide-secondary" disabled={busy} onClick={handleReset}>
                   重新选择

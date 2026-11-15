@@ -318,14 +318,10 @@ export function Recommendations() {
           <div className="extension-empty">
             <Check className="extension-empty__icon" />
             <p>暂无待处理推荐</p>
-            <span>新增书签后会自动生成整理推荐</span>
+            <Link to="/manage" className="extension-page__primary-button">浏览书签</Link>
           </div>
         ) : (
           <>
-            <div className="extension-notice extension-notice--amber">
-              <p>共有 {pendingRecommendations.length} 个新书签等待整理。接受前会自动备份；忽略只移除建议，不会记录分类偏好。</p>
-            </div>
-
             <div className="recommendation-toolbar">
               <div className="recommendation-toolbar__actions">
                 <button
@@ -333,18 +329,20 @@ export function Recommendations() {
                   onClick={() => void handleAcceptAll()}
                   disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || batchRecommendations.length === 0}
                   className="extension-page__wide-primary"
+                  title="归档前自动备份，仅包含可批量归档的建议"
                 >
                   <Check className="w-4 h-4" />
-                  归档安全候选项（{batchRecommendations.length}）
+                  批量归档（{batchRecommendations.length}）
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleIgnoreAll()}
                   disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
                   className="extension-page__wide-secondary"
+                  title="仅移除建议，不记录分类偏好"
                 >
                   <X className="w-4 h-4" />
-                  一键忽略所有
+                  全部忽略
                 </button>
               </div>
               <div className="recommendation-sort">
@@ -363,6 +361,11 @@ export function Recommendations() {
                 />
               </div>
             </div>
+
+            <details className="recommendation-action-details">
+              <summary>归档与忽略的区别</summary>
+              <p>归档前自动备份。忽略只移除建议，不移动书签，也不记录分类偏好。</p>
+            </details>
 
             <div className="extension-stack">
               {sortedRecommendations.map((rec) => {
@@ -512,7 +515,6 @@ export function Recommendations() {
                           <ThumbsDown className="w-3 h-3" />
                           不推荐这个分类
                         </button>
-                        <span>明确反馈会用于改进后续建议</span>
                       </div>
                     )}
                   </section>

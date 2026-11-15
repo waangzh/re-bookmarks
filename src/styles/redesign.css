@@ -206,7 +206,6 @@
 .remarks-app .remarks-tool-directory__icon svg { width: 17px; height: 17px; }
 .remarks-app .remarks-tool-directory > a > span:nth-child(2) { flex: 1; min-width: 0; }
 .remarks-app .remarks-tool-directory strong { display: block; font-size: 13px; color: var(--remarks-ink); font-weight: 700; }
-.remarks-app .remarks-tool-directory small { display: block; font-size: 12px; color: var(--remarks-muted); line-height: 1.7; margin-top: 3px; }
 .remarks-app .remarks-tool-directory > a > svg { width: 15px; height: 15px; color: var(--remarks-muted); flex-shrink: 0; }
 .remarks-app .onboarding { background: var(--remarks-paper); }
 .remarks-app .onboarding .onboarding__panel { border-radius: var(--remarks-radius-panel); border-color: var(--remarks-line); box-shadow: none; }
@@ -216,7 +215,58 @@
 .remarks-app .onboarding .onboarding__primary { border-radius: var(--remarks-radius-control); box-shadow: none; transform: none; }
 .remarks-app .onboarding :is(.onboarding__estimate, .onboarding__safe-note, .onboarding__status) { border-radius: var(--remarks-radius-control); }
 
+/* 操作优先：连接操作并排，设置按行展开，详情按需查看。 */
+.remarks-app .settings-simple__header { align-items: center; }
+.remarks-app .settings-simple__header .provider-overview__state { align-self: center; margin-top: 0; }
+.remarks-app .settings-connection-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.remarks-app .settings-connection-actions button { min-width: 0; margin: 0; }
+.remarks-app .settings-model-status { margin: 0; color: var(--remarks-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.remarks-app .settings-model-status[role="alert"] { color: #b42318; }
+.remarks-app .extension-switch-row { gap: 14px; }
+.remarks-app .extension-switch-row > div { min-width: 0; flex: 1; }
+.remarks-app .extension-switch-row > label { flex: 0 0 auto; }
+.remarks-app .settings-navigation { border: 1px solid var(--remarks-line); border-radius: var(--remarks-radius-panel); background: #fff; }
+.remarks-app .extension-page .settings-navigation > .extension-section.settings-section { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.remarks-app .extension-page .settings-navigation > .settings-section + .settings-section { border-top: 1px solid var(--remarks-line); }
+.remarks-app .settings-navigation .settings-disclosure__summary { min-height: 60px; padding: 12px 16px; }
+.remarks-app .settings-navigation .settings-disclosure__icon { width: 28px; height: 28px; border: 0; background: transparent; }
+.remarks-app .settings-navigation .settings-disclosure__summary:focus-visible { outline-offset: -3px; }
+.remarks-app .extension-page.extension-page--settings .extension-page__inner { padding-bottom: 88px; }
+.remarks-app .settings-save-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(calc(100% - 48px), 712px); z-index: 10; padding: 12px 0; border-top: 1px solid var(--remarks-line); background: var(--remarks-paper); }
+.remarks-app .report-result__time { display: block; margin-top: 4px; font-size: 12px; color: #52745e; }
+.remarks-app .extension-success.report-result--warning { border-color: #f4d18b; background: #fffbeb; }
+.remarks-app .report-result--warning :is(h2, .extension-success__icon) { color: #92400e; }
+.remarks-app .report-result--warning .report-result__time { color: #896d41; }
+.remarks-app .report-failure-list .extension-compact-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.remarks-app .report-failure-list .extension-compact-row > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.remarks-app .report-failure-list .extension-compact-row > span:first-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.remarks-app .report-execution-details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--remarks-line); }
+.remarks-app :is(.report-execution-details, .recommendation-action-details) summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; color: var(--remarks-muted); font-size: 12px; cursor: pointer; list-style: none; }
+.remarks-app .report-execution-details summary::-webkit-details-marker { display: none; }
+.remarks-app .report-execution-details[open] summary svg { transform: rotate(180deg); }
+.remarks-app .report-execution-details dl { display: grid; gap: 8px; margin-top: 10px; font-size: 13px; }
+.remarks-app .report-execution-details dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.remarks-app .report-execution-details dt { color: var(--remarks-muted); }
+.remarks-app .report-execution-details dd { margin: 0; font-weight: 600; }
+.remarks-app .report-browse-action { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+.remarks-app .report-browse-action svg { width: 16px; height: 16px; flex-shrink: 0; }
+.remarks-app .report-browse-action svg:last-child { margin-left: auto; }
+.remarks-app .recommendation-action-details { margin: -4px 0 16px; }
+.remarks-app .recommendation-action-details summary { display: list-item; list-style: disclosure-closed inside; }
+.remarks-app .recommendation-action-details[open] summary { list-style-type: disclosure-open; }
+.remarks-app .recommendation-action-details p { margin: 6px 0 0; color: var(--remarks-muted); font-size: 13px; line-height: 1.7; }
+.remarks-app .review-overview__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--remarks-muted); font-size: 12px; }
+.remarks-app .extension-page .habit-info-callout { padding: 10px 12px; }
+.remarks-app .habit-info-callout > div { min-width: 0; flex: 1; }
+.remarks-app .habit-help-details { margin-top: 0; }
+.remarks-app .impression-coverage { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+.remarks-app .impression-coverage__text { flex: 1; min-width: 0; }
+.remarks-app .impression-coverage .impression-coverage__action { width: auto; min-height: 34px; padding: 6px 8px; font-size: 12px; }
+.remarks-app .impression-coverage .impression-backfill { width: 100%; }
+
 @media (max-width: 520px) {
+  .remarks-app .extension-page--settings .extension-page__inner { padding-bottom: 88px; }
+  .remarks-app .settings-save-bar { width: calc(100% - 36px); }
   .remarks-app .extension-page .extension-page__inner { padding: 24px 18px 18px; width: 100%; }
   .remarks-app .extension-page .extension-page__header { flex-wrap: wrap; }
   .remarks-app .extension-page .extension-page__heading { flex-basis: 100%; }
@@ -236,6 +286,7 @@
   .remarks-app .home-task-intro .extension-page__subtitle { padding-left: 36px; }
 }
 @media (max-width: 320px) {
+  .remarks-app .settings-save-bar { width: calc(100% - 20px); }
   .remarks-app .sidebar-home.home-v2, .remarks-app .extension-page .extension-page__inner { padding: 18px 10px; }
   .remarks-app .home-search kbd, .remarks-app .home-featured-task__heading > small, .remarks-app .home-tools__toggle > span { display: none; }
   .remarks-app .home-featured-task { padding: 15px 12px; }

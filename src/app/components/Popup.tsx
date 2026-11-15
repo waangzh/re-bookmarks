@@ -60,7 +60,6 @@ export function Popup() {
             </div>
             <span className="bookmark-popup__badge">{pendingCount}</span>
           </div>
-          <p className="bookmark-popup__recommend-copy">有 {pendingCount} 个新书签等待整理</p>
           <Link to="/recommendations" className="bookmark-popup__recommend-button">
             查看推荐
           </Link>
@@ -130,7 +129,6 @@ export function Popup() {
       </div>
 
       <div className="bookmark-popup__footer">
-        <p>使用 AI 智能分类您的书签</p>
         <Link to="/options" className="bookmark-popup__icon-button" aria-label="设置">
           <Settings className="bookmark-popup__settings-icon" />
         </Link>

@@ -1853,7 +1853,6 @@ export function ManageBookmarks() {
             <div className="bookmark-unsorted-section__head">
               <div className="bookmark-unsorted-section__copy">
                 <h3>待手动分类</h3>
-                <p>这些书签仍在根目录、待整理或未分类文件夹中，可直接指定目标路径。</p>
               </div>
               <div className="bookmark-unsorted-section__tools bookmark-unsorted-section__tools--manual">
                 <span>{filteredBookmarks.length}</span>
@@ -2444,11 +2443,6 @@ export function ManageBookmarks() {
                 <button type="button" className="extension-text-button" onClick={cancelDeepSearch}>停止</button>
               )}
             </div>
-          ) : impressionResults.length < 3 ? (
-            <p className="impression-deep-hint">
-              <Sparkles aria-hidden="true" />
-              <span>没找到？点击“帮我找找”，或按 <kbd>Alt + Enter</kbd> 用 AI 根据描述查找。</span>
-            </p>
           ) : null
         )}
         {taskMode !== "invalid" && taskMode !== "unsorted" && taskMode !== "duplicate" && (
@@ -2456,8 +2450,7 @@ export function ManageBookmarks() {
             <p className="impression-coverage__text">
               <Sparkles className="impression-coverage__icon" aria-hidden="true" />
               <span>
-                已有 <strong>{semanticCoverage.indexed}</strong> / {semanticCoverage.total} 个书签支持按用途搜索
-                {semanticCoverage.indexed < semanticCoverage.total && <small>其余书签仍可通过标题、网址和常见站点识别搜索</small>}
+                用途索引 <strong>{semanticCoverage.indexed}</strong> / {semanticCoverage.total}
               </span>
             </p>
             {backfillRunning ? (
@@ -2483,10 +2476,10 @@ export function ManageBookmarks() {
                 title={`用 AI 为剩余 ${missingImpressionCount} 个书签补充用途信息，会产生 AI 使用量，不会移动或改写书签`}
               >
                 <Sparkles aria-hidden="true" />
-                让更多书签支持按用途搜索（剩余 {missingImpressionCount} 个）
+                补充用途（{missingImpressionCount}）
               </button>
             ) : (
-              <span className="impression-coverage__done"><Check aria-hidden="true" />全部网页书签已支持按用途搜索</span>
+              <span className="impression-coverage__done"><Check aria-hidden="true" />已完成</span>
             )}
           </div>
         )}

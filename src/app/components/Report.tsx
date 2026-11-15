@@ -1,9 +1,10 @@
 import { PageHeading } from "./PageHeading";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 import {
   ArrowRight,
   CheckCircle,
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -58,7 +59,7 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "撤销",
       title: "撤销完成",
-      subtitle: "已按最近一次备份尝试移回原文件夹；未恢复原有排序",
+      subtitle: "原有排序未恢复",
       movedLabel: "已移回",
     };
   }
@@ -68,7 +69,7 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "重新应用",
       title: "重新应用完成",
-      subtitle: "已按最近一次分类结果重新移动书签；是否更好找需要后续验证",
+      subtitle: "",
       movedLabel: "已移动",
     };
   }
@@ -78,7 +79,7 @@ function getReportKindMeta(report: OrganizeReport) {
       kind,
       label: "推荐整理",
       title: "推荐整理完成",
-      subtitle: "操作前备份和逐项移动结果已保存到本地；是否更好找需要后续验证",
+      subtitle: "",
       movedLabel: "已移动",
     };
   }
@@ -87,7 +88,7 @@ function getReportKindMeta(report: OrganizeReport) {
     kind,
     label: "整理",
     title: "整理完成",
-    subtitle: "执行结果已保存到本地；是否更好找需要在后续使用中验证",
+    subtitle: "",
     movedLabel: "已移动",
   };
 }
@@ -173,8 +174,9 @@ export function Report() {
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [message, setMessage] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const resultRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void loadReports();
@@ -259,9 +261,11 @@ export function Report() {
         key={report.id}
         type="button"
         className={`report-history-card report-history-card--${meta.kind}${selected ? " report-history-card--active" : ""}`}
+        aria-pressed={selected}
         onClick={() => {
           setSelectedReportId(report.id);
           setMessage("");
+          resultRef.current?.scrollIntoView({ block: "start" });
         }}
       >
         <span className="report-history-card__rail" aria-hidden="true" />
@@ -278,7 +282,7 @@ export function Report() {
           <span className="report-history-card__metrics">
             <span>{report.movedCount} 次移动</span>
             <span>{report.folderCount} 个目标目录</span>
-            <span>{report.failedItems.length} 失败</span>
+            {report.failedItems.length > 0 && <span>{report.failedItems.length} 失败</span>}
             {report.tokenUsage && <span>{formatTokenCount(report.tokenUsage.totalTokens)} tokens</span>}
           </span>
         </span>
@@ -357,11 +361,11 @@ export function Report() {
       <div className="extension-page">
         <div className="extension-page__inner">
           <div className="extension-page__header">
-            <PageHeading title="整理报告" subtitle="暂无最近整理结果" />
+            <PageHeading title="整理报告" />
           </div>
           <div className="extension-empty">
             <p>暂无整理报告</p>
-            <span>完成一次整理后会在这里显示最近 {REPORT_HISTORY_LIMIT} 次结果</span>
+            <Link to="/preview" className="extension-page__primary-button">开始整理</Link>
           </div>
         </div>
       </div>
@@ -372,44 +376,22 @@ export function Report() {
     <div className="extension-page extension-page--report">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="整理报告" subtitle={`最近 ${Math.min(reportHistory.length, REPORT_HISTORY_LIMIT)} 次整理操作`} />
+          <PageHeading title="整理报告" />
         </div>
 
-        <section className="extension-section report-history">
-          <button
-            type="button"
-            className="report-history__head"
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((open) => !open)}
-          >
-            <span className="report-history__title">
-              {historyOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              <span className="extension-section__title">报告历史</span>
-            </span>
-            <span className="extension-pill">
-              {reportHistory.length} / {REPORT_HISTORY_LIMIT}
-            </span>
-          </button>
-          {historyOpen && (
-            <div className="report-history__list">
-              {reportHistory.map((report, index) => renderHistoryCard(report, index))}
-            </div>
-          )}
-        </section>
-
-        <section className="extension-success">
-          <CheckCircle className="extension-success__icon" />
+        <section ref={resultRef} className={`extension-success${selectedReport.failedItems.length ? " report-result--warning" : ""}`} role="status">
+          {selectedReport.failedItems.length ? <AlertTriangle className="extension-success__icon" /> : <CheckCircle className="extension-success__icon" />}
           <div>
             <h2>{selectedReport.failedItems.length ? selectedReport.movedCount ? "部分完成，有项目未执行" : "执行失败，请查看原因" : selectedMeta.title}</h2>
-            <p>{message && isLatestReport ? message : isLatestReport ? selectedMeta.subtitle : "历史报告仅用于查看，撤销和重新应用只支持最新一次操作"}</p>
+            <time className="report-result__time">{formatReportTime(selectedReport.createdAt)}</time>
+            {(message && isLatestReport || selectedMeta.subtitle) && <p>{message && isLatestReport ? message : selectedMeta.subtitle}</p>}
           </div>
         </section>
 
         {selectedReport.tokenUsage && (
           <details className="token-usage-highlight">
-            <summary><span className="token-usage-highlight__label">本次 AI 使用量</span> 查看 Token 明细</summary>
+            <summary><span className="token-usage-highlight__label">AI 用量</span> {formatTokenCount(selectedReport.tokenUsage.totalTokens)} Token</summary>
             <div className="token-usage-highlight__details">
-              <strong>{formatTokenCount(selectedReport.tokenUsage.totalTokens)} Token</strong>
               <span>
                 输入 {formatTokenCount(selectedReport.tokenUsage.promptTokens)} / 输出{" "}
                 {formatTokenCount(selectedReport.tokenUsage.completionTokens)}
@@ -420,7 +402,6 @@ export function Report() {
 
         <section className="extension-section">
           <h3 className="extension-section__title">本次执行记录</h3>
-          <p className="sidebar-muted-copy">新增目录 {selectedReport.createdFolderCount ?? "旧记录未统计"}，复用目录 {selectedReport.reusedFolderCount ?? "旧记录未统计"}，保持原位 {selectedReport.keptCount ?? selectedReport.movePlan.filter((plan) => plan.keepInPlace).length}；本地备份与报告各保留最近 5 份。</p>
           <div className="extension-metrics">
             <div className="extension-metric">
               <FileText className="extension-metric__icon extension-metric__icon--blue" />
@@ -440,22 +421,25 @@ export function Report() {
               </div>
             ) : null}
             <div className="extension-metric">
-              <CheckCircle className="extension-metric__icon" />
+              {selectedReport.failedItems.length ? <AlertTriangle className="extension-metric__icon extension-metric__icon--red" /> : <CheckCircle className="extension-metric__icon" />}
               <div className="extension-metric__value">{selectedReport.failedItems.length}</div>
               <div className="extension-metric__label">失败</div>
             </div>
           </div>
+          <details className="report-execution-details">
+            <summary>执行明细 <ChevronDown className="w-4 h-4" /></summary>
+            <dl>
+              <div><dt>新增目录</dt><dd>{selectedReport.createdFolderCount ?? "未统计"}</dd></div>
+              <div><dt>复用目录</dt><dd>{selectedReport.reusedFolderCount ?? "未统计"}</dd></div>
+              <div><dt>保持原位</dt><dd>{selectedReport.keptCount ?? selectedReport.movePlan.filter((plan) => plan.keepInPlace).length}</dd></div>
+            </dl>
+          </details>
         </section>
 
         {selectedMeta.kind !== "undo" && (
-          <section className="extension-section report-value-check">
-            <div className="report-value-check__copy">
-              <Search aria-hidden="true" />
-            </div>
-            <Link to="/manage?search=1" className="report-value-check__action">
-              去搜索书签 <ArrowRight aria-hidden="true" />
-            </Link>
-          </section>
+          <Link to="/manage?search=1" className="extension-page__wide-secondary report-browse-action">
+            <Search aria-hidden="true" />搜索书签 <ArrowRight aria-hidden="true" />
+          </Link>
         )}
 
         <section className="extension-section">
@@ -470,11 +454,11 @@ export function Report() {
         </section>
 
         {selectedReport.failedItems.length > 0 && (
-          <CollapsibleSection title="失败明细" count={selectedReport.failedItems.length}>
-            <div className="extension-compact-list">
+          <CollapsibleSection title="失败明细" count={selectedReport.failedItems.length} defaultOpen>
+            <div className="extension-compact-list report-failure-list">
               {selectedReport.failedItems.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
-                  <span>{item.bookmarkTitle}</span>
+                  <span title={item.bookmarkTitle}>{item.bookmarkTitle}</span>
                   <span>{item.reason}</span>
                 </div>
               ))}
@@ -484,16 +468,27 @@ export function Report() {
 
         {skippedFolderCleanup.length > 0 && (
           <CollapsibleSection title="未清理的目标文件夹" count={skippedFolderCleanup.length}>
-            <div className="extension-compact-list">
+            <div className="extension-compact-list report-failure-list">
               {skippedFolderCleanup.map((item) => (
                 <div key={item.bookmarkId} className="extension-compact-row">
-                  <span>{item.bookmarkTitle}</span>
+                  <span title={item.bookmarkTitle}>{item.bookmarkTitle}</span>
                   <span>{item.reason}</span>
                 </div>
               ))}
             </div>
           </CollapsibleSection>
         )}
+
+        <section className="extension-section report-history">
+          <button type="button" className="report-history__head" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+            <span className="report-history__title">
+              {historyOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <span className="extension-section__title">报告历史</span>
+            </span>
+            <span className="extension-pill">{reportHistory.length} / {REPORT_HISTORY_LIMIT}</span>
+          </button>
+          {historyOpen && <div className="report-history__list">{reportHistory.map((report, index) => renderHistoryCard(report, index))}</div>}
+        </section>
 
         <CollapsibleSection title="隐私说明">
           <ul className="extension-copy-list">

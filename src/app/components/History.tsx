@@ -109,7 +109,7 @@ export function History() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="常访问书签" />
+          <PageHeading title="常访问书签" subtitle={enabled ? loading ? "正在统计…" : `${bookmarks.length} 个书签` : undefined} />
         </div>
 
         {!enabled ? (
@@ -131,10 +131,6 @@ export function History() {
           </section>
         ) : (
           <>
-            <div className="extension-notice extension-notice--blue history-summary-notice">
-              <p>{loading ? "正在统计本地访问记录..." : `根据访问记录，找到 ${bookmarks.length} 个经常访问的书签。`}</p>
-            </div>
-
             <div className="extension-search-field">
               <Search className="extension-search-field__icon" />
               <input
@@ -142,6 +138,7 @@ export function History() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="搜索标题、网址或文件夹..."
+                aria-label="搜索常访问书签"
                 className="extension-control extension-control--search"
               />
             </div>
@@ -197,7 +194,7 @@ export function History() {
               )}
             </div>
 
-            <CollapsibleSection title="统计说明" hint="访问频率和整理建议的计算范围">
+            <CollapsibleSection title="统计说明">
               <ul className="extension-copy-list">
                 <li>仅统计已收藏网址的访问记录</li>
                 <li>建议来自本地规则，不会自动移动书签</li>

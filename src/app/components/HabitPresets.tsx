@@ -393,14 +393,14 @@ export function HabitPresets() {
         <div className="extension-summary-panel habit-presets-help habit-info-callout">
           <Info className="w-4 h-4" />
           <div>
-            <p>分类调整与明确拒绝会记录在本地，供 AI 分类参考。</p>
-            <p>点击“更新书签画像”时，才会向 AI 服务发送脱敏书签样例。</p>
             <details className="habit-help-details">
               <summary>
-                了解偏好如何使用
+                偏好与数据使用
                 <ChevronRight className="w-3 h-3" aria-hidden="true" />
               </summary>
               <ul>
+                <li>分类调整与明确拒绝记录在本地，供 AI 分类参考。</li>
+                <li>更新书签画像会向 AI 服务发送脱敏书签样例。</li>
                 <li>明确拒绝目录与暂不处理分别记录，忽略不会生成负反馈。</li>
                 <li>删除下方偏好后，点击“保存调整”生效。</li>
                 <li>偏好仅供 AI 参考，不保证每次分类都命中。</li>
@@ -419,7 +419,7 @@ export function HabitPresets() {
           <div className="habit-section-heading habit-learning-heading">
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
             <div>
-              <h2 className="extension-section__title">记住我的分类习惯</h2>
+              <h2 className="extension-section__title">已学习的偏好</h2>
             </div>
             <span className="habit-learning-badge">供 AI 参考</span>
           </div>
@@ -533,7 +533,6 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><GraduationCap className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">学习概览</h2>
-              <p>现有书签结构提供的基础画像</p>
             </div>
           </div>
           <div className="habit-metrics-grid">
@@ -569,7 +568,6 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><Tag className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">常用一级分类</h2>
-              <p>这些分类会作为 AI 优先复用的顶层文件夹</p>
             </div>
             <button
               type="button"
@@ -610,7 +608,7 @@ export function HabitPresets() {
                 </button>
               </span>
             ))}
-            {!current.preferredTopLevelFolders.length && <p className="habit-empty-text">暂无常用一级分类，点击“添加分类”开始维护。</p>}
+            {!current.preferredTopLevelFolders.length && <p className="habit-empty-text">暂无常用分类</p>}
           </div>
         </section>
 
@@ -619,7 +617,6 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><FolderOpen className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">文件夹规则</h2>
-              <p>按父分类分组，修改后点击顶部“保存调整”生效。</p>
             </div>
             <button type="button" className="habit-outline-button" onClick={() => addFolderRule([""])}>
               <Plus className="w-3 h-3" />
@@ -627,7 +624,6 @@ export function HabitPresets() {
             </button>
           </div>
 
-          <p className="extension-field__hint mt-3">路径每层单独填写；粘贴“Tools / 开发工具”会自动拆成两层，AI/ML 或 C/C++ 保留为单个名称。</p>
 
           <div className="habit-rule-list">
             {folderRuleGroups.map((group) => (
@@ -758,7 +754,7 @@ export function HabitPresets() {
                 </div>
               </details>
             ))}
-            {!folderRuleGroups.length && <p className="habit-empty-text">暂无文件夹规则，点击“新建父分类”添加第一条规则。</p>}
+            {!folderRuleGroups.length && <p className="habit-empty-text">暂无文件夹规则</p>}
           </div>
           <button type="button" className="habit-add-wide" onClick={() => addFolderRule([""])}>
             <Plus className="w-3 h-3" />
@@ -771,7 +767,6 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><Ban className="w-4 h-4" /></span>
             <div>
               <h2 className="extension-section__title">避免规则</h2>
-              <p>告诉 AI 哪些情况不希望细分</p>
             </div>
             <span className="habit-section-count">{current.avoidRules.length} 条规则</span>
           </div>
@@ -818,7 +813,6 @@ export function HabitPresets() {
             <span className="habit-section-heading__icon"><Sparkles className="w-4 h-4" /></span>
             <span>
               <strong>高级：整体分类提示</strong>
-              <small>自动学习已经会生成约束，通常不需要编辑</small>
             </span>
             <ChevronRight className="w-4 h-4 habit-advanced-details__chevron" />
           </summary>

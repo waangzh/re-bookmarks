@@ -270,7 +270,7 @@ export function Backups() {
             <div>
               <h3 className="extension-section__title">近期备份记录</h3>
               <p className="backup-section-copy">
-                保留最近 {BACKUP_HISTORY_LIMIT} 份；恢复不会删除备份后新增的书签。
+                恢复不会删除备份后新增的书签。
               </p>
             </div>
             <span className="extension-pill">
@@ -369,7 +369,7 @@ export function Backups() {
             <div className="extension-empty extension-empty--compact">
               <Archive className="extension-empty__icon" />
               <p>暂无备份</p>
-              <span>点击“立即备份”保存当前书签状态</span>
+              <button type="button" onClick={() => void handleCreateBackup()} disabled={Boolean(busyAction)} className="extension-page__primary-button">{busyAction === "create" ? "备份中" : "立即备份"}</button>
             </div>
           )}
         </section>

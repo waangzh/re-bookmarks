@@ -55,6 +55,7 @@ export function Options() {
   const [modelMessage, setModelMessage] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [modelFiltering, setModelFiltering] = useState(false);
+  const settingsSaved = message === "设置已保存" && JSON.stringify(draft) === JSON.stringify(settings);
   const [highlightedModel, setHighlightedModel] = useState(0);
   const modelPicker = useRef<HTMLDivElement>(null);
   const modelInput = useRef<HTMLInputElement>(null);
@@ -103,7 +104,7 @@ export function Options() {
         if (cancelled || !cached) return;
         setModels(cached.models);
         setModelStatus("success");
-        setModelMessage(`已从缓存载入 ${cached.models.length} 个模型（${formatCatalogAge(cached.fetchedAt)}）。点击「检测可用模型」可刷新。`);
+        setModelMessage(`${cached.models.length} 个缓存模型，${formatCatalogAge(cached.fetchedAt)}`);
       });
     }
 
@@ -161,7 +162,7 @@ export function Options() {
       if (!isCurrent()) return;
       setModels(available);
       setModelStatus("success");
-      setModelMessage(`已获取 ${available.length} 个模型。列表不保证均支持书签分类，请选择后测试连接。`);
+      setModelMessage(`已获取 ${available.length} 个模型`);
       void saveModelCatalog({
         providerType: provider.type,
         endpoint: modelListUrlFor(provider),
@@ -328,10 +329,9 @@ export function Options() {
             </span>
             <div>
               <h2 className="extension-section__title">连接 AI 服务</h2>
-              <p>ReMarks 使用 AI 判断书签内容并生成整理建议。</p>
             </div>
-            <span className={`provider-overview__state${testStatus === "success" ? " is-ready" : ""}`}>
-              {testStatus === "success" ? "连接可用" : "尚未测试"}
+            <span role="status" className={`provider-overview__state${testStatus === "success" || draft.provider.testedAt ? " is-ready" : ""}`}>
+              {testStatus === "testing" ? "连接中" : testStatus === "error" ? "连接失败" : testStatus === "success" || draft.provider.testedAt ? "连接可用" : "尚未测试"}
             </span>
           </div>
 
@@ -339,6 +339,7 @@ export function Options() {
             <div className="extension-field">
               <label>AI 服务</label>
               <Select
+                aria-label="AI 服务"
                 value={draft.provider.type}
                 onChange={(next) => updateProvider(next as AIProviderType)}
                 options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
@@ -348,10 +349,11 @@ export function Options() {
             <div className="extension-field">
               <div className="extension-field__label-with-icon">
                 <KeyRound aria-hidden="true" />
-                <label>API Key</label>
+                <label htmlFor="settings-api-key">API Key</label>
                 <span>仅保存在本地</span>
               </div>
               <input
+                id="settings-api-key"
                 type="password"
                 value={draft.provider.apiKey}
                 onChange={(event) => updateProviderConfig("apiKey", event.target.value)}
@@ -444,6 +446,9 @@ export function Options() {
                   </ul>
                 )}
               </div>
+            </div>
+
+            <div className="settings-connection-actions">
               <button
                 type="button"
                 onClick={() => void handleDetectModels()}
@@ -451,39 +456,29 @@ export function Options() {
                 className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button"
               >
                 <RefreshCw aria-hidden="true" />
-                {modelStatus === "loading" ? "正在检测模型..." : "检测可用模型"}
+                {modelStatus === "loading" ? "检测中..." : "检测模型"}
               </button>
-              {modelMessage && (
-                <p role={modelStatus === "error" ? "alert" : "status"} aria-live="polite">
-                  {modelMessage}
-                </p>
-              )}
-            </div>
-
-            <div className="settings-simple__actions">
-              <button onClick={handleTestConnection} disabled={testStatus === "testing"} className="extension-page__wide-secondary extension-page__wide-secondary--blue provider-test-button">
+              <button type="button" onClick={handleTestConnection} disabled={!draft.provider.apiKey.trim() || testStatus === "testing"} className="extension-page__wide-secondary provider-test-button">
                 <FlaskConical aria-hidden="true" />
                 {testStatus === "testing" ? "正在连接..." : "测试连接"}
               </button>
-              <button
-                type="button"
-                onClick={() => void handleStartOrganize()}
-                disabled={!draft.provider.enabled}
-                className="extension-page__wide-primary"
-              >
-                <Sparkles aria-hidden="true" />
-                开始整理
-              </button>
             </div>
+            {modelMessage && (
+              <p className="settings-model-status" role={modelStatus === "error" ? "alert" : "status"} aria-live="polite">
+                {modelMessage}
+              </p>
+            )}
 
             <div className="extension-switch-row">
               <div>
-                <div className="extension-switch-row__title">允许向此服务发送分类数据</div>
-                <div className="extension-switch-row__hint">会发送书签标题、去敏 URL、文件夹路径和可获取的网页元数据；书签移动仍需另行确认</div>
+                <div id="settings-ai-consent" className="extension-switch-row__title">允许 AI 分类</div>
+                <div id="settings-ai-consent-details" className="extension-switch-row__hint">发送标题、{draft.sendFullUrl ? "完整" : "脱敏"} URL、目录及网页元数据；移动前需确认。</div>
               </div>
               <label className="relative inline-block w-12 h-6">
                 <input
                   type="checkbox"
+                  aria-labelledby="settings-ai-consent"
+                  aria-describedby="settings-ai-consent-details"
                   checked={Boolean(draft.provider.enabled)}
                   disabled={!draft.provider.testedAt && testStatus !== "success"}
                   onChange={(event) => updateProviderConfig("enabled", event.target.checked)}
@@ -493,15 +488,9 @@ export function Options() {
               </label>
             </div>
 
-            {testStatus === "success" && (
-              <div className="extension-status extension-status--success">
-                <Check aria-hidden="true" />
-                <span>
-                  <strong>连接成功</strong>
-                  <small>{providerProfile.label} 已返回有效响应；开启下方授权后才会发送书签分类数据。</small>
-                </span>
-              </div>
-            )}
+            <button type="button" onClick={() => void handleStartOrganize()} disabled={!draft.provider.enabled} className="extension-page__wide-primary">
+              <Sparkles aria-hidden="true" />开始整理
+            </button>
 
             {testStatus === "error" && (
               <div className="extension-status extension-status--error">
@@ -515,6 +504,7 @@ export function Options() {
           </div>
         </section>
 
+        <div className="settings-navigation">
         <section className="extension-section settings-section settings-section--expert">
           <details className="settings-disclosure">
             <summary className="settings-disclosure__summary">
@@ -524,25 +514,12 @@ export function Options() {
                 </span>
                 <span>
                   <h2 className="extension-section__title">高级设置</h2>
-                  <span className="settings-disclosure__hint">自定义 Provider、模型与请求参数</span>
                 </span>
               </span>
-              <span className="settings-expert__badge">专家模式</span>
               <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
             </summary>
             <div className="settings-disclosure__body">
               <div className="extension-form provider-form">
-                <div className="provider-form__grid">
-                  <div className="extension-field">
-                    <label>Provider</label>
-                    <Select
-                      value={draft.provider.type}
-                      onChange={(next) => updateProvider(next as AIProviderType)}
-                      options={AI_PROVIDER_OPTIONS.map((provider) => ({ value: provider.type, label: provider.label }))}
-                    />
-                  </div>
-                </div>
-
                 <div className="extension-field">
                   <label htmlFor="provider-endpoint">Base URL</label>
                   <input
@@ -716,7 +693,6 @@ export function Options() {
                 </span>
                 <span>
                   <h2 className="extension-section__title">整理选项</h2>
-                  <span className="settings-disclosure__hint">控制文件夹层级、数量和 URL 发送策略</span>
                 </span>
               </span>
               <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
@@ -726,10 +702,9 @@ export function Options() {
               <div className="extension-switch-row">
                 <div>
                   <div className="extension-switch-row__title">允许嵌套文件夹</div>
-                  <div className="extension-switch-row__hint">关闭后所有书签只分类到一级文件夹</div>
                 </div>
                 <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" checked={draft.allowNestedFolders} onChange={(event) => setDraft({ ...draft, allowNestedFolders: event.target.checked })} className="sr-only peer" />
+                  <input type="checkbox" aria-label="允许嵌套文件夹" checked={draft.allowNestedFolders} onChange={(event) => setDraft({ ...draft, allowNestedFolders: event.target.checked })} className="sr-only peer" />
                   <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
                 </label>
               </div>
@@ -762,7 +737,6 @@ export function Options() {
                     { value: "12", label: "12 个" },
                   ]}
                 />
-                <p>数量越少，分类越克制；长尾内容会合并到“其他”或更粗粒度文件夹。</p>
               </div>
 
               {draft.allowNestedFolders && draft.maxNestingLevel > 1 && (
@@ -783,7 +757,7 @@ export function Options() {
               )}
 
               <div className="extension-field">
-                <label>未分类书签处理方式</label>
+                <label>无法可靠分类时</label>
                 <Select
                   value={draft.unclassifiedHandling}
                   onChange={(next) => setDraft({ ...draft, unclassifiedHandling: next as Settings["unclassifiedHandling"] })}
@@ -792,16 +766,15 @@ export function Options() {
                     { value: "collect", label: "全部放入“未分类”文件夹" },
                   ]}
                 />
-                <p>适用于 AI 无法可靠分类、低置信度或返回待整理/未分类的书签；默认保持原位置，只有明确选择集中处理时才移动到“未分类”。</p>
               </div>
 
               <div className="extension-switch-row">
                 <div>
                   <div className="extension-switch-row__title">发送完整 URL</div>
-                  <div className="extension-switch-row__hint">默认不发送 query 和 hash 参数</div>
+                  <div className="extension-switch-row__hint">包含查询参数和 # 片段，可能含敏感信息</div>
                 </div>
                 <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" checked={draft.sendFullUrl} onChange={(event) => setDraft({ ...draft, sendFullUrl: event.target.checked })} className="sr-only peer" />
+                  <input type="checkbox" aria-label="发送完整 URL" checked={draft.sendFullUrl} onChange={(event) => setDraft({ ...draft, sendFullUrl: event.target.checked })} className="sr-only peer" />
                   <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
                 </label>
               </div>
@@ -819,7 +792,6 @@ export function Options() {
                 </span>
                 <span>
                   <h2 className="extension-section__title">隐私与权限</h2>
-                  <span className="settings-disclosure__hint">管理历史权限和本地数据说明</span>
                 </span>
               </span>
               <ChevronRight className="settings-disclosure__chevron" aria-hidden="true" />
@@ -832,7 +804,7 @@ export function Options() {
                   <div className="extension-switch-row__hint">需要浏览历史权限，数据仅本地处理</div>
                 </div>
                 <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" checked={draft.enableHistory} onChange={(event) => void handleHistoryToggle(event.target.checked)} className="sr-only peer" />
+                  <input type="checkbox" aria-label="启用常访问书签" checked={draft.enableHistory} onChange={(event) => void handleHistoryToggle(event.target.checked)} className="sr-only peer" />
                   <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
                 </label>
               </div>
@@ -850,16 +822,18 @@ export function Options() {
           </details>
         </section>
 
-        {message && testStatus !== "error" && (
+        </div>
+
+        {message && !settingsSaved && testStatus !== "error" && (
           <div className="extension-status extension-status--success">
             <Check className="w-4 h-4 text-green-600" />
             <span className="text-sm text-green-800">{message}</span>
           </div>
         )}
 
-        <button onClick={handleSave} className="extension-page__wide-primary">
-          保存设置
-        </button>
+        <div className="settings-save-bar">
+          <button onClick={handleSave} className="extension-page__wide-primary" aria-live="polite">{settingsSaved ? <><Check className="w-4 h-4" />已保存</> : "保存设置"}</button>
+        </div>
       </div>
     </div>
   );
