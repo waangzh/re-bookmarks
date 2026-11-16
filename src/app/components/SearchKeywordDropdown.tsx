@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type RefObject } from "react";
-import { ArrowRight, PencilLine, Plus, Search, X } from "lucide-react";
+import { ArrowRight, Clock, PencilLine, Plus, X } from "lucide-react";
 import type { BookmarkImpressionMeta } from "../types";
 import { getTopImpressionKeywords } from "../services/semanticIndex";
 import { getStorageValue, setStorageValue, STORAGE_KEYS } from "../services/storage";
@@ -142,7 +142,7 @@ export function SearchKeywordDropdown({ query, onQueryChange, semanticIndex, inp
           <button type="button" disabled={saving} onClick={() => void saveKeywords()}>{saving ? "保存中…" : "保存"}</button>
         </div>
       </div> : <>
-        {keywords.map((keyword) => <button className="home-search-suggestion" key={keyword} type="button" onClick={() => { onQueryChange(keyword); searchRef.current?.focus(); }}><Search aria-hidden="true" /><span>{keyword}</span><ArrowRight aria-hidden="true" /></button>)}
+        {keywords.map((keyword) => <button className="home-search-suggestion" key={keyword} type="button" onClick={() => { onQueryChange(keyword); searchRef.current?.focus(); }}><Clock aria-hidden="true" /><span>{keyword}</span><ArrowRight aria-hidden="true" /></button>)}
         <div className="home-search-dropdown__footer"><button className="home-search-edit" type="button" onClick={() => { setDraft([...keywords]); setNewKeyword(""); setError(""); setEditing(true); }}><PencilLine aria-hidden="true" /><span>编辑标签</span></button></div>
       </>}
     </div>}

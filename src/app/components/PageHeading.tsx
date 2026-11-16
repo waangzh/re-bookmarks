@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Bookmark } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ export function PageHeading({ title, subtitle }: { title: ReactNode; subtitle?: 
   return (
     <div className="extension-page__heading">
       <Link to="/home" className="remarks-brand" aria-label="ReMarks 首页">
-        <span className="remarks-brand__mark"><Bookmark aria-hidden="true" /></span>
+        <span className="remarks-brand__mark"><img src="../icons/icon48.png" alt="" /></span>
         <span><strong>ReMarks</strong></span>
       </Link>
       <div className="remarks-page-intro">

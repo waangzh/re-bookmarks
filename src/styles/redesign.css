@@ -19,17 +19,18 @@
 .remarks-app :where(button, a, input, select, textarea) { -webkit-tap-highlight-color: transparent; }
 .remarks-app :where(button:disabled) { cursor: not-allowed; }
 .remarks-app .remarks-brand { display: flex; align-items: center; gap: 10px; color: var(--remarks-ink); text-decoration: none; min-width: 0; }
-.remarks-app .remarks-brand__mark { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: var(--remarks-radius-panel); background: var(--remarks-blue); color: #fff; }
-.remarks-app .remarks-brand__mark svg { width: 19px; height: 19px; }
+.remarks-app .remarks-brand__mark { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; }
+.remarks-app .remarks-brand__mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .remarks-app .remarks-brand > span:last-child { min-width: 0; }
 .remarks-app .remarks-brand strong { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0; line-height: 1.4; }
 .remarks-app .remarks-brand small { display: block; margin-top: 2px; color: var(--remarks-muted); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.sidebar-shell .home-heading,
+.sidebar-shell .extension-page__heading > .remarks-brand { display: none; }
+.sidebar-shell .extension-page__heading .remarks-page-intro { margin-top: 0; }
 
 /* 首页：搜索 → 当前主任务 → 持续维护。 */
 .remarks-app .sidebar-home.home-v2 { display: block; max-width: 460px; min-height: 100vh; padding: 24px 18px 18px; background: var(--remarks-paper); }
 .remarks-app .home-heading { margin-bottom: 21px; }
-.remarks-app .home-heading .sidebar-icon-button { width: 36px; height: 36px; border: 1px solid var(--remarks-line); border-radius: var(--remarks-radius-control); background: #fff; color: var(--remarks-muted); }
-.remarks-app .home-heading .sidebar-icon-button svg { width: 18px; height: 18px; }
 .remarks-app .home-search { display: flex; align-items: center; gap: 10px; height: 46px; border: 1px solid var(--remarks-line); border-radius: var(--remarks-radius-control); padding: 0 12px; background: #fff; }
 .remarks-app .home-search > svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--remarks-muted); }
 .remarks-app .home-search input { flex: 1; width: 100%; min-width: 0; border: 0; background: transparent; color: var(--remarks-ink); font-size: 13px; }
@@ -151,6 +152,7 @@
 .remarks-app .home-tools__toggle > span { flex: 1; font-size: 12px; color: var(--remarks-muted); }
 .remarks-app .home-tools__toggle > svg:last-child { margin-left: auto; transition: transform 160ms ease; }
 .remarks-app .home-tools__toggle[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.remarks-app .home-tools__settings { text-decoration: none; }
 .remarks-app .home-tool-list { background: #fff; margin-top: 5px; border: 1px solid var(--remarks-line); border-radius: var(--remarks-radius-panel); padding: 5px; }
 .remarks-app .home-tool-list a { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 8px 9px; color: #55637b; font-size: 13px; text-decoration: none; border-radius: 2px; }
 .remarks-app .home-tool-list a svg { width: 16px; height: 16px; flex-shrink: 0; }

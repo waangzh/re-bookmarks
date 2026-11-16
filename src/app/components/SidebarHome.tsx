@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
-  Bookmark,
   ArrowLeft,
   ArrowRight,
   Archive,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Copy,
   FileText,
   FileUp,
   Folder,
@@ -15,6 +15,7 @@ import {
   Grid2X2,
   History,
   Link2,
+  Link2Off,
   Plus,
   Search,
   Settings,
@@ -394,9 +395,11 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
   const toolEntries = [
-    { to: "/report", label: "整理报告", icon: FileText },
-    { to: "/backups", label: "书签备份", icon: Archive },
+    { to: "/manage?task=duplicate", label: "重复检测", icon: Copy },
+    { to: "/manage?task=invalid", label: "失效检测", icon: Link2Off },
     { to: "/import", label: "导入书签", icon: FileUp },
+    { to: "/backups", label: "书签备份", icon: Archive },
+    { to: "/report", label: "整理报告", icon: FileText },
     { to: "/habits", label: "分类偏好", icon: Sparkles },
   ];
 
@@ -404,10 +407,9 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     <main className={`sidebar-home home-v2${compact ? " home-v2--compact" : ""}`}>
       <header className="home-heading">
         <Link to="/home" className="remarks-brand" aria-label="ReMarks 首页">
-          <span className="remarks-brand__mark"><Bookmark aria-hidden="true" /></span>
-          <span><strong>ReMarks</strong><small>{busy ? "正在读取书签…" : `${bookmarks.length} 个书签`}</small></span>
+          <span className="remarks-brand__mark"><img src="../icons/icon48.png" alt="" /></span>
+          <span><strong>ReMarks</strong></span>
         </Link>
-        <Link to="/options" className="sidebar-icon-button" aria-label="设置"><Settings aria-hidden="true" /></Link>
       </header>
       {showAllTasks && <div className="home-task-intro">
         <div className="remarks-page-intro__row">
@@ -504,6 +506,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       <div className="home-tools">
         <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><ChevronDown aria-hidden="true" /></button>
         {toolsOpen && <nav id="home-tool-list" className="home-tool-list" aria-label="更多工具" onClickCapture={rememberHomeScroll}>{toolEntries.map(({ to, label, icon: Icon }) => <Link key={to} to={to}><Icon aria-hidden="true" /><span>{label}</span><ChevronRight aria-hidden="true" /></Link>)}<Link to="/more"><Grid2X2 aria-hidden="true" /><span>查看全部工具</span><ChevronRight aria-hidden="true" /></Link></nav>}
+        <Link to="/options" className="home-tools__toggle home-tools__settings" onClick={rememberHomeScroll}><Settings aria-hidden="true" /><strong>设置</strong><ChevronRight aria-hidden="true" /></Link>
       </div>
     </main>
   );

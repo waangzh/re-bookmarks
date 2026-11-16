@@ -5748,6 +5748,10 @@ select.extension-control option,
   background: #ffffff;
 }
 
+.bookmark-task-panel + .bookmark-health-panel {
+  margin-top: 12px;
+}
+
 .bookmark-tree-panel__head {
   display: flex;
   align-items: center;
@@ -6200,7 +6204,7 @@ select.extension-control option,
 .impression-coverage {
   display: grid;
   gap: 10px;
-  margin-top: 10px;
+  margin: 10px 0 12px;
   padding: 11px 12px;
   border: 1px solid #e5eaf0;
   border-radius: 10px;
