@@ -10,7 +10,7 @@
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
 ![Chrome / Edge / Firefox](https://img.shields.io/badge/Chrome%20%7C%20Edge%20%7C%20Firefox-supported-0ea5e9)
 
-[核心能力](#core-features) · [印象搜索](#功能印象搜索) · [偏好学习](#记住我的分类习惯) · [安装](#installation) · [使用流程](#usage) · [隐私与权限](#privacy) · [本地开发](#development)
+[操作演示](#demo) · [核心能力](#core-features) · [印象搜索](#功能印象搜索) · [偏好学习](#记住我的分类习惯) · [安装](#installation) · [使用流程](#usage) · [隐私与权限](#privacy) · [本地开发](#development)
 
 <img src="pic/readme-brand.png" alt="ReMarks：AI 辅助整理浏览器书签" width="650">
 
@@ -28,6 +28,12 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 | 预览可拖动调整；忽略建议不会记录偏好 | 支持撤销或重新应用最近一次整理 | 浏览历史仅本地统计，且权限默认不开启 |
 | 删除、恢复等敏感操作需要再次确认 | 最多保留 5 份近期备份并支持安全恢复 | API Key 仅保存在 `chrome.storage.local` |
 
+
+<a id="demo"></a>
+
+## 🎬 操作演示
+
+https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 ## 🖼️ 界面预览
 

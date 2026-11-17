@@ -27,3 +27,4 @@ CLAUDE.md
 /.codex/
 /.gitattributes
 /.playwright-mcp/
+/output/playwright/
