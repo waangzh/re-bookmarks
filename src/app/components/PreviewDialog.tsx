@@ -33,7 +33,10 @@ export function PreviewDialog({
           if (target) { event.preventDefault(); target.focus(); }
         }}
         onCloseAutoFocus={(event) => { event.preventDefault(); if (opener.current?.isConnected) opener.current.focus(); }}
-        onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+        onEscapeKeyDown={(event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (busy || target?.closest('[aria-expanded="true"][aria-controls]')) event.preventDefault();
+        }}
         onPointerDownOutside={(event) => event.preventDefault()}>
         <div className="preview-dialog__header">
           <Dialog.Title className="preview-dialog__title">{title ?? label}</Dialog.Title>

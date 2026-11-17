@@ -1,3 +1,26 @@
+.preview-dialog:has(.ui-folder-select) { display: flex; flex-direction: column; overflow: hidden; }
+.preview-dialog:has(.ui-folder-select) > :is(.preview-dialog__header, .preview-dialog__actions) { flex-shrink: 0; }
+.preview-dialog:has(.ui-folder-select) .preview-dialog__body { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 3px; margin: -3px; }
+.preview-dialog:has(.ui-folder-select) .preview-dialog__bookmark { flex-shrink: 0; }
+.ui-folder-select { display: flex; flex-direction: column; min-height: 0; gap: 6px; }
+.ui-folder-select > :not(.ui-folder-select__menu) { flex-shrink: 0; }
+.ui-folder-select__label { color: #43516b; font-size: 12px; font-weight: 600; }
+.ui-folder-select .ui-folder-select__control { padding: 0 0 0 12px; border-radius: var(--remarks-radius-control, 6px); }
+.ui-folder-select__control:focus-within { border-color: #60a5fa; box-shadow: 0 0 0 3px rgb(96 165 250 / 18%); }
+.ui-folder-select__control input { width: 100%; min-width: 0; min-height: 42px; padding: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 14px; }
+.ui-folder-select__control input::placeholder { color: #94a3b8; }
+.ui-folder-select__control button { display: grid; place-items: center; width: 42px; min-height: 42px; flex-shrink: 0; padding: 0; border: 0; border-radius: var(--remarks-radius-control, 6px); background: transparent; cursor: pointer; }
+.ui-folder-select__control button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -3px; }
+.ui-folder-select__control:has(input:disabled) { opacity: .6; background: #f8fafc; }
+.ui-folder-select__control :disabled { cursor: not-allowed; }
+.ui-folder-select .ui-folder-select__menu { position: static; min-height: 44px; max-height: min(200px, 27vh); border-radius: var(--remarks-radius-control, 6px); box-shadow: none; }
+.ui-folder-select .ui-folder-select__option { grid-template-columns: 16px minmax(0, 1fr) 18px; min-height: 42px; padding: 8px; }
+.ui-folder-select .ui-folder-select__option span { white-space: normal; overflow-wrap: anywhere; }
+.ui-folder-select__option .ui-folder-select__icon { color: #64748b; }
+.ui-folder-select__new { color: #1d4ed8; }
+.ui-folder-select__new .ui-folder-select__icon { color: inherit; }
+.ui-folder-select .preview-dialog__note { margin-top: 2px; }
+
 .remarks-app .review-page {
   --review-bg: #f5f6f8;
   --review-ink: #18243a;

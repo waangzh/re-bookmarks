@@ -43,6 +43,7 @@ import { recordHabitFeedback } from "../services/habits";
 import { appendFolderImpression } from "../services/semanticIndex";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PreviewDialog } from "./PreviewDialog";
+import { FolderPathSelect } from "./FolderPathSelect";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
@@ -1599,12 +1600,8 @@ export function Preview() {
               <span title={editingPlan.bookmarkUrl}>{editingPlan.bookmarkUrl}</span>
             </div>
           </div>
-          <label className="preview-dialog__field">
-            <span>目标目录</span>
-            <input className="extension-control" list="preview-folder-choices" value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="例如：开发 / 文档" />
-          </label>
-          <datalist id="preview-folder-choices">{existingFolders.map((folder) => <option key={folder.id} value={folder.path.join(" / ")} />)}</datalist>
-          <p className="preview-dialog__note">不存在的目录会在最终确认后创建。</p>
+          <FolderPathSelect value={folderDraft} onChange={setFolderDraft} folders={existingFolders}
+            maxNestingLevel={settings.maxNestingLevel} disabled={savingPreviewDrop} />
         </PreviewDialog>}
         {draggedPlan && (
           <div
