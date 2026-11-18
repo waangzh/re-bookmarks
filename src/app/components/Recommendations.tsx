@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
@@ -170,9 +171,9 @@ export function Recommendations() {
     try {
       await removeRecommendation(recommendation.id);
       await loadRecommendations();
-      setDismissNotice("已忽略这条建议，未记录分类偏好");
+      setDismissNotice("已跳过这条建议，分类偏好保持原样");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "忽略推荐失败");
+      setError(err instanceof Error ? err.message : "跳过建议失败");
     } finally {
       setBusyId(null);
     }
@@ -184,7 +185,7 @@ export function Recommendations() {
     try {
       await addBookmarkWhitelistEntry("bookmark", recommendation.bookmarkId);
       await loadRecommendations();
-      setDismissNotice("已加入白名单，后续不再整理此书签");
+      setDismissNotice("已保护此书签，可在书签管理的白名单中解除保护");
     } catch (err) {
       setError(err instanceof Error ? err.message : "加入白名单失败");
     } finally {
@@ -268,9 +269,9 @@ export function Recommendations() {
         await removeRecommendation(recommendation.id);
       }
       await loadRecommendations();
-      setDismissNotice(`已忽略 ${sortedRecommendations.length} 条建议，未记录分类偏好`);
+      setDismissNotice(`已跳过 ${sortedRecommendations.length} 条建议，分类偏好保持原样`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "忽略推荐失败");
+      setError(err instanceof Error ? err.message : "批量跳过建议失败");
       await loadRecommendations();
     } finally {
       setBulkAction(null);
@@ -342,7 +343,7 @@ export function Recommendations() {
                   title="仅移除建议，不记录分类偏好"
                 >
                   <X className="w-4 h-4" />
-                  全部忽略
+                  全部跳过
                 </button>
               </div>
               <div className="recommendation-sort">
@@ -362,10 +363,7 @@ export function Recommendations() {
               </div>
             </div>
 
-            <details className="recommendation-action-details">
-              <summary>归档与忽略的区别</summary>
-              <p>归档前自动备份。忽略只移除建议，不移动书签，也不记录分类偏好。</p>
-            </details>
+            <RecommendationActionHelp />
 
             <div className="extension-stack">
               {sortedRecommendations.map((rec) => {
@@ -490,9 +488,10 @@ export function Recommendations() {
                             onClick={() => void handleIgnore(rec)}
                             disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
                             className="extension-page__wide-secondary"
+                            title={skipRecommendationHelp}
                           >
                             <X className="w-4 h-4" />
-                            暂不处理
+                            跳过建议
                           </button>
                         </>
                       )}
@@ -500,8 +499,9 @@ export function Recommendations() {
                     {editingRecommendationId !== rec.id && (
                       <button type="button" onClick={() => void handleProtect(rec)}
                         disabled={Boolean(busyId) || Boolean(bulkAction)}
+                        title={protectBookmarkHelp}
                         className="extension-text-button recommendation-negative-feedback">
-                        <ShieldCheck className="w-3 h-3" />以后不整理此书签
+                        <ShieldCheck className="w-3 h-3" />保护此书签
                       </button>
                     )}
                     {editingRecommendationId !== rec.id && isActionable && (
@@ -513,7 +513,7 @@ export function Recommendations() {
                           className="extension-text-button recommendation-negative-feedback"
                         >
                           <ThumbsDown className="w-3 h-3" />
-                          不推荐这个分类
+                          {isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
                         </button>
                       </div>
                     )}

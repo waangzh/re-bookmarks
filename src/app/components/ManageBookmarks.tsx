@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router";
@@ -1221,9 +1222,9 @@ export function ManageBookmarks() {
     try {
       await removeRecommendation(recommendation.id);
       await loadManagedBookmarks();
-      setMessage("已忽略这条 AI 建议，未记录分类偏好");
+      setMessage("已跳过这条建议，分类偏好保持原样");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "忽略推荐失败");
+      setMessage(error instanceof Error ? error.message : "跳过建议失败");
     } finally {
       setBusyRecommendationId(null);
     }
@@ -1329,11 +1330,11 @@ export function ManageBookmarks() {
       await loadManagedBookmarks();
       setMessage(
         failed.length > 0
-          ? `部分建议忽略失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
-          : `已忽略 ${filteredPendingRecommendations.length} 条分类建议，未记录分类偏好`
+          ? `部分建议跳过失败：${failed.slice(0, 3).join("、")}${failed.length > 3 ? " 等" : ""}`
+          : `已跳过 ${filteredPendingRecommendations.length} 条分类建议，分类偏好保持原样`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "批量忽略失败");
+      setMessage(error instanceof Error ? error.message : "批量跳过建议失败");
     } finally {
       setBulkRecommendationAction(null);
     }
@@ -1347,7 +1348,7 @@ export function ManageBookmarks() {
       const next = await addBookmarkWhitelistEntries(ids);
       const addedCount = next.length - whitelistEntries.length;
       await loadManagedBookmarks();
-      setMessage(addedCount > 0 ? "已将 " + addedCount + " 个书签加入白名单" : "所选书签均已受到保护");
+      setMessage(addedCount > 0 ? `已保护 ${addedCount} 个书签，可在书签管理的白名单中解除保护` : "所选书签均已受到保护");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量加入白名单失败");
     } finally {
@@ -1363,7 +1364,8 @@ export function ManageBookmarks() {
       if (hasDirectRule) await removeBookmarkWhitelistEntry(type, id);
       else await addBookmarkWhitelistEntry(type, id);
       await loadManagedBookmarks();
-      setMessage(hasDirectRule ? "已从白名单移除" : "已加入白名单，后续整理和清理将跳过此项");
+      const protectedItems = type === "folder" ? "此文件夹及其内容" : "此书签";
+      setMessage(hasDirectRule ? "已移除这条保护规则" : `已保护${protectedItems}，可在书签管理的白名单中解除保护`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "更新白名单失败");
     } finally {
@@ -1448,8 +1450,8 @@ export function ManageBookmarks() {
             className="extension-icon-action bookmark-whitelist-action"
             disabled={busy || (whitelistIndex.protectedFolderIds.has(folder.id) &&
               !whitelistEntries.some((entry) => entry.type === "folder" && entry.id === folder.id))}
-            title={whitelistIndex.reasonById.get(folder.id) ?? "保护此文件夹及子目录"}
-            aria-label={whitelistEntries.some((entry) => entry.type === "folder" && entry.id === folder.id) ? "解除文件夹白名单" : "保护此文件夹及子目录"}
+            title={whitelistIndex.reasonById.get(folder.id) ?? "保护此文件夹及其中的书签和子文件夹"}
+            aria-label={whitelistEntries.some((entry) => entry.type === "folder" && entry.id === folder.id) ? "解除文件夹白名单" : "保护此文件夹及其中的书签和子文件夹"}
             onClick={() => void toggleWhitelist("folder", folder.id!)}
           >
             {whitelistIndex.protectedFolderIds.has(folder.id) ? <ShieldCheck className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
@@ -1631,7 +1633,7 @@ export function ManageBookmarks() {
             <div className="bookmark-unsorted-card__actions">
               <button type="button" onClick={() => void toggleWhitelist("bookmark", bookmark.id)} disabled={busy}
                 className="extension-page__wide-secondary">
-                <ShieldCheck className="w-4 h-4" />加入白名单
+                <ShieldCheck className="w-4 h-4" />保护此书签
               </button>
               <button type="button" onClick={() => handleEditStart(bookmark)} className="extension-page__wide-primary">
                 <Folder className="w-4 h-4" />
@@ -1719,7 +1721,7 @@ export function ManageBookmarks() {
                 className="extension-text-button recommendation-negative-feedback bookmark-recommendation-feedback"
               >
                 <ThumbsDown className="w-3 h-3" />
-                不推荐这个分类
+                {isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
               </button>
             )}
           </div>
@@ -1788,7 +1790,7 @@ export function ManageBookmarks() {
               )}
               <button type="button" onClick={() => void toggleWhitelist("bookmark", recommendation.bookmarkId)}
                 disabled={busy || isBusy || Boolean(bulkRecommendationAction)} className="extension-icon-action"
-                aria-label="以后不整理此书签" title="以后不整理此书签（加入白名单）">
+                aria-label="保护此书签" title={protectBookmarkHelp}>
                 <ShieldCheck className="w-4 h-4" />
               </button>
               <button
@@ -1796,8 +1798,8 @@ export function ManageBookmarks() {
                 onClick={() => void handleIgnoreRecommendation(recommendation)}
                 disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
                 className="extension-icon-action"
-                aria-label="忽略建议"
-                title="忽略建议（不记录偏好）"
+                aria-label="跳过建议"
+                title={skipRecommendationHelp}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1835,13 +1837,14 @@ export function ManageBookmarks() {
                   onClick={() => void handleIgnoreVisibleRecommendations()}
                   disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
                   className="extension-page__wide-secondary"
-                  title={`忽略当前列表中的 ${filteredPendingRecommendations.length} 条建议，不记录分类偏好`}
+                  title={`跳过当前列表中的 ${filteredPendingRecommendations.length} 条建议，分类偏好保持原样`}
                 >
                   <X className="w-4 h-4" />
-                  {bulkRecommendationAction === "ignore" ? "忽略中" : "批量忽略"}
+                  {bulkRecommendationAction === "ignore" ? "跳过中" : "批量跳过"}
                 </button>
               </div>
             </div>
+            <RecommendationActionHelp />
             <div className="bookmark-unsorted-list">
               {filteredPendingRecommendations.map(renderRecommendationCard)}
             </div>
@@ -2288,7 +2291,7 @@ export function ManageBookmarks() {
         {!taskMode && (
           <details className="bookmark-whitelist-panel">
             <summary><ShieldCheck className="w-4 h-4" />白名单 <span>{whitelistEntries.length} 条规则</span></summary>
-            <p>受保护书签不参与智能整理、推荐和清理。点击书签或文件夹旁的盾牌可添加保护。</p>
+            <p>ReMarks 会跳过受保护项目的整理、推荐和清理，并限制编辑、移动和删除。保护文件夹时也保护其中的书签和子文件夹。点击旁边的盾牌可添加保护，也可在这里解除保护。</p>
             {whitelistEntries.length > 0 && (
               <>
                 <input type="search" className="extension-control bookmark-whitelist-search"
