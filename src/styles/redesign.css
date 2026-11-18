@@ -234,6 +234,7 @@
 .remarks-app .settings-navigation .settings-disclosure__icon { width: 28px; height: 28px; border: 0; background: transparent; }
 .remarks-app .settings-navigation .settings-disclosure__summary:focus-visible { outline-offset: -3px; }
 .remarks-app .extension-page.extension-page--settings .extension-page__inner { padding-bottom: 88px; }
+.remarks-app .extension-page--settings .extension-section:has(.ui-select__menu) { z-index: 5; }
 .remarks-app .settings-save-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(calc(100% - 48px), 712px); z-index: 10; padding: 12px 0; border-top: 1px solid var(--remarks-line); background: var(--remarks-paper); }
 .remarks-app .report-result__time { display: block; margin-top: 4px; font-size: 12px; color: #52745e; }
 .remarks-app .extension-success.report-result--warning { border-color: #f4d18b; background: #fffbeb; }

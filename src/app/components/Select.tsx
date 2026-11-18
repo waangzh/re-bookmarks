@@ -44,23 +44,23 @@ export function Select({
   // 在可用空间内展开：优先向下，空间不足且上方更宽裕时向上，并限制菜单高度
   const MENU_MAX_HEIGHT = 260;
   const MENU_GAP = 6;
-  const MENU_PADDING = 10;
+  const MENU_PADDING = 12;
   const EDGE_MARGIN = 8;
   const updatePlacement = useCallback(() => {
-    const trigger = rootRef.current?.querySelector(".ui-select__trigger");
+    const root = rootRef.current;
+    const trigger = root?.querySelector(".ui-select__trigger");
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
+    const saveBar = root?.closest(".extension-page--settings")?.querySelector(".settings-save-bar");
+    const visibleBottom = Math.min(window.innerHeight, saveBar?.getBoundingClientRect().top ?? window.innerHeight);
     const desired = Math.min(MENU_MAX_HEIGHT, options.length * 38 + MENU_PADDING);
-    const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP - EDGE_MARGIN;
+    const spaceBelow = visibleBottom - rect.bottom - MENU_GAP - EDGE_MARGIN;
     const spaceAbove = rect.top - MENU_GAP - EDGE_MARGIN;
+    const opensBelow = spaceBelow >= desired || spaceBelow >= spaceAbove;
+    const available = opensBelow ? spaceBelow : spaceAbove;
 
-    if (spaceBelow >= desired || spaceBelow >= spaceAbove) {
-      setPlacement("below");
-      setMenuMaxHeight(Math.max(spaceBelow, 96));
-    } else {
-      setPlacement("above");
-      setMenuMaxHeight(Math.max(spaceAbove, 96));
-    }
+    setPlacement(opensBelow ? "below" : "above");
+    setMenuMaxHeight(saveBar ? Math.max(0, Math.min(MENU_MAX_HEIGHT, available)) : Math.max(available, 96));
   }, [options.length]);
 
   // 菜单渲染后按真实位置再校正一次，避免滚动/布局变化导致溢出视口
