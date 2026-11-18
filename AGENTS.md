@@ -9,6 +9,10 @@
 | 跨页面状态 | [运行边界](architecture.md)、[前端规范索引](.trellis/spec/frontend/index.md) |
 | 整理、推荐、书签写入、AI、权限和后台任务 | [架构与关键流程](architecture.md)、[扩展安全规范索引](.trellis/spec/extension/index.md) |
 
+## 项目记忆
+
+只有当本次工作产生了会影响后续开发、且难以从现有代码或文档中得知的事实、决策或踩坑经验时，才用 mini-trellis 更新项目知识。
+
 ## 常用命令
 
 - 在仓库根目录运行 `pnpm install` 安装依赖。pnpm 版本以 `package.json` 的 `packageManager` 为准，`pnpm-lock.yaml` 只用 pnpm 更新。
@@ -17,7 +21,10 @@
 
 ## 验证规则
 
-提交代码前完成下表中适用的验证。Vite 构建负责转译和打包，TypeScript 类型检查单独执行。
+报告完成前，由实现者执行下表中适用的检查。Vite 构建负责转译和打包，TypeScript 类型检查单独执行。
+
+- 修复 Bug 时，尽可能先复现，或写明可验证的失败条件。修复根因后用同一场景复验，重要缺陷在可行时补回归测试。将改动限定在本次修复范围内。
+- 新增功能时，从受影响的实际入口验证关键验收场景，覆盖相关的失败或降级路径。
 
 | 改动 | 最小验证 |
 | --- | --- |
@@ -27,7 +34,17 @@
 | UI 布局 | 检查 360px popup、浏览器侧栏和 options 页面。涉及侧栏能力时分别在 Chromium 和 Firefox 验证。 |
 | 权限、历史记录或 manifest | 验证仅在用户开启常访问书签时通过 `chrome.permissions.request` 请求 `history`。未授权时功能可降级，历史数据不进入 AI 请求、导出或日志。 |
 
-回归测试按文件运行。`tests/` 下使用 `node --test` 执行对应的 `*.test.mjs`，例如 `node --test tests/ai-protocols.test.mjs`。`scripts/` 下也有独立回归，例如 `node --test scripts/test-ai-output-budgets.cjs`。分别记录类型检查、构建、模拟测试与真实浏览器的验证结果。
+回归测试按文件运行。`tests/` 下使用 `node --test` 执行对应的 `*.test.mjs`，例如 `node --test tests/ai-protocols.test.mjs`。`scripts/` 下也有独立回归，例如 `node --test scripts/test-ai-output-budgets.cjs`。
+
+交付前检查最终 diff，确认改动范围。交付时说明改了什么、实际执行的验证及结果、未验证项和剩余风险。分别记录类型检查、构建、模拟测试与真实浏览器结果，只将实际执行且成功的检查标为通过。
+
+## Code Review Rules
+
+Reviewer 沿受影响的调用链查找实现者遗漏的入口、边界条件和回归风险。按 [架构与模块职责](architecture.md#模块职责与依赖方向) 核对跨层调用。对可采取行动的发现注明文件行号、触发条件和用户影响。
+
+- **书签写入**优先核对整理和推荐中的移动是否经过预览、用户确认与成功备份。检查执行前是否复核当前书签及保护状态，以及单项失败是否被记录且其余项仍继续处理。
+- **隐私与权限**重点检查 API Key 是否进入报告、备份、导出或日志，浏览历史是否进入 AI 请求、导出或日志。核对 `history` 仍为可选权限，以及 Firefox 网站授权仍由用户手势触发。
+- **跨页面与后台**重点检查页面内 Store 是否被误用为跨页面状态，以及迟到响应是否会写回失效任务或覆盖当前任务。核对任务恢复仍限定在原选择范围内。变更消息或持久化字段时，核对实际支持的契约及相关读写方。
 
 ## 代码约定
 
@@ -57,5 +74,6 @@
 ## Git 约定
 
 - 修改前运行 `git status --short`，确认已有改动。
+- 提交、推送或发布均需用户明确要求。
 - 不要直接提交到 `main`，除非用户明确要求。
 - 提交信息使用 Conventional Commits，例如 `docs: update agent guide`。
