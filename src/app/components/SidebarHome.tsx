@@ -16,6 +16,7 @@ import {
   History,
   Link2,
   Link2Off,
+  LoaderCircle,
   Plus,
   Search,
   Settings,
@@ -153,12 +154,14 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const [ignoredManualTaskBookmarkIds, setIgnoredManualTaskBookmarkIds] = useState<string[]>([]);
   const [ignoredManualTaskLoaded, setIgnoredManualTaskLoaded] = useState(false);
   const [refreshError, setRefreshError] = useState("");
-  const [savingPage, setSavingPage] = useState(false);
-  const [pageNotice, setPageNotice] = useState("");
+  const [savingUrl, setSavingUrl] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<{ url: string; error?: string; created?: boolean } | null>(null);
   const [ready, setReady] = useState(false);
   const [whitelistIndex, setWhitelistIndex] = useState<WhitelistIndex | null>(null);
   const [query, setQuery] = useState("");
+  const [searchNotice, setSearchNotice] = useState<{ query: string; message: string } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const startingSearch = useRef(false);
   const navigate = useNavigate();
   // 记住「更多工具」的展开状态与离开时的滚动位置，返回首页时还原
   const [toolsOpen, setToolsOpen] = useState(() => {
@@ -241,7 +244,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     };
   }, [settings.enableHistory, bookmarks]);
 
-  useEffect(() => { setPageNotice(""); }, [currentPage?.url]);
+  useEffect(() => { setSaveNotice(null); }, [currentPage?.url]);
 
   useEffect(() => {
     void loadAll();
@@ -336,6 +339,10 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   });
   const taskKey = `${primary.kind}:${primary.title}:${primary.kind === "preview" ? previewIdentity : ""}`;
   const deferred = dismissedTask === taskKey;
+  const taskProgress = !busy && primary.kind === "running" ? previewTask?.progress : undefined;
+  const batchProgress = taskProgress && taskProgress.totalBatches > 0 ? taskProgress : undefined;
+  const currentSaveNotice = saveNotice?.url === currentPage?.url ? saveNotice : null;
+  const savingCurrentPage = Boolean(currentPage && savingUrl === currentPage.url);
   const queryText = query.trim();
   const searchableBookmarks = useMemo(() => bookmarks.flatMap((bookmark) => bookmark.url ? [{
     id: bookmark.id,
@@ -367,10 +374,20 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   const localSearchMatches = useMemo(() => queryText
     ? searchBookmarksByImpression(queryText, searchableBookmarks, semanticIndex)
     : [], [queryText, searchableBookmarks, semanticIndex]);
-  const deepSearchActive = hasDeepResult && deepSearchState.query === queryText;
+  const searchIsCurrent = deepSearchState.query === queryText;
+  const searching = searchIsCurrent && deepSearchRunning;
+  const deepSearchActive = searchIsCurrent && hasDeepResult
+    && (!deepSearchState.error || Boolean(deepSearchState.results?.length))
+    && (!searching || Boolean(deepSearchState.results?.length));
   const searchMatches = deepSearchActive
     ? deepSearchState.results ?? []
     : localSearchMatches;
+  const searchError = searchNotice?.query === queryText ? searchNotice.message
+    : searchIsCurrent ? deepSearchState.error : "";
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    setSearchNotice(null);
+  };
 
   // 输入变化时中止上一次深度搜索，防止旧结果覆盖新列表。
   useEffect(() => {
@@ -378,19 +395,40 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
   }, [cancelDeepSearch, deepSearchState.query, queryText]);
 
   const handleDeepSearch = async () => {
-    if (!queryText || deepSearchRunning) return;
+    if (!queryText || searching || startingSearch.current) return;
+    setSearchNotice(null);
     if (!settings.provider.apiKey.trim() || !settings.provider.enabled) {
-      setPageNotice("使用“帮我找找”前，请先在设置中连接并授权 AI 服务");
+      setSearchNotice({ query: queryText, message: "请先在设置中连接并授权 AI 服务" });
       return;
     }
     // Firefox 必须在用户手势内请求权限，先于任何存储读取。
+    startingSearch.current = true;
     try {
       await ensureRequiredHostPermission();
+      if (searchRef.current?.value.trim() === queryText) runDeepSearch(queryText);
     } catch (error) {
-      setPageNotice(error instanceof Error ? error.message : "未授予网站访问权限");
-      return;
+      if (searchRef.current?.value.trim() === queryText) {
+        setSearchNotice({ query: queryText, message: error instanceof Error ? error.message : "未授予网站访问权限" });
+      }
+    } finally {
+      startingSearch.current = false;
     }
-    runDeepSearch(queryText);
+  };
+  const handleSavePage = async () => {
+    if (!currentPage || savingUrl) return;
+    const { title, url } = currentPage;
+    setSavingUrl(url);
+    setSaveNotice(null);
+    try {
+      const { created } = await saveCurrentPage(title, url);
+      setCurrentPage((page) => page?.url === url ? { ...page, saved: true } : page);
+      setSaveNotice({ url, created });
+      void loadAll();
+    } catch (cause) {
+      setSaveNotice({ url, error: cause instanceof Error ? cause.message : "收藏失败，请重试" });
+    } finally {
+      setSavingUrl(null);
+    }
   };
   const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
@@ -425,11 +463,12 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           <h1 className="extension-page__title">任务中心</h1>
         </div>
       </div>}
-      <SearchKeywordDropdown query={query} onQueryChange={setQuery} semanticIndex={semanticIndex} inputRef={searchRef}>
+      <div className={`home-search-panel${queryText ? " home-search-panel--results" : ""}`}>
+      <SearchKeywordDropdown query={query} onQueryChange={changeQuery} semanticIndex={semanticIndex} inputRef={searchRef}>
       {(inputProps) => (
       <form className="home-search" role="search" onSubmit={(event) => { event.preventDefault(); window.location.hash = `/manage?search=${encodeURIComponent(query.trim() || "1")}`; }}>
         <Search aria-hidden="true" />
-        <input {...inputProps} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+        <input {...inputProps} value={query} onChange={(event) => changeQuery(event.target.value)} onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return;
           if (event.key === "Enter" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
             event.preventDefault();
@@ -437,34 +476,46 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           }
         }} aria-label="搜索书签" placeholder="搜索标题、网址或用途" />
         {query ? <>
-          <button type="button" className="home-search__ai" onClick={() => void handleDeepSearch()} disabled={!queryText || deepSearchRunning} aria-keyshortcuts="Alt+Enter" title="用 AI 根据描述查找书签（Alt + Enter）"><BrainCircuit aria-hidden="true" /><span>{deepSearchRunning ? "查找中…" : "帮我找找"}</span></button>
-          <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button>
+          <button type="button" className="home-search__ai" onClick={() => void handleDeepSearch()} aria-disabled={!queryText || searching} aria-keyshortcuts="Alt+Enter" title="用 AI 根据描述查找书签（Alt + Enter）">
+            {searching ? <LoaderCircle className="home-action-spinner" aria-hidden="true" /> : <BrainCircuit aria-hidden="true" />}
+            <span>帮我找找</span>
+          </button>
+          <button type="button" onClick={() => { changeQuery(""); searchRef.current?.focus(); }} aria-label="清除搜索"><X aria-hidden="true" /></button>
         </> : <kbd>Ctrl / ⌘ K</kbd>}
       </form>
       )}
       </SearchKeywordDropdown>
-      {queryText && (deepSearchState.stage !== "idle" || deepSearchState.error) && <div className={`home-deep-status home-deep-status--${deepSearchState.error ? "error" : deepSearchState.stage}`} role="status" aria-live="polite">
-        <span>{deepSearchState.error ? `AI 查找失败：${deepSearchState.error}` : deepSearchState.stage === "expanding" ? <><BrainCircuit aria-hidden="true" />正在联想相关功能与常见网站…</> : deepSearchState.stage === "expanded_shown" ? <><BrainCircuit aria-hidden="true" />AI 已联想，正在筛选更匹配的书签…</> : <><CheckCircle2 aria-hidden="true" />AI 查找完成</>}</span>
-        {deepSearchState.expandedTerms.length > 0 && deepSearchState.stage !== "error" && <span className="home-deep-status__terms">{deepSearchState.expandedTerms.map((term) => <b key={term}>{term}</b>)}</span>}
-      </div>}
       {queryText && <section className="home-search-results" aria-label="搜索结果" aria-live="polite">
-        {loading ? <p>正在读取书签…</p> : searchMatches.length ? <>
+        {searchMatches.length ? <>
           {searchMatches.slice(0, 5).map((result) => {
             const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
             if (!bookmark) return null;
-            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong>{bookmark.title || "未命名书签"}</strong><small>{bookmark.path.join(" / ") || getDomain(bookmark.url)}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">{getImpressionMatchIcon(result)} {result.matchHint}{result.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
+            const path = bookmark.path.join(" / ") || getDomain(bookmark.url);
+            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong title={bookmark.title}>{bookmark.title || "未命名书签"}</strong><small title={path}>{path}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">{getImpressionMatchIcon(result)} {result.matchHint}{result.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
           })}
           <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
-        </> : deepSearchRunning ? <p>AI 正在根据描述查找书签…</p> : <>
-          <p>没有找到匹配的书签</p>
-          <button type="button" className="home-search-deep" onClick={() => void handleDeepSearch()}><BrainCircuit aria-hidden="true" />帮我找找「{queryText}」</button>
-        </>}
+        </> : <p>{loading ? "正在读取书签…" : searching ? "本地未找到匹配的书签" : "没有找到匹配的书签"}</p>}
       </section>}
+      {queryText && (searchError || (searchIsCurrent && deepSearchState.stage !== "idle")) && (
+        <div className={`home-deep-status${searchError ? " home-deep-status--error" : ""}`} role="status">
+          <span>{searchError ? `AI 查找失败：${searchError}` : searching
+            ? deepSearchState.stage === "expanding" ? "正在联想相关网站…" : "正在筛选更匹配的书签…"
+            : "AI 查找完成"}</span>
+          {!searchError && deepSearchState.expandedTerms.length > 0 && (
+            <span className="home-deep-status__terms">{deepSearchState.expandedTerms.map((term) => <b key={term}>{term}</b>)}</span>
+          )}
+        </div>
+      )}
+      </div>
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
       {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
         <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
         <h1 id="home-task-title">{busy ? "正在读取你的任务…" : deferred ? "已暂缓这项任务" : primary.title}</h1>
         <p>{busy ? "正在同步书签、分类建议和最近的执行记录。" : deferred ? "待办仍保留在任务中心。需要时，可重新显示刚才的建议。" : primary.description}</p>
+        {batchProgress && <div className="home-task-progress">
+          <progress aria-label="整理批次进度" max={batchProgress.totalBatches} value={batchProgress.completedBatches} />
+          <span>{batchProgress.completedBatches} / {batchProgress.totalBatches} 批</span>
+        </div>}
         {!busy && <div className="home-featured-task__actions">
           {deferred ? <button type="button" className="home-primary" onClick={() => setDismissedTask("")}>重新显示建议 <ArrowRight aria-hidden="true" /></button> : <>
             <Link to={primary.to} className="home-primary">{primary.cta}<ArrowRight aria-hidden="true" /></Link>
@@ -479,23 +530,36 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </section>}
       {!showAllTasks && model.tasks.length <= 1 && <Link to="/tasks" className="home-task-center-link">查看任务中心 <ChevronRight aria-hidden="true" /></Link>}
       <section className="home-current" aria-label="当前网页">
-        <CurrentPageIcon title={currentPage?.title} url={currentPage?.url} />
-        <div className="home-current__main"><small>当前网页</small><strong title={currentPage?.title}>{currentPage ? getDomain(currentPage.url) || currentPage.title : "打开网页后可查看收藏状态"}</strong>
-          {currentPage?.saved && <span title={currentPage.savedPaths.join("、")}>{currentPage.savedPaths.join("、")}</span>}
+        <div className="home-current__row">
+          <CurrentPageIcon title={currentPage?.title} url={currentPage?.url} />
+          <div className="home-current__main">
+            <small>当前网页</small>
+            <strong title={currentPage?.title}>{currentPage ? currentPage.title || getDomain(currentPage.url) : "打开网页后可查看收藏状态"}</strong>
+            {currentPage && <span title={currentPage.savedPaths.join("、") || currentPage.url}>{currentPage.savedPaths.join("、") || getDomain(currentPage.url)}</span>}
+          </div>
+          {currentPage && (currentPage.saved ? (
+            <Link to={`/manage?search=${encodeURIComponent(sanitizeUrl(currentPage.url))}`} className="home-current__saved" title="按忽略 query / hash 匹配，点击查看或编辑">
+              <CheckCircle2 aria-hidden="true" />已收藏
+            </Link>
+          ) : (
+            <button type="button" className="home-current__save" disabled={Boolean(savingUrl) || !/^https?:\/\//i.test(currentPage.url)} onClick={() => void handleSavePage()}>
+              {savingCurrentPage ? <LoaderCircle className="home-action-spinner" aria-hidden="true" /> : <Plus aria-hidden="true" />}
+              {savingCurrentPage ? "收藏中" : "收藏"}
+            </button>
+          ))}
         </div>
-        {currentPage && (currentPage.saved ? <Link to={`/manage?search=${encodeURIComponent(sanitizeUrl(currentPage.url))}`} className="home-current__saved" title="按忽略 query / hash 匹配，点击查看或编辑"><CheckCircle2 aria-hidden="true" />已收藏</Link> : <button type="button" className="home-current__save" disabled={savingPage || !/^https?:\/\//i.test(currentPage.url)} onClick={() => {
-          setSavingPage(true);
-          setPageNotice("");
-          void saveCurrentPage(currentPage.title, currentPage.url).then(async (result) => { setPageNotice(result.created ? "已收藏，可继续选择归档目录" : "该完整 URL 已收藏，未重复创建"); await loadAll(); }).catch((cause) => setPageNotice(cause instanceof Error ? cause.message : "收藏失败")).finally(() => setSavingPage(false));
-        }}><Plus aria-hidden="true" />{savingPage ? "收藏中…" : "收藏"}</button>)}
+        {(currentSaveNotice?.error || (currentSaveNotice?.created && currentPage?.saved)) && (
+          <p className={`home-current__notice${currentSaveNotice.error ? " home-current__notice--error" : ""}`} role="status">
+            {currentSaveNotice.error || <Link to="/recommendations">选择归档目录 <ChevronRight aria-hidden="true" /></Link>}
+          </p>
+        )}
       </section>
-      {pageNotice && <p className="home-inline-notice" role="status">{pageNotice} <Link to="/recommendations">选择目录</Link></p>}
       <section className="home-regular">
         <div className="home-section-heading"><h2>常用操作</h2></div>
-        <div className="home-quick-grid">
-          {(primary.kind === "healthy" || primary.to !== action.to) && <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick"><span className="home-quick__mark">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span><span><strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong></span></Link>}
-          <Link to="/manage" className="home-quick"><span className="home-quick__mark"><Folder aria-hidden="true" /></span><span><strong>管理书签</strong></span></Link>
-        </div>
+        <nav className="home-quick-list" aria-label="常用操作">
+          {(primary.kind === "healthy" || primary.to !== action.to) && <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick"><span className="home-quick__mark">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span><strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong><ChevronRight aria-hidden="true" /></Link>}
+          <Link to="/manage" className="home-quick"><span className="home-quick__mark"><Folder aria-hidden="true" /></span><strong>管理书签</strong><ChevronRight aria-hidden="true" /></Link>
+        </nav>
       </section>
       {currentPage && currentPage.related.length > 0 && <details className="home-related"><summary>同网站的 {currentPage.related.length} 个书签</summary>{currentPage.related.map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span><ChevronRight aria-hidden="true" /></a>)}</details>}
       <section className="home-regular">
