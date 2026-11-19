@@ -2,14 +2,17 @@ import { PageHeading } from "./PageHeading";
 import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import {
   Plus,
   Search,
   Edit2,
   Trash2,
   ExternalLink,
+  Copy,
+  Unlink,
   Folder,
+  FolderInput,
   Bookmark,
   ChevronDown,
   ChevronRight,
@@ -38,7 +41,6 @@ import {
   filterDuplicateBookmarks,
   getDuplicateBookmarkGroups,
   getLinkHealthProblemCount as countLinkHealthProblems,
-  getLinkHealthStatusLabel,
   getUnsortedTaskCount,
   getVisibleUnsortedBookmarks,
   isProblemLinkHealthResult,
@@ -283,7 +285,11 @@ export function ManageBookmarks() {
     () => new Set(["__root__"])
   );
   const [selectedFolder, setSelectedFolder] = useState<string>("__root__");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState<{ text: string; kind: "notice" | "success" } | null>(null);
+  const setMessage = useCallback((text: string, kind: "notice" | "success" = "notice") => {
+    setFeedback(text ? { text, kind } : null);
+  }, []);
+  const message = feedback?.kind === "notice" ? feedback.text : "";
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
   const [ignoringManualSelection, setIgnoringManualSelection] = useState(false);
@@ -322,6 +328,14 @@ export function ManageBookmarks() {
   const hoverExpandFolderKeyRef = useRef<string | null>(null);
   const didApplyDefaultExpandedFolderRef = useRef(false);
   const resumedLinkScanIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (feedback?.kind !== "success") return;
+    const timer = window.setTimeout(() => {
+      setFeedback((current) => current === feedback ? null : current);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   const loadManagedBookmarks = useCallback(async () => {
     const [, , nextFolders, protection, nextSemanticIndex] = await Promise.all([
@@ -675,14 +689,21 @@ export function ManageBookmarks() {
   }, [taskMode]);
 
   const pageSubtitle = useMemo(() => {
-    if (taskMode === "duplicate") return `${duplicateGroups.length} 组重复 URL，涉及 ${taskBookmarks.length} 个书签`;
+    if (taskMode === "duplicate") {
+      const exactCount = duplicateGroups.filter((group) => group.kind === "exact").length;
+      const suspectedCount = duplicateGroups.length - exactCount;
+      const summary = [];
+      if (exactCount) summary.push(`${exactCount} 组精确重复`);
+      if (suspectedCount) summary.push(`${suspectedCount} 组疑似重复`);
+      return summary.length ? `${summary.join("，")}，涉及 ${taskBookmarks.length} 个书签` : "未发现重复链接";
+    }
     if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
       return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${countLinkHealthProblems(linkHealthReport, bookmarks)} 个`;
     }
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks, duplicateGroups.length, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
+  }, [bookmarks.length, duplicateGroups, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -931,7 +952,7 @@ export function ManageBookmarks() {
     });
   };
 
-  const toggleAllVisibleDuplicateBookmarks = () => {
+  const toggleSuggestedDuplicateSelection = () => {
     setSelectedDuplicateBookmarkIds((prev) => {
       const next = new Set(prev);
       if (areAllVisibleDuplicatesSelected) {
@@ -1049,11 +1070,11 @@ export function ManageBookmarks() {
         deletedIds.forEach((id) => next.delete(id));
         return next;
       });
-      setMessage(
-        failedItems.length > 0
-          ? `已删除 ${deletedIds.size} 个重复书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`
-          : `已删除 ${deletedIds.size} 个重复书签，并已创建删除前备份`
-      );
+      if (failedItems.length > 0) {
+        setMessage(`已删除 ${deletedIds.size} 个重复书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`);
+      } else {
+        setMessage(`已删除 ${deletedIds.size} 个重复书签，并已创建删除前备份`, "success");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量删除重复书签失败");
     } finally {
@@ -1104,11 +1125,11 @@ export function ManageBookmarks() {
         deletedIds.forEach((id) => next.delete(id));
         return next;
       });
-      setMessage(
-        failedItems.length > 0
-          ? `已删除 ${deletedIds.size} 个失效书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`
-          : `已删除 ${deletedIds.size} 个失效书签，并已创建删除前备份`
-      );
+      if (failedItems.length > 0) {
+        setMessage(`已删除 ${deletedIds.size} 个失效书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`);
+      } else {
+        setMessage(`已删除 ${deletedIds.size} 个失效书签，并已创建删除前备份`, "success");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量删除失效书签失败");
     } finally {
@@ -1152,7 +1173,7 @@ export function ManageBookmarks() {
       ]);
       await loadManagedBookmarks();
       setEditingId(null);
-      setMessage(learningNotice ?? "书签修改已保存");
+      setMessage(learningNotice ?? "书签修改已保存", "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -1286,7 +1307,7 @@ export function ManageBookmarks() {
         targetBookmarks.forEach((bookmark) => nextSelected.delete(bookmark.id));
         return nextSelected;
       });
-      setMessage(`已忽略 ${targetBookmarks.length} 个手动归档书签`);
+      setMessage(`已忽略 ${targetBookmarks.length} 个手动归档书签`, "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "忽略手动归档项失败");
     } finally {
@@ -1348,7 +1369,7 @@ export function ManageBookmarks() {
       const next = await addBookmarkWhitelistEntries(ids);
       const addedCount = next.length - whitelistEntries.length;
       await loadManagedBookmarks();
-      setMessage(addedCount > 0 ? `已保护 ${addedCount} 个书签，可在书签管理的白名单中解除保护` : "所选书签均已受到保护");
+      setMessage(addedCount > 0 ? `已保护 ${addedCount} 个书签` : "所选书签均已受到保护", "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量加入白名单失败");
     } finally {
@@ -1365,7 +1386,7 @@ export function ManageBookmarks() {
       else await addBookmarkWhitelistEntry(type, id);
       await loadManagedBookmarks();
       const protectedItems = type === "folder" ? "此文件夹及其内容" : "此书签";
-      setMessage(hasDirectRule ? "已移除这条保护规则" : `已保护${protectedItems}，可在书签管理的白名单中解除保护`);
+      setMessage(hasDirectRule ? "已移除保护规则" : `已保护${protectedItems}`, "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "更新白名单失败");
     } finally {
@@ -1381,7 +1402,7 @@ export function ManageBookmarks() {
       await removeBookmarkWhitelistEntries(selectedVisibleWhitelistEntries);
       setSelectedWhitelistKeys(new Set());
       await loadManagedBookmarks();
-      setMessage("已解除所选项目的白名单保护");
+      setMessage("已解除所选项目的白名单保护", "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量解除保护失败");
     } finally {
@@ -1818,7 +1839,10 @@ export function ManageBookmarks() {
         {filteredPendingRecommendations.length > 0 && (
           <section className="bookmark-unsorted-section">
             <div className="bookmark-unsorted-section__head bookmark-unsorted-section__head--suggestions">
-              <h3>分类建议</h3>
+              <h3 className="bookmark-section-heading">
+                <Sparkles aria-hidden="true" />
+                分类建议
+              </h3>
               <span>{filteredPendingRecommendations.length}</span>
               <div className="bookmark-unsorted-section__tools">
                 <div className="bookmark-unsorted-batch-action" role="group" title={batchArchiveHint} aria-label={batchArchiveHint} tabIndex={actionablePendingRecommendations.length === 0 ? 0 : undefined}>
@@ -1855,7 +1879,10 @@ export function ManageBookmarks() {
           <section className="bookmark-unsorted-section">
             <div className="bookmark-unsorted-section__head">
               <div className="bookmark-unsorted-section__copy">
-                <h3>待手动分类</h3>
+                <h3 className="bookmark-section-heading">
+                  <FolderInput aria-hidden="true" />
+                  待手动分类
+                </h3>
               </div>
               <div className="bookmark-unsorted-section__tools bookmark-unsorted-section__tools--manual">
                 <span>{filteredBookmarks.length}</span>
@@ -1891,84 +1918,124 @@ export function ManageBookmarks() {
 
   const renderDuplicateBookmarkRow = (bookmark: BookmarkNode, group: DuplicateBookmarkGroup) => {
     const isSelected = selectedDuplicateBookmarkIds.has(bookmark.id);
+    const isProtected = whitelistIndex.protectedBookmarkIds.has(bookmark.id);
+    const hasFolderProtection = Boolean(bookmark.parentId && whitelistIndex.protectedFolderIds.has(bookmark.parentId));
     const isRecommendedKeep = bookmark.id === group.recommendedKeepId;
-    const duplicateActionLabel = whitelistIndex.protectedBookmarkIds.has(bookmark.id)
-      ? "已保护"
-      : isRecommendedKeep
+    const duplicateActionLabel = isRecommendedKeep
       ? "建议保留"
       : group.suggestedDeleteIds.includes(bookmark.id)
         ? "建议删除"
         : "待复核";
+    const bookmarkPath = bookmark.path.join(" / ") || "根目录";
+    const RowContent = isProtected ? "div" : "label";
+    const protectionActionClass = "bookmark-tree-row__status bookmark-duplicates__protection-action";
 
     return (
-      <label
+      <div
         key={bookmark.id}
-        className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable ${isSelected ? "is-selected" : ""}`}
+        className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable bookmark-duplicates__row ${isSelected ? "is-selected" : ""}`}
       >
-        <input
-          type="checkbox"
-          checked={isSelected}
-          disabled={whitelistIndex.protectedBookmarkIds.has(bookmark.id)}
-          onChange={() => toggleDuplicateBookmarkSelection(bookmark.id)}
-          className="extension-checkbox bookmark-tree-row__checkbox"
-        />
-        <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
-        <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
-        <span className="bookmark-tree-row__meta" title={bookmark.path.join(" / ") || "根目录"}>
-          {bookmark.path.join(" / ") || "根目录"}
-        </span>
-        <span className="bookmark-tree-row__status" title={duplicateActionLabel}>
-          {duplicateActionLabel}
-        </span>
+        <RowContent className="bookmark-duplicates__row-label">
+          {!isProtected && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleDuplicateBookmarkSelection(bookmark.id)}
+              className="extension-checkbox bookmark-tree-row__checkbox"
+            />
+          )}
+          <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
+          <span className="bookmark-duplicates__identity">
+            <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+            <span className="bookmark-tree-row__meta" title={bookmarkPath}>{bookmarkPath}</span>
+            {isProtected ? (
+              hasFolderProtection ? (
+                <Link
+                  to="/manage?view=whitelist"
+                  className={protectionActionClass}
+                  title={whitelistIndex.reasonById.get(bookmark.id)}
+                >
+                  <ShieldCheck className="w-3 h-3" aria-hidden="true" />
+                  管理文件夹保护
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={protectionActionClass}
+                  aria-label={`解除保护：${bookmark.title}`}
+                  disabled={busy}
+                  onClick={() => void toggleWhitelist("bookmark", bookmark.id)}
+                >
+                  <ShieldCheck className="w-3 h-3" aria-hidden="true" />
+                  解除保护
+                </button>
+              )
+            ) : (
+              <span className="bookmark-tree-row__status">{duplicateActionLabel}</span>
+            )}
+          </span>
+        </RowContent>
         {bookmark.url && (
           <a
             href={bookmark.url}
             target="_blank"
             rel="noopener noreferrer"
             className="extension-link-icon"
-            aria-label="打开书签"
-            onClick={(event) => event.stopPropagation()}
+            aria-label={`打开书签：${bookmark.title}`}
           >
             <ExternalLink className="w-3 h-3" />
           </a>
         )}
-      </label>
+      </div>
     );
   };
 
   const renderDuplicateTasks = () => {
     if (!filteredDuplicateGroups.length) return null;
 
+    const selectableCount = visibleDuplicateBookmarkIds.length;
+    const protectedCount = filteredDuplicateBookmarkCount - selectableCount;
+
     return (
       <section className="bookmark-health-panel">
-        <div className="bookmark-tree-panel__head bookmark-health-results__head">
-          <div>
-            <h3>重复检测结果</h3>
-            <p>已选 {selectedDuplicateCount} / {filteredDuplicateBookmarkCount}</p>
+        <div className="bookmark-tree-panel__head bookmark-duplicates__header">
+          <div className="bookmark-duplicates__summary">
+            <h3 className="bookmark-section-heading">
+              <Copy aria-hidden="true" />
+              重复检测结果
+            </h3>
+            <p>
+              {selectableCount
+                ? `已选 ${selectedDuplicateCount} / ${selectableCount}${protectedCount ? `，${protectedCount} 个已保护` : ""}`
+                : `${protectedCount} 个书签均已保护`}
+            </p>
           </div>
-          <div className="bookmark-tree-panel__actions">
-            <button
-              type="button"
-              onClick={toggleAllVisibleDuplicateBookmarks}
-              disabled={busy || visibleDuplicateAutoSelectIds.length === 0}
-              className="extension-page__wide-secondary"
-            >
-              {areAllVisibleDuplicatesSelected ? "取消全选" : "全选当前结果"}
-            </button>
-            <button type="button" onClick={() => void protectSelectedBookmarks([...selectedDuplicateBookmarkIds])}
-              disabled={busy || selectedDuplicateCount === 0} className="extension-page__wide-secondary">
-              <ShieldCheck className="w-4 h-4" />保护所选
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDeleteSelectedDuplicates()}
-              disabled={busy || selectedDuplicateCount === 0}
-              className="extension-page__wide-primary bookmark-tree-panel__delete-button"
-            >
-              <Trash2 className="w-4 h-4" />
-              {busy ? "删除中" : "删除所选"}
-            </button>
-          </div>
+          {selectableCount > 0 && (
+            <div className="bookmark-tree-panel__actions">
+              {visibleDuplicateAutoSelectIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSuggestedDuplicateSelection}
+                  disabled={busy}
+                  className="extension-page__wide-secondary"
+                >
+                  {areAllVisibleDuplicatesSelected ? "取消建议项勾选" : "勾选建议删除项"}
+                </button>
+              )}
+              <button type="button" onClick={() => void protectSelectedBookmarks([...selectedDuplicateBookmarkIds])}
+                disabled={busy || selectedDuplicateCount === 0} className="extension-page__wide-secondary">
+                保护所选
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteSelectedDuplicates()}
+                disabled={busy || selectedDuplicateCount === 0}
+                className="extension-page__wide-primary bookmark-tree-panel__delete-button"
+              >
+                {busy ? "删除中" : "删除所选"}
+              </button>
+            </div>
+          )}
         </div>
         <div className="bookmark-unsorted-list">
           {filteredDuplicateGroups.map((group) => (
@@ -1979,11 +2046,24 @@ export function ManageBookmarks() {
                   <span>{group.items.length} 个</span>
                 </div>
                 <p className="bookmark-unsorted-card__url">{getDuplicateGroupDescription(group)}</p>
-                <p className="bookmark-unsorted-card__reason">{group.reason}</p>
+                <p className="bookmark-unsorted-card__reason">
+                  {group.kind === "normalized-path" ? "检测时忽略查询参数、页面锚点和末尾斜杠。" : group.reason}
+                </p>
               </div>
               <div className="bookmark-tree">
                 {group.items.map((bookmark) => renderDuplicateBookmarkRow(bookmark, group))}
               </div>
+              <details className="bookmark-duplicates__links">
+                <summary>{group.items.length > 1 ? "对比原始链接" : "查看原始链接"}</summary>
+                <ul>
+                  {group.items.map((bookmark) => (
+                    <li key={bookmark.id}>
+                      <strong>{bookmark.title}</strong>
+                      <span>{bookmark.url}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </article>
           ))}
         </div>
@@ -1995,8 +2075,7 @@ export function ManageBookmarks() {
     if (editingId === bookmark.id) return renderBookmarkRow(bookmark, 0);
 
     const isSelected = selectedInvalidBookmarkIds.has(bookmark.id);
-    const healthResult = linkHealthResultById.get(bookmark.id);
-    const statusLabel = healthResult ? getLinkHealthStatusLabel(healthResult) : "需要复查";
+    const reason = linkHealthResultById.get(bookmark.id)?.reason;
 
     return (
       <div
@@ -2016,9 +2095,8 @@ export function ManageBookmarks() {
           aria-label="选择失效书签"
         />
         <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
-        <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
-        <span className="bookmark-tree-row__status" title={healthResult?.reason ?? statusLabel}>
-          {statusLabel}
+        <span className="bookmark-tree-row__title" title={reason ? `${bookmark.title}\n${reason}` : bookmark.title}>
+          {bookmark.title}
         </span>
         {bookmark.url && (
           <a
@@ -2056,7 +2134,10 @@ export function ManageBookmarks() {
       <section className="bookmark-health-panel">
         <div className="bookmark-tree-panel__head bookmark-health-results__head">
           <div>
-            <h3>任务结果</h3>
+            <h3 className="bookmark-section-heading">
+              <Unlink aria-hidden="true" />
+              任务结果
+            </h3>
             <p>已选 {selectedInvalidCount} / {filteredBookmarks.length}</p>
           </div>
           <div className="bookmark-tree-panel__actions">
@@ -2132,6 +2213,7 @@ export function ManageBookmarks() {
       await loadManagedBookmarks();
       setAddForm({ title: "", url: "", path: "" });
       setShowAddForm(false);
+      setMessage("书签已添加", "success");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "添加失败");
     } finally {
@@ -2269,7 +2351,7 @@ export function ManageBookmarks() {
         </div>
 
         {message && (
-          <div className="extension-notice extension-notice--amber">
+          <div className="extension-notice extension-notice--amber" role="status">
             <p>{message}</p>
           </div>
         )}
@@ -2289,7 +2371,7 @@ export function ManageBookmarks() {
         )}
 
         {!taskMode && (
-          <details className="bookmark-whitelist-panel">
+          <details className="bookmark-whitelist-panel" open={searchParams.get("view") === "whitelist" || undefined}>
             <summary><ShieldCheck className="w-4 h-4" />白名单 <span>{whitelistEntries.length} 条规则</span></summary>
             <p>ReMarks 会跳过受保护项目的整理、推荐和清理，并限制编辑、移动和删除。保护文件夹时也保护其中的书签和子文件夹。点击旁边的盾牌可添加保护，也可在这里解除保护。</p>
             {whitelistEntries.length > 0 && (
@@ -2497,7 +2579,10 @@ export function ManageBookmarks() {
         ) : (
           <section className="bookmark-tree-panel">
             <div className="bookmark-tree-panel__head">
-              <h3>{taskMode ? "任务结果" : "文件夹"}</h3>
+              <h3 className="bookmark-section-heading">
+                <Folder aria-hidden="true" />
+                文件夹
+              </h3>
               <span>{filteredBookmarks.length}</span>
             </div>
             <div className="bookmark-tree">{renderFolderNode(folderTree)}</div>
@@ -2544,6 +2629,14 @@ export function ManageBookmarks() {
           >
             <BookmarkFavicon title={draggedBookmark.title} url={draggedBookmark.url} />
             <span>{draggedBookmark.title}</span>
+          </div>
+        )}
+      </div>
+      <div className="bookmark-action-toast" role="status">
+        {feedback?.kind === "success" && (
+          <div className="bookmark-action-toast__body">
+            <Check className="bookmark-action-toast__icon" aria-hidden="true" />
+            <span>{feedback.text}</span>
           </div>
         )}
       </div>

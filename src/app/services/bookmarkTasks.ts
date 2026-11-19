@@ -485,13 +485,6 @@ export function getLinkHealthProblemCount(report: BookmarkLinkHealthReport, book
   return getLinkHealthProblemResults(report, bookmarks).length;
 }
 
-export function getLinkHealthStatusLabel(result: BookmarkLinkHealthResult) {
-  if (result.status === "broken" || result.status === "invalid") return "疑似失效";
-  if (result.status === "suspicious") return "需要复查";
-  if (result.status === "temporary_failed") return "暂时无法确认";
-  return result.status === "skipped" ? "已跳过" : "可访问";
-}
-
 function normalizeLinkHealthScanOptions(
   options?: LinkHealthProgressHandler | LinkHealthScanOptions
 ): LinkHealthScanOptions {

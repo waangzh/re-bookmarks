@@ -646,9 +646,9 @@ export function Preview() {
   const selectionTree = useMemo(() => buildBookmarkFolderTree(allBookmarks), [allBookmarks]);
   const isDeepSelectionTooLarge = organizeMode === "deep" && selectedIds.size > DEEP_ORGANIZE_BOOKMARK_LIMIT;
   const isQuickSelectionLarge = organizeMode === "quick" && selectedIds.size > QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT;
-  const deepSelectionLimitMessage = `“更细致地分析网页”单次最多建议选择 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速分类。`;
+  const deepSelectionLimitMessage = `深度整理单次最多可选 ${DEEP_ORGANIZE_BOOKMARK_LIMIT} 个书签。当前已选 ${selectedIds.size} 个，请减少选择或改用快速整理。`;
 
-  const quickSelectionLargeMessage = `当前选择 ${selectedIds.size} 个书签，快速分类建议单次不超过 ${QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT} 个。数量较大时建议按文件夹分批整理，避免 AI 请求排队过久。`;
+  const quickSelectionLargeMessage = `当前选择 ${selectedIds.size} 个书签，快速整理建议单次不超过 ${QUICK_ORGANIZE_BOOKMARK_RECOMMENDED_LIMIT} 个。数量较大时建议按文件夹分批整理，避免 AI 请求排队过久。`;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -1341,10 +1341,8 @@ export function Preview() {
                 aria-pressed={organizeMode === "quick"}
                 onClick={() => setOrganizeMode("quick")}
               >
-                <Zap className="w-4 h-4" />
-                <span>
-                  <strong>快速分类</strong>
-                </span>
+                <Zap size={22} aria-hidden="true" />
+                <strong>快速整理</strong>
               </button>
               <button
                 type="button"
@@ -1352,17 +1350,15 @@ export function Preview() {
                 aria-pressed={organizeMode === "deep"}
                 onClick={() => setOrganizeMode("deep")}
               >
-                <Globe2 className="w-4 h-4" />
-                <span>
-                  <strong>网页深度分析</strong>
-                </span>
+                <Globe2 size={22} aria-hidden="true" />
+                <strong>深度整理</strong>
               </button>
             </div>
 
             {(!settings.provider.apiKey.trim() || !settings.provider.enabled) && <div className="extension-notice extension-notice--blue">
               <p>{settings.provider.apiKey.trim() ? "尚未授权向 AI 发送分类数据。" : "尚未连接 AI 服务。"} <Link to="/options">连接与授权</Link>，或 <Link to="/manage?task=unsorted">先使用本地归档</Link>。</p>
             </div>}
-            <CollapsibleSection title="AI 服务与模型（可选）" hint={selectedModel || settings.provider.model}>
+            <CollapsibleSection title="AI 服务与模型" hint={selectedModel || settings.provider.model}>
             <section
               className={`organize-model-picker${modelMenuOpen ? " is-open" : ""}`}
               aria-labelledby="organize-model-title"
