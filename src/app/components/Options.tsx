@@ -1,5 +1,6 @@
 import { PageHeading } from "./PageHeading";
 import { Select } from "./Select";
+import { Switch } from "./Switch";
 import { AIProtocolFields } from "./AIProtocolFields";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -44,18 +45,40 @@ function formatCatalogAge(fetchedAt: number): string {
     : `${hours} 小时前更新，可能已过期`;
 }
 
+function canonicalizeValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeValue);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      const next = canonicalizeValue(record[key]);
+      if (next !== undefined) normalized[key] = next;
+    }
+    return normalized;
+  }
+  return value;
+}
+
+/** 忽略对象键顺序与 undefined 字段差异，准确判断草稿是否相对已保存设置发生改动。 */
+export function areSettingsEqual(left: Settings, right: Settings): boolean {
+  return JSON.stringify(canonicalizeValue(left)) === JSON.stringify(canonicalizeValue(right));
+}
+
 export function Options() {
   const navigate = useNavigate();
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [models, setModels] = useState<AIModelOption[]>([]);
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [modelMessage, setModelMessage] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [modelFiltering, setModelFiltering] = useState(false);
-  const settingsSaved = message === "设置已保存" && JSON.stringify(draft) === JSON.stringify(settings);
+  const isDirty = !areSettingsEqual(draft, settings);
+  const settingsSaved = message === "设置已保存" && !isDirty;
   const [highlightedModel, setHighlightedModel] = useState(0);
   const modelPicker = useRef<HTMLDivElement>(null);
   const modelInput = useRef<HTMLInputElement>(null);
@@ -84,6 +107,10 @@ export function Options() {
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    setSaveError("");
+  }, [draft]);
 
   useEffect(() => {
     modelRequest.current?.abort();
@@ -306,8 +333,24 @@ export function Options() {
   };
 
   const handleSave = async () => {
-    await persistDraft();
-    setMessage("设置已保存");
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await persistDraft();
+      setMessage("设置已保存");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "保存设置失败，请重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    setDraft(settings);
+    setTestStatus("idle");
+    setMessage("");
+    setSaveError("");
   };
 
   const handleStartOrganize = async () => {
@@ -474,18 +517,13 @@ export function Options() {
                 <div id="settings-ai-consent" className="extension-switch-row__title">允许 AI 分类</div>
                 <div id="settings-ai-consent-details" className="extension-switch-row__hint">发送标题、{draft.sendFullUrl ? "完整" : "脱敏"} URL、目录及网页元数据；移动前需确认。</div>
               </div>
-              <label className="relative inline-block w-12 h-6">
-                <input
-                  type="checkbox"
-                  aria-labelledby="settings-ai-consent"
-                  aria-describedby="settings-ai-consent-details"
-                  checked={Boolean(draft.provider.enabled)}
-                  disabled={!draft.provider.testedAt && testStatus !== "success"}
-                  onChange={(event) => updateProviderConfig("enabled", event.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-60 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
-              </label>
+              <Switch
+                aria-labelledby="settings-ai-consent"
+                aria-describedby="settings-ai-consent-details"
+                checked={Boolean(draft.provider.enabled)}
+                disabled={!draft.provider.testedAt && testStatus !== "success"}
+                onCheckedChange={(checked) => updateProviderConfig("enabled", checked)}
+              />
             </div>
 
             <button type="button" onClick={() => void handleStartOrganize()} disabled={!draft.provider.enabled} className="extension-page__wide-primary">
@@ -703,10 +741,11 @@ export function Options() {
                 <div>
                   <div className="extension-switch-row__title">允许嵌套文件夹</div>
                 </div>
-                <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" aria-label="允许嵌套文件夹" checked={draft.allowNestedFolders} onChange={(event) => setDraft({ ...draft, allowNestedFolders: event.target.checked })} className="sr-only peer" />
-                  <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
-                </label>
+                <Switch
+                  aria-label="允许嵌套文件夹"
+                  checked={draft.allowNestedFolders}
+                  onCheckedChange={(checked) => setDraft({ ...draft, allowNestedFolders: checked })}
+                />
               </div>
 
               {draft.allowNestedFolders && (
@@ -773,10 +812,11 @@ export function Options() {
                   <div className="extension-switch-row__title">发送完整 URL</div>
                   <div className="extension-switch-row__hint">包含查询参数和 # 片段，可能含敏感信息</div>
                 </div>
-                <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" aria-label="发送完整 URL" checked={draft.sendFullUrl} onChange={(event) => setDraft({ ...draft, sendFullUrl: event.target.checked })} className="sr-only peer" />
-                  <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
-                </label>
+                <Switch
+                  aria-label="发送完整 URL"
+                  checked={draft.sendFullUrl}
+                  onCheckedChange={(checked) => setDraft({ ...draft, sendFullUrl: checked })}
+                />
               </div>
             </div>
             </div>
@@ -803,10 +843,11 @@ export function Options() {
                   <div className="extension-switch-row__title">启用常访问书签</div>
                   <div className="extension-switch-row__hint">需要浏览历史权限，数据仅本地处理</div>
                 </div>
-                <label className="relative inline-block w-12 h-6">
-                  <input type="checkbox" aria-label="启用常访问书签" checked={draft.enableHistory} onChange={(event) => void handleHistoryToggle(event.target.checked)} className="sr-only peer" />
-                  <div className="w-12 h-6 bg-gray-200 peer-checked:bg-blue-500 rounded-full peer transition-colors cursor-pointer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-6"></div>
-                </label>
+                <Switch
+                  aria-label="启用常访问书签"
+                  checked={draft.enableHistory}
+                  onCheckedChange={(checked) => void handleHistoryToggle(checked)}
+                />
               </div>
 
               <div className="extension-privacy">
@@ -831,8 +872,50 @@ export function Options() {
           </div>
         )}
 
-        <div className="settings-save-bar">
-          <button onClick={handleSave} className="extension-page__wide-primary" aria-live="polite">{settingsSaved ? <><Check className="w-4 h-4" />已保存</> : "保存设置"}</button>
+        <div className={`settings-save-bar${isDirty ? " is-dirty" : ""}`}>
+          <div className="settings-save-bar__inner">
+            <div className="settings-save-bar__status" role="status" aria-live="polite">
+              {saveError ? (
+                <span className="settings-save-bar__badge is-error">
+                  <AlertCircle aria-hidden="true" />
+                  {saveError}
+                </span>
+              ) : isDirty ? (
+                <span className="settings-save-bar__badge is-dirty">
+                  <span className="settings-save-bar__dot" aria-hidden="true" />
+                  有未保存的更改
+                </span>
+              ) : settingsSaved ? (
+                <span className="settings-save-bar__badge is-saved">
+                  <Check aria-hidden="true" />
+                  设置已保存
+                </span>
+              ) : (
+                <span className="settings-save-bar__badge is-clean">所有设置已同步</span>
+              )}
+            </div>
+            <div className="settings-save-bar__actions">
+              {isDirty && (
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  disabled={saving}
+                  className="extension-page__wide-secondary settings-save-bar__discard"
+                >
+                  还原
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!isDirty || saving}
+                className="extension-page__wide-primary settings-save-bar__submit"
+                aria-live="polite"
+              >
+                {saving ? "保存中…" : settingsSaved ? <><Check className="w-4 h-4" />已保存</> : "保存设置"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

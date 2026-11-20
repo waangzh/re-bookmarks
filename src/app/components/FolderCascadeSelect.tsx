@@ -25,12 +25,50 @@ type MenuGeometry = {
   left: number;
 };
 
+type Point = {
+  x: number;
+  y: number;
+};
+
+type SafeTriangleRect = {
+  left: number;
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
 const MENU_MAX_HEIGHT = 300;
 const MENU_MIN_HEIGHT = 140;
 const MENU_MIN_WIDTH = 260;
 const MENU_MAX_WIDTH = 340;
 const MENU_GAP = 6;
 const EDGE_MARGIN = 8;
+const HOVER_INTENT_DELAY_MS = 95;
+const SAFE_TRIANGLE_HOLD_MS = 120;
+const SAFE_TRIANGLE_VERTICAL_PADDING = 4;
+
+function triangleCross(p1: Point, p2: Point, p3: Point) {
+  return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+/**
+ * 判定光标是否正在从一级列表斜向移入右侧二级目录安全三角区，
+ * 避免斜向移动鼠标去选子目录时因擦过相邻一级项而误切换。
+ */
+export function isPointInSafeTriangle(point: Point, origin: Point, targetRect: SafeTriangleRect): boolean {
+  if (targetRect.width <= 0 || targetRect.height <= 0) return false;
+  if (point.x <= origin.x || origin.x > targetRect.left) return false;
+
+  const topVertex: Point = { x: targetRect.left, y: targetRect.top - SAFE_TRIANGLE_VERTICAL_PADDING };
+  const bottomVertex: Point = { x: targetRect.left, y: targetRect.bottom + SAFE_TRIANGLE_VERTICAL_PADDING };
+  const d1 = triangleCross(point, origin, topVertex);
+  const d2 = triangleCross(point, topVertex, bottomVertex);
+  const d3 = triangleCross(point, bottomVertex, origin);
+  const hasNegative = d1 < 0 || d2 < 0 || d3 < 0;
+  const hasPositive = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(hasNegative && hasPositive);
+}
 
 function pathLabel(path: string[]) {
   return path.join(" / ");
@@ -61,7 +99,17 @@ export function FolderCascadeSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLUListElement>(null);
   const secondaryRef = useRef<HTMLUListElement>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+  const lastPointerRef = useRef<Point | null>(null);
+  const prevPointerRef = useRef<Point | null>(null);
   const listId = useId();
+
+  const clearHoverTimer = useCallback(() => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
 
   const groups = useMemo(() => {
     const map = new Map<string, CascadeGroup>();
@@ -91,7 +139,39 @@ export function FolderCascadeSelect({
     setHighlightSecondary(0);
   }, [groups]);
 
+  const handlePrimaryMouseEnter = useCallback((index: number, clientX: number, clientY: number) => {
+    clearHoverTimer();
+    const targetGroup = groups[index];
+    if (!targetGroup) return;
+
+    // 悬停当前已展开的一级目录时立即同步高亮，无需等待延时
+    if (targetGroup.name === activeGroup?.name) {
+      setColumn("primary");
+      setHighlightPrimary(index);
+      return;
+    }
+
+    const currentPoint: Point = { x: clientX, y: clientY };
+    const last = lastPointerRef.current;
+    const origin = last && (last.x !== clientX || last.y !== clientY) ? last : prevPointerRef.current;
+    const hasSecondary = (activeGroup?.children.length ?? 0) > 0;
+    const inSafeTriangle = Boolean(
+      hasSecondary &&
+      origin &&
+      secondaryRef.current &&
+      isPointInSafeTriangle(currentPoint, origin, secondaryRef.current.getBoundingClientRect())
+    );
+    const delay = inSafeTriangle ? SAFE_TRIANGLE_HOLD_MS : HOVER_INTENT_DELAY_MS;
+
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      setColumn("primary");
+      focusGroup(index);
+    }, delay);
+  }, [activeGroup, clearHoverTimer, focusGroup, groups]);
+
   const openMenu = useCallback(() => {
+    clearHoverTimer();
     if (!groups.length) return;
     const currentTop = value[0] && groups.some((group) => group.name === value[0])
       ? value[0]
@@ -131,7 +211,12 @@ export function FolderCascadeSelect({
   }, [open, updateGeometry]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      clearHoverTimer();
+      lastPointerRef.current = null;
+      prevPointerRef.current = null;
+      return;
+    }
     const closeOutside = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -140,11 +225,12 @@ export function FolderCascadeSelect({
     window.addEventListener("resize", handleReposition);
     window.addEventListener("scroll", handleReposition, true);
     return () => {
+      clearHoverTimer();
       document.removeEventListener("pointerdown", closeOutside);
       window.removeEventListener("resize", handleReposition);
       window.removeEventListener("scroll", handleReposition, true);
     };
-  }, [open, updateGeometry]);
+  }, [clearHoverTimer, open, updateGeometry]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,6 +246,7 @@ export function FolderCascadeSelect({
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (disabled) return;
+    clearHoverTimer();
     if (!open) {
       if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -221,6 +308,12 @@ export function FolderCascadeSelect({
         <div
           className={`ui-cascade__menu${geometry.placement === "above" ? " is-above" : ""}`}
           style={{ maxHeight: `${geometry.maxHeight}px`, width: `${geometry.width}px`, left: `${geometry.left}px` }}
+          onMouseMove={(event) => {
+            const last = lastPointerRef.current;
+            if (last && last.x === event.clientX && last.y === event.clientY) return;
+            prevPointerRef.current = last;
+            lastPointerRef.current = { x: event.clientX, y: event.clientY };
+          }}
         >
           <ul
             id={`${listId}-primary`}
@@ -228,6 +321,7 @@ export function FolderCascadeSelect({
             role="listbox"
             aria-label="一级目录"
             ref={primaryRef}
+            onMouseLeave={clearHoverTimer}
           >
             {groups.map((group, index) => (
               <li
@@ -236,7 +330,7 @@ export function FolderCascadeSelect({
                 aria-selected={value[0] === group.name}
                 tabIndex={-1}
                 className={`ui-cascade__item${index === highlightPrimary ? " is-active" : ""}${value[0] === group.name ? " is-current" : ""}`}
-                onMouseEnter={() => focusGroup(index)}
+                onMouseEnter={(event) => handlePrimaryMouseEnter(index, event.clientX, event.clientY)}
                 onClick={() => choose(group.path)}
               >
                 <span>{group.name}</span>
@@ -262,6 +356,7 @@ export function FolderCascadeSelect({
                     tabIndex={-1}
                     className={`ui-cascade__item${column === "secondary" && index === highlightSecondary ? " is-active" : ""}${key === selectedKey ? " is-current" : ""}`}
                     onMouseEnter={() => {
+                      clearHoverTimer();
                       setColumn("secondary");
                       setHighlightSecondary(index);
                     }}
