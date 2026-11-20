@@ -1,6 +1,7 @@
 import { PageHeading } from "./PageHeading";
 import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
+import { BookmarkRowActionMenu } from "./BookmarkRowActionMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
@@ -25,6 +26,7 @@ import {
   ShieldCheck,
   BrainCircuit,
   Zap,
+  GripVertical,
 } from "lucide-react";
 import type { BookmarkImpressionMeta, BookmarkLinkHealthReport, BookmarkLinkHealthResult, BookmarkNode, BookmarkWhitelistEntry, PendingRecommendation } from "../types";
 import {
@@ -1490,10 +1492,13 @@ export function ManageBookmarks() {
     );
   };
 
+  const canDragBookmark = (bookmarkId: string) =>
+    !busy && editingId !== bookmarkId && !whitelistIndex.protectedBookmarkIds.has(bookmarkId);
+
   const renderBookmarkRow = (bookmark: BookmarkNode, depth: number) => (
     <div
       key={bookmark.id}
-      className={`bookmark-tree-row bookmark-tree-row--bookmark ${draggedBookmark?.id === bookmark.id ? "is-dragging" : ""}`}
+      className={`bookmark-tree-row bookmark-tree-row--bookmark${canDragBookmark(bookmark.id) ? " bookmark-tree-row--draggable" : ""}${draggedBookmark?.id === bookmark.id ? " is-dragging" : ""}`}
       data-bookmark-id={bookmark.id}
       style={{ "--tree-depth": depth } as CSSProperties}
       onPointerDown={(event) => {
@@ -1542,7 +1547,12 @@ export function ManageBookmarks() {
         </div>
       ) : (
         <>
-          <span className="bookmark-tree-row__chevron" />
+          <span
+            className={canDragBookmark(bookmark.id) ? "bookmark-tree-row__chevron bookmark-tree-row__grip" : "bookmark-tree-row__chevron"}
+            title={canDragBookmark(bookmark.id) ? "按住拖拽到其他文件夹" : undefined}
+          >
+            {canDragBookmark(bookmark.id) ? <GripVertical aria-hidden="true" /> : null}
+          </span>
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
           <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
           {(() => {
@@ -1560,31 +1570,16 @@ export function ManageBookmarks() {
               <ExternalLink className="w-3 h-3" />
             </a>
           )}
-          <div className="extension-row-actions">
-            <button
-              type="button"
-              className="extension-icon-action bookmark-whitelist-action"
-              disabled={busy || (whitelistIndex.protectedBookmarkIds.has(bookmark.id) &&
-                !whitelistEntries.some((entry) => entry.type === "bookmark" && entry.id === bookmark.id))}
-              title={whitelistIndex.reasonById.get(bookmark.id) ?? "保护此书签"}
-              aria-label={whitelistEntries.some((entry) => entry.type === "bookmark" && entry.id === bookmark.id)
-                ? "解除书签白名单"
-                : whitelistIndex.protectedBookmarkIds.has(bookmark.id) ? "由文件夹白名单保护" : "保护此书签"}
-              onClick={() => void toggleWhitelist("bookmark", bookmark.id)}
-            >
-              {whitelistIndex.protectedBookmarkIds.has(bookmark.id) ? <ShieldCheck className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-            </button>
-            <button onClick={() => handleEditStart(bookmark)} disabled={busy || whitelistIndex.protectedBookmarkIds.has(bookmark.id)}
-              title={whitelistIndex.protectedBookmarkIds.has(bookmark.id) ? "请先解除白名单保护" : "编辑"}
-              className="extension-icon-action extension-icon-action--blue" aria-label="编辑">
-              <Edit2 className="w-4 h-4" />
-            </button>
-            <button onClick={() => void handleDelete(bookmark.id)} disabled={busy || whitelistIndex.protectedBookmarkIds.has(bookmark.id)}
-              title={whitelistIndex.protectedBookmarkIds.has(bookmark.id) ? "请先解除白名单保护" : "删除"}
-              className="extension-icon-action extension-icon-action--red" aria-label="删除">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
+          <BookmarkRowActionMenu
+            bookmarkTitle={bookmark.title}
+            isProtected={whitelistIndex.protectedBookmarkIds.has(bookmark.id)}
+            hasDirectWhitelistEntry={whitelistEntries.some((entry) => entry.type === "bookmark" && entry.id === bookmark.id)}
+            protectionReason={whitelistIndex.reasonById.get(bookmark.id)}
+            busy={busy}
+            onToggleProtection={() => void toggleWhitelist("bookmark", bookmark.id)}
+            onEdit={() => handleEditStart(bookmark)}
+            onDelete={() => void handleDelete(bookmark.id)}
+          />
         </>
       )}
     </div>

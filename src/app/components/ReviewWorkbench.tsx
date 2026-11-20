@@ -1,6 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { ArrowRight, Check, ChevronDown, FileText, Folder, FolderPlus, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, FileText, Folder, FolderPlus, RefreshCw, RotateCcw, ShieldCheck, X } from "lucide-react";
 import type { MovePlan, PreviewFrameworkDecision, PreviewPlanDecision, PreviewRiskItem, Settings, TokenUsage } from "../types";
 import { buildPreviewRiskAnalysis, derivePreviewReview, pathKey } from "../services/previewReview";
 import { getPlanSummary } from "../services/previewSafety";
@@ -8,10 +8,22 @@ import { PreviewDialog } from "./PreviewDialog";
 
 type Analysis = ReturnType<typeof buildPreviewRiskAnalysis>;
 type Review = ReturnType<typeof derivePreviewReview>;
+export type ReviewDecisionSnapshot = {
+  plans: Record<string, PreviewPlanDecision | undefined>;
+  frameworks?: Record<string, PreviewFrameworkDecision | undefined>;
+};
+
+type ReviewToast = {
+  id: number;
+  message: string;
+  undo?: ReviewDecisionSnapshot;
+};
+
 type Props = {
   analysis: Analysis;
   review: Review;
   frameworks: Record<string, PreviewFrameworkDecision>;
+  decisions?: Record<string, PreviewPlanDecision>;
   busy: boolean;
   cacheMessage: string;
   summary: ReturnType<typeof getPlanSummary>;
@@ -24,11 +36,15 @@ type Props = {
   unclassifiedHandling: Settings["unclassifiedHandling"];
   onDecision: (ids: string[], decision: PreviewPlanDecision) => void;
   onFramework: (group: Analysis["frameworkGroups"][number], decision: PreviewFrameworkDecision) => void;
+  onRestore?: (snapshot: ReviewDecisionSnapshot) => void;
   onEdit: (plan: MovePlan) => void;
   onRegenerate: () => void;
   onConfirm: () => void;
   onKeepRemaining: () => void;
 };
+
+const TOAST_AUTO_DISMISS_MS = 4500;
+const DISCLOSURE_CLOSE_MS = 160;
 
 const matches = (item: PreviewRiskItem, query: string) =>
   [item.plan.bookmarkTitle, item.plan.bookmarkUrl, pathKey(item.sourcePath), pathKey(item.plan.toFolderPath)]
@@ -52,6 +68,50 @@ function Progress({ label, done, total }: { label: string; done: number; total: 
   </div>;
 }
 
+/** 保留原生 details/summary 语义的同时，为展开与收起提供跨浏览器平滑过渡。 */
+function ReviewDisclosure({ className = "", summary, children }: { className?: string; summary: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
+  const toggle = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (!open || closing) {
+      setClosing(false);
+      setOpen(true);
+      return;
+    }
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setOpen(false);
+      return;
+    }
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setOpen(false);
+      setClosing(false);
+    }, DISCLOSURE_CLOSE_MS);
+  };
+
+  return (
+    <details className={`${className} review-disclosure${closing ? " is-closing" : ""}`.trim()} open={open}>
+      <summary onClick={(event) => { event.preventDefault(); toggle(); }}>
+        {summary}
+      </summary>
+      <div className="review-disclosure__panel">
+        <div className="review-disclosure__inner">{children}</div>
+      </div>
+    </details>
+  );
+}
+
 export function ReviewWorkbench(props: Props) {
   const { analysis, review, frameworks, busy, onDecision, onEdit } = props;
   const [showAll, setShowAll] = useState(false);
@@ -60,6 +120,9 @@ export function ReviewWorkbench(props: Props) {
   const [keepOpen, setKeepOpen] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState<ReviewToast | null>(null);
+  const [toastPaused, setToastPaused] = useState(false);
+  const toastSequence = useRef(0);
   const workspace = useRef<HTMLDivElement>(null);
   const awaiting = new Set(review.pending.map((item) => item.plan.bookmarkId));
   const pendingFrameworks = review.pendingFrameworks.length;
@@ -78,15 +141,50 @@ export function ReviewWorkbench(props: Props) {
   const decidedItems = review.items.filter((item) => !awaiting.has(item.plan.bookmarkId));
   const weakCount = analysis.keep.filter((item) => item.plan.source !== "manual" && item.plan.confidence < 0.55).length;
 
+  useEffect(() => {
+    if (!toast || toastPaused) return;
+    const timer = window.setTimeout(() => setToast(null), TOAST_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [toast, toastPaused]);
+
+  const showToast = (message: string, undo?: ReviewDecisionSnapshot, announcement = message) => {
+    toastSequence.current += 1;
+    setToastPaused(false);
+    setToast({ id: toastSequence.current, message, undo });
+    setNotice(announcement);
+  };
+
+  const handleUndoToast = () => {
+    if (!toast?.undo || !props.onRestore || busy) return;
+    props.onRestore(toast.undo);
+    setToast(null);
+    setNotice("已撤销刚才的审核决定。");
+  };
+
   const decide = (ids: string[], choice: PreviewPlanDecision) => {
+    const previousPlans = Object.fromEntries(ids.map((id) => [id, props.decisions?.[id]]));
     onDecision(ids, choice);
     setSelectedReviewIds((previous) => {
       const next = new Set(previous);
       ids.forEach((id) => next.delete(id));
       return next;
     });
-    setNotice(choice === "move" ? "已加入待执行清单，尚未移动书签。" : "已保留在原目录。");
+    const label = ids.length > 1
+      ? `${choice === "move" ? "已批准移动" : "已保留原位"} ${ids.length} 条`
+      : choice === "move" ? "已加入待执行清单" : "已保留在原目录";
+    showToast(label, { plans: previousPlans }, choice === "move" ? "已加入待执行清单，尚未移动书签。" : "已保留在原目录。");
   };
+
+  const decideFramework = (group: Analysis["frameworkGroups"][number], decision: PreviewFrameworkDecision) => {
+    const previousFramework = frameworks[group.key];
+    const previousPlans = Object.fromEntries(group.items.map((item) => [item.plan.bookmarkId, props.decisions?.[item.plan.bookmarkId]]));
+    props.onFramework(group, decision);
+    showToast(
+      decision === "approve" ? `已采用目录「${group.topLevel}」` : `已暂不新建「${group.topLevel}」`,
+      { frameworks: { [group.key]: previousFramework }, plans: previousPlans }
+    );
+  };
+
   const toggleReviewSelection = (bookmarkId: string) => {
     setSelectedReviewIds((previous) => {
       const next = new Set(previous);
@@ -138,12 +236,11 @@ export function ReviewWorkbench(props: Props) {
         <div><span>建议</span><strong>{pathKey(plan.toFolderPath) || "保持原位"}</strong></div>
       </div>
       <div className="review-item__tools">
-        <details className="review-evidence">
-          <summary>查看依据 <ChevronDown size={14} /></summary>
+        <ReviewDisclosure className="review-evidence" summary={<>查看依据 <ChevronDown size={14} /></>}>
           <p>{item.reasons.join("；")}</p>
           {plan.reason && <p>{plan.reason}</p>}
           <p>{plan.source === "manual" ? "来源：人工修改，仍需确认此次移动。" : `来源：${plan.source === "rule" ? "分类规则" : "AI 建议"}。模型自评 ${Number.isFinite(plan.confidence) ? plan.confidence.toFixed(2) : "未知"}，仅作排序参考，不代表正确率。`}</p>
-        </details>
+        </ReviewDisclosure>
         <button type="button" className="review-text-button" disabled={busy} onClick={() => onEdit(plan)}>修改目标目录 <ArrowRight size={14} /></button>
       </div>
       {editable && <div className="review-actions" aria-label={`${plan.bookmarkTitle} 的处理方式`}>
@@ -182,13 +279,13 @@ export function ReviewWorkbench(props: Props) {
         <div className="review-route">{[...new Set(group.items.map((item) => pathKey(item.plan.toFolderPath)))].map((path) => <div key={path}><Folder size={14} /><strong>{path}</strong></div>)}</div>
         <p className="review-muted">仅采用结构，书签另行审核</p>
         <div className="review-actions">
-          <button type="button" disabled={busy} onClick={() => props.onFramework(group, "keep")}>不采用，保留原位</button>
-          <button type="button" disabled={busy} className="review-primary" onClick={() => props.onFramework(group, "approve")}>采用此目录</button>
+          <button type="button" disabled={busy} onClick={() => decideFramework(group, "keep")}>不采用，保留原位</button>
+          <button type="button" disabled={busy} className="review-primary" onClick={() => decideFramework(group, "approve")}>采用此目录</button>
         </div>
-        <details className="review-evidence"><summary>调整目录名与层级 <ChevronDown size={14} /></summary>
+        <ReviewDisclosure className="review-evidence" summary={<>调整目录名与层级 <ChevronDown size={14} /></>}>
           <p>逐条修改建议路径后，重新确认新的目录结构。</p>
           {group.items.map((item) => <button className="review-text-button" key={item.plan.bookmarkId} disabled={busy} onClick={() => onEdit(item.plan)}>修改 {item.plan.bookmarkTitle} 的目标</button>)}
-        </details>
+        </ReviewDisclosure>
       </article>)}
       {pendingItems.length > 0 && <>
         <div className="review-section-heading review-section-heading--review">
@@ -210,36 +307,38 @@ export function ReviewWorkbench(props: Props) {
       {!remaining && <div className="review-complete"><Check size={20} /><strong>所有建议均已处理</strong></div>}
     </div>
 
-    <details className="review-safe">
-      <summary><ShieldCheck size={20} /><span><strong>已安全处理的建议</strong><small>低风险 {analysis.auto.length} 条，默认保留 {analysis.keep.length} 条</small></span><ChevronDown size={16} /></summary>
+    <ReviewDisclosure
+      className="review-safe"
+      summary={<><ShieldCheck size={20} /><span><strong>已安全处理的建议</strong><small>低风险 {analysis.auto.length} 条，默认保留 {analysis.keep.length} 条</small></span><ChevronDown size={16} /></>}
+    >
       <label className="review-search"><span>搜索安全建议</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题、URL 或目录" /></label>
       {analysis.auto.some((item) => review.effective[item.plan.bookmarkId] === "move") && <button className="review-text-button" disabled={busy}
         onClick={() => decide(analysis.auto.filter((item) => review.effective[item.plan.bookmarkId] === "move").map((item) => item.plan.bookmarkId), "keep")}>取消全部低风险自动建议</button>}
       <div className="review-secondary-list">{safeItems.filter((item) => matches(item, query)).map((item) => renderItem(item))}</div>
       {!safeItems.some((item) => matches(item, query)) && <p className="review-muted">没有匹配的建议。</p>}
       <Link to="/manage" className="review-text-button">疑似重复与链接问题，前往书签管理独立核实 <ArrowRight size={14} /></Link>
-    </details>
+    </ReviewDisclosure>
 
-    <details className="review-details">
-      <summary>执行清单与目标树 <span>{review.approvedPlans.length} 条移动</span><ChevronDown size={16} /></summary>
+    <ReviewDisclosure
+      className="review-details"
+      summary={<>执行清单与目标树 <span>{review.approvedPlans.length} 条移动</span><ChevronDown size={16} /></>}
+    >
       <label className="review-search"><span>搜索实际移动的目标树</span><input value={props.treeQuery} onChange={(event) => props.onTreeQuery(event.target.value)} placeholder="书签标题、URL 或目标目录" /></label>
       <p className="review-muted">{props.folderCount} 个匹配目标目录；修改目标后须重新审核</p>
       <div className="preview-tree">{props.tree}</div>
       {!review.approvedPlans.length && <p className="review-muted">没有已批准的移动，书签保持原位。</p>}
-      <details className="review-evidence"><summary>已决定的全部条目（{decidedItems.length}）<ChevronDown size={14} /></summary>
+      <ReviewDisclosure className="review-evidence" summary={<>已决定的全部条目（{decidedItems.length}）<ChevronDown size={14} /></>}>
         <div className="review-secondary-list">{decidedItems.map((item) => renderItem(item))}</div>
-      </details>
-      {analysis.frameworkGroups.some((group) => frameworks[group.key]) && <details className="review-evidence">
-        <summary>已决定的目录结构 <ChevronDown size={14} /></summary>
+      </ReviewDisclosure>
+      {analysis.frameworkGroups.some((group) => frameworks[group.key]) && <ReviewDisclosure className="review-evidence" summary={<>已决定的目录结构 <ChevronDown size={14} /></>}>
         {analysis.frameworkGroups.filter((group) => frameworks[group.key]).map((group) => <div key={group.key} className="review-structure-decision">
           <p>{group.topLevel}，{frameworks[group.key] === "approve" ? "已采用" : "不新建"}</p>
-          <button className="review-text-button" disabled={busy} onClick={() => props.onFramework(group, frameworks[group.key] === "approve" ? "keep" : "approve")}>更改目录决定（重新审核其中书签）</button>
+          <button className="review-text-button" disabled={busy} onClick={() => decideFramework(group, frameworks[group.key] === "approve" ? "keep" : "approve")}>更改目录决定（重新审核其中书签）</button>
         </div>)}
-      </details>}
-    </details>
+      </ReviewDisclosure>}
+    </ReviewDisclosure>
     <div className="review-strategy"><span>无法可靠分类时</span><Link to="/options">查看设置 <ArrowRight size={13} /></Link><p>{props.unclassifiedHandling === "collect" ? "当前设置：集中至「未分类」；本次低依据建议保留原位。" : "保留原位置"}</p></div>
-    <details className="review-details">
-      <summary>方案详情与执行说明 <ChevronDown size={16} /></summary>
+    <ReviewDisclosure className="review-details" summary={<>方案详情与执行说明 <ChevronDown size={16} /></>}>
       {props.cacheMessage && <p>{props.cacheMessage}</p>}
       <p>本次模型：{props.model || "缓存未记录"}</p>
       {props.tokenUsage && <p>Token：{props.tokenUsage.totalTokens.toLocaleString()}，输入 {props.tokenUsage.promptTokens.toLocaleString()} / 输出 {props.tokenUsage.completionTokens.toLocaleString()}</p>}
@@ -247,10 +346,35 @@ export function ReviewWorkbench(props: Props) {
       <p>会清理本次移动后变空的源目录、空祖先与新建空目录；撤销可移回原目录，但不恢复原排序。</p>
       <p>删除或变化项会在执行前再次校验；已不存在的书签不计入有效参与数。</p>
       <button type="button" className="review-text-button" disabled={busy} onClick={props.onRegenerate}>重新选择书签</button>
-    </details>
-    <p className="review-announcement" role="status" aria-live="polite">{notice}</p>
+    </ReviewDisclosure>
+    <p className="sr-only" role="status" aria-live="polite">{notice}</p>
 
     <footer className="review-footer">
+      {toast && (
+        <div
+          key={toast.id}
+          className="review-toast"
+          role="status"
+          onMouseEnter={() => setToastPaused(true)}
+          onMouseLeave={() => setToastPaused(false)}
+          onFocus={() => setToastPaused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setToastPaused(false);
+          }}
+        >
+          <CheckCircle2 className="review-toast__icon" size={16} aria-hidden="true" />
+          <span className="review-toast__text">{toast.message}</span>
+          {toast.undo && props.onRestore && (
+            <button type="button" className="review-toast__undo" disabled={busy} onClick={handleUndoToast}>
+              <RotateCcw size={13} aria-hidden="true" />
+              撤销
+            </button>
+          )}
+          <button type="button" className="review-toast__close" aria-label="关闭提示" onClick={() => setToast(null)}>
+            <X size={14} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       <div><span>{review.approvedPlans.length} 条移动已批准</span><strong>{remaining ? `待定 ${pendingCount} 条${pendingFrameworks ? `，${pendingFrameworks} 个目录` : ""}` : "可进行最终确认"}</strong></div>
       <button type="button" className="review-primary" disabled={busy || (!remaining && !review.approvedPlans.length)}
         onClick={continueReview}>{busy ? "正在保存与校验…" : remaining ? "继续审核" : review.approvedPlans.length ? `检查并应用（${review.approvedPlans.length} 条）` : "全部保留原位"}<ArrowRight size={17} /></button>
@@ -261,7 +385,17 @@ export function ReviewWorkbench(props: Props) {
       description={`剩余 ${pendingCount} 条书签将保持原位，${pendingFrameworks} 个待确认目录不新建。已经批准的其他移动保持不变。`}
       busy={busy} onClose={() => setKeepOpen(false)} actions={<>
         <button className="extension-page__wide-secondary" data-dialog-return disabled={busy} onClick={() => setKeepOpen(false)}>继续审核</button>
-        <button className="extension-page__wide-primary" disabled={busy} onClick={() => { props.onKeepRemaining(); setKeepOpen(false); setNotice("其余待定项已明确保留原位。"); }}>确认保留原位</button>
+        <button className="extension-page__wide-primary" disabled={busy} onClick={() => {
+          const previousFrameworks = Object.fromEntries(review.pendingFrameworks.map((group) => [group.key, frameworks[group.key]]));
+          const previousPlans = Object.fromEntries(review.pending.map((item) => [item.plan.bookmarkId, props.decisions?.[item.plan.bookmarkId]]));
+          props.onKeepRemaining();
+          setKeepOpen(false);
+          showToast(
+            "其余待定项已保留原位",
+            { frameworks: previousFrameworks, plans: previousPlans },
+            "其余待定项已明确保留原位。"
+          );
+        }}>确认保留原位</button>
       </>}><p>此操作仅保存审核决定，不会移动或删除书签。</p></PreviewDialog>}
     {regenerateOpen && <PreviewDialog label="重新整理方案" title="重新整理这批书签？"
       description="当前审核决定、目标目录调整和待定项会被清除，需要重新选择书签并生成方案。书签本身不会被移动。"

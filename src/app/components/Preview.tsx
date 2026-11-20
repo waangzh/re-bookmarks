@@ -1273,6 +1273,31 @@ export function Preview() {
     setError("");
   };
 
+  const restoreDecisionSnapshot = (snapshot: {
+    plans: Record<string, PreviewPlanDecision | undefined>;
+    frameworks?: Record<string, PreviewFrameworkDecision | undefined>;
+  }) => {
+    setPlanDecisions((previous) => {
+      const next = { ...previous };
+      for (const [id, value] of Object.entries(snapshot.plans)) {
+        if (value === undefined) delete next[id];
+        else next[id] = value;
+      }
+      return next;
+    });
+    if (snapshot.frameworks) {
+      setFrameworkDecisions((previous) => {
+        const next = { ...previous };
+        for (const [key, value] of Object.entries(snapshot.frameworks!)) {
+          if (value === undefined) delete next[key];
+          else next[key] = value;
+        }
+        return next;
+      });
+    }
+    setError("");
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.size === allBookmarks.length) {
       setSelectedIds(new Set());
@@ -1538,6 +1563,8 @@ export function Preview() {
               <ReviewWorkbench
                 analysis={riskAnalysis} review={review}
                 frameworks={frameworkDecisions}
+                decisions={planDecisions}
+                onRestore={restoreDecisionSnapshot}
                 busy={savingPreviewDrop || !reviewLoaded} cacheMessage={cacheMessage}
                 summary={summary} tree={previewTree.children.map((folder) => renderPreviewTreeNode(folder))}
                 treeQuery={treeQuery} onTreeQuery={setTreeQuery} folderCount={previewFolderCount}

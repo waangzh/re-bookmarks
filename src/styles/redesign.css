@@ -104,6 +104,23 @@
 .remarks-app .home-task-progress { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: #4d607e; font-size: 12px; font-variant-numeric: tabular-nums; }
 .remarks-app .home-task-progress progress { width: 100%; min-width: 0; height: 8px; accent-color: var(--remarks-blue); }
 .remarks-app .home-task-progress span { flex-shrink: 0; }
+.remarks-app .home-skeleton-group { display: grid; gap: 8px; margin-top: 12px; }
+.remarks-app .home-skeleton-list { display: grid; gap: 6px; }
+.remarks-app .home-skeleton-block {
+  display: block;
+  border-radius: var(--remarks-radius-control);
+  background: linear-gradient(90deg, #e2ebfc 0%, #f1f6ff 50%, #e2ebfc 100%);
+  background-size: 200% 100%;
+  animation: remarks-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.remarks-app .home-skeleton-line--title { width: 68%; height: 26px; margin-bottom: 2px; }
+.remarks-app .home-skeleton-line--body { width: 100%; height: 15px; }
+.remarks-app .home-skeleton-line--short { width: 76%; height: 15px; }
+.remarks-app .home-skeleton-action { flex: 1; min-width: 0; height: 44px; }
+.remarks-app .home-skeleton-action--quiet { width: 44px; height: 44px; flex-shrink: 0; }
+.remarks-app .home-skeleton-row { width: 100%; height: 44px; }
+.remarks-app .home-skeleton-row--compact { width: 100%; height: 39px; background: linear-gradient(90deg, #eaf0fa 0%, #f6f8fc 50%, #eaf0fa 100%); background-size: 200% 100%; }
+@keyframes remarks-skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .remarks-app .home-featured-task__actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
 .remarks-app .home-primary { display: flex; align-items: center; justify-content: center; flex: 1; gap: 8px; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--remarks-blue); border-radius: var(--remarks-radius-control); background: var(--remarks-blue); color: #fff; font-size: 13px; line-height: 1.5; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
 .remarks-app .home-primary svg { width: 15px; height: 15px; flex-shrink: 0; }
@@ -338,6 +355,11 @@
 .remarks-app .impression-coverage__text { flex: 1; min-width: 0; }
 .remarks-app .impression-coverage .impression-coverage__action { width: auto; min-height: 34px; padding: 6px 8px; font-size: 12px; }
 .remarks-app .impression-coverage .impression-backfill { width: 100%; }
+.remarks-app .bookmark-tree-row--bookmark:not(.bookmark-tree-row--draggable) { cursor: default; }
+.remarks-app .bookmark-tree-row__grip { color: var(--remarks-muted); opacity: 0; transform: scale(0.92); transition: opacity 140ms ease, transform 140ms ease, color 140ms ease; }
+.remarks-app .bookmark-tree-row__grip svg { width: 14px; height: 14px; }
+.remarks-app .bookmark-tree-row--draggable:is(:hover, :focus-within, .is-dragging) .bookmark-tree-row__grip { opacity: 1; transform: scale(1); color: var(--remarks-blue); }
+@media (hover: none) { .remarks-app .bookmark-tree-row--draggable .bookmark-tree-row__grip { opacity: 0.55; } }
 
 @media (max-width: 520px) {
   .remarks-app .extension-page.extension-page--settings .extension-page__inner { padding-bottom: 128px; }
@@ -375,4 +397,52 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .remarks-app *, .remarks-app *::before, .remarks-app *::after { scroll-behavior: auto; transition: none; animation: none; }
+  .bookmark-row-menu { animation: none; }
 }
+
+.remarks-app .bookmark-row-menu__trigger { color: var(--remarks-muted); border-radius: var(--remarks-radius-control); }
+.remarks-app .bookmark-row-menu__trigger.is-protected { color: var(--remarks-blue); }
+.remarks-app .bookmark-row-menu__trigger:is(:hover, [data-state="open"]):not(:disabled) { background: var(--remarks-soft); color: var(--remarks-blue); }
+.bookmark-row-menu {
+  z-index: 60;
+  min-width: 156px;
+  max-width: min(220px, calc(100vw - 16px));
+  padding: 4px;
+  border: 1px solid #d5deed;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 28px -8px rgb(23 35 59 / 20%), 0 4px 10px rgb(23 35 59 / 8%);
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, top right);
+  animation: bookmark-menu-expand 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.bookmark-row-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #17233b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+.bookmark-row-menu__item svg { width: 15px; height: 15px; flex: 0 0 auto; color: #63728b; }
+.bookmark-row-menu__item span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bookmark-row-menu__item[data-highlighted]:not([data-disabled]) { background: #edf3ff; color: #315fda; }
+.bookmark-row-menu__item[data-highlighted]:not([data-disabled]) svg { color: #315fda; }
+.bookmark-row-menu__item--danger { color: #dc2626; }
+.bookmark-row-menu__item--danger svg { color: #dc2626; }
+.bookmark-row-menu__item--danger[data-highlighted]:not([data-disabled]) { background: #fef2f2; color: #b91c1c; }
+.bookmark-row-menu__item--danger[data-highlighted]:not([data-disabled]) svg { color: #b91c1c; }
+.bookmark-row-menu__item[data-disabled] { opacity: 0.48; cursor: not-allowed; }
+.bookmark-row-menu__separator { height: 1px; margin: 4px 2px; background: #e5eaf3; }
+@keyframes bookmark-menu-expand { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }

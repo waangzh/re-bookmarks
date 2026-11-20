@@ -265,3 +265,291 @@ test("Options 使用统一 Switch 控件并完整反映脏状态、还原与保�
   assert.ok(failBar.props.className.includes("is-dirty"));
   assert.match(text(failBar), /写入失败/);
 });
+
+test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近书签数量至 5 条", () => {
+  const state = [];
+  let cursor = 0;
+  let storeLoading = true;
+  const recentSample = Array.from({ length: 6 }, (_, index) => ({
+    id: `bm-${index}`,
+    title: `书签 ${index}`,
+    url: `https://example-${index}.test/`,
+    parentId: "1",
+    path: ["技术"],
+    type: "url",
+    dateAdded: 1000 + index,
+  }));
+
+  const exports = transpileComponent("src/app/components/SidebarHome.tsx", {
+    react: {
+      useEffect() {},
+      useMemo: (fn) => fn(),
+      useRef: (value) => ({ current: value }),
+      useState(initial) {
+        const index = cursor++;
+        if (state.length <= index) state[index] = typeof initial === "function" ? initial() : initial;
+        return [state[index], (next) => {
+          state[index] = typeof next === "function" ? next(state[index]) : next;
+        }];
+      },
+    },
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "react-router": { Link: () => null, useNavigate: () => () => {} },
+    "lucide-react": require("lucide-react"),
+    "../services/history": { getFrequentBookmarks: async () => [], hasHistoryPermission: async () => false },
+    "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
+    "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
+    "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+    "../services/impressionSearch": { getImpressionMatchIcon: () => "", isImpressionMatch: () => false, searchBookmarksByImpression: () => [] },
+    "../hooks/useDeepImpressionSearch": {
+      useDeepImpressionSearch: () => ({
+        state: { query: "", stage: "idle", expandedTerms: [] },
+        run() {},
+        cancel() {},
+        hasResult: false,
+        running: false,
+      }),
+    },
+    "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
+    "../services/bookmarkTasks": { countDuplicateGroups: () => 0, getLinkHealthProblemResults: () => [] },
+    "../services/currentPage": { saveCurrentPage: async () => ({ created: true }) },
+    "../services/homeTasks": {
+      getHomeTasks: () => ({ tasks: [] }),
+      getOrganizeAction: () => ({ label: "开始整理", to: "/preview" }),
+    },
+    "../services/storage": {
+      getIgnoredManualTaskBookmarkIds: async () => [],
+      getLinkHealthReport: async () => null,
+      getPreviewPlan: async () => null,
+    },
+    "../services/previewTask": { getPreviewTask: async () => null },
+    "../services/rules": { sanitizeUrl: (url) => url },
+    "../store/useAppStore": {
+      useAppStore: () => ({
+        settings: DEFAULT_SETTINGS,
+        bookmarks: storeLoading ? [] : recentSample,
+        pendingRecommendations: [],
+        lastReport: null,
+        loadAll() {},
+        loading: storeLoading,
+        error: "",
+      }),
+    },
+    "../services/whitelist": {
+      filterAvailableBookmarks: (items) => items,
+      getCurrentWhitelist: async () => ({ entries: [], index: null }),
+      whitelistFingerprint: () => "",
+    },
+  });
+
+  assert.equal(exports.getHomeRecentLimit(true), 2);
+  assert.equal(exports.getHomeRecentLimit(false), 5);
+
+  const render = (props) => { cursor = 0; return exports.SidebarHome(props); };
+  const busyTree = render({ compact: false });
+  assert.ok(nodes(busyTree, (item) => String(item.props.className ?? "").includes("home-skeleton-group")).length === 1);
+  assert.ok(nodes(busyTree, (item) => String(item.props.className ?? "").includes("home-skeleton-row--compact")).length >= 2);
+
+  storeLoading = false;
+  const sidebarTree = render({ compact: false });
+  assert.equal(nodes(sidebarTree, (item) => item.props.className === "home-recent-row").length, 5);
+  const popupTree = render({ compact: true });
+  assert.equal(nodes(popupTree, (item) => item.props.className === "home-recent-row").length, 2);
+});
+
+test("ReviewWorkbench 展示可撤销悬浮 Toast 且披露面板支持平滑关闭时序", () => {
+  const { buildPreviewRiskAnalysis, derivePreviewReview } = transpileComponent("src/app/services/previewReview.ts", {
+    "./preferenceSafety": { getPreferenceConflict: () => false },
+  });
+
+  const bookmarks = [
+    { id: "a", title: "跨目录文档", parentId: "src", url: "https://a.test/", path: ["开发", "资料"] },
+    { id: "b", title: "新目录资料", parentId: "src", url: "https://b.test/", path: ["开发", "工具"] },
+  ];
+  const plans = [
+    { bookmarkId: "a", bookmarkTitle: "跨目录文档", bookmarkUrl: "https://a.test/", fromParentId: "src", sourceFolderPath: ["开发", "资料"], toFolderPath: ["工作", "文档"], confidence: 0.9, source: "ai", reason: "主题匹配" },
+  ];
+
+  const state = [];
+  let cursor = 0;
+  let planDecisions = {};
+  let frameworkDecisions = {};
+  const restoredSnapshots = [];
+  const timers = new Map();
+  let nextTimerId = 1;
+
+  const exports = transpileComponent("src/app/components/ReviewWorkbench.tsx", {
+    react: {
+      useEffect() {},
+      useRef: (value) => ({ current: value }),
+      useState(initial) {
+        const index = cursor++;
+        if (state.length <= index) state[index] = typeof initial === "function" ? initial() : initial;
+        return [state[index], (next) => {
+          state[index] = typeof next === "function" ? next(state[index]) : next;
+        }];
+      },
+    },
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "react-router": { Link: () => null },
+    "lucide-react": require("lucide-react"),
+    "../services/previewReview": { buildPreviewRiskAnalysis, derivePreviewReview, pathKey: (p) => p.join(" / ") },
+    "../services/previewSafety": { getPlanSummary: () => ({ moveCount: 1 }) },
+    "./PreviewDialog": { PreviewDialog: () => null },
+  }, {
+    window: {
+      matchMedia: () => ({ matches: false }),
+      setTimeout(fn, delay) {
+        const id = nextTimerId++;
+        timers.set(id, { fn, delay });
+        return id;
+      },
+      clearTimeout(id) { timers.delete(id); },
+    },
+  });
+
+  const analysis = buildPreviewRiskAnalysis(plans, bookmarks, null);
+  const render = () => {
+    cursor = 0;
+    const review = derivePreviewReview(analysis, planDecisions, frameworkDecisions);
+    return exports.ReviewWorkbench({
+      analysis,
+      review,
+      frameworks: frameworkDecisions,
+      decisions: planDecisions,
+      busy: false,
+      cacheMessage: "",
+      summary: { moveCount: 1 },
+      tree: null,
+      treeQuery: "",
+      onTreeQuery() {},
+      folderCount: 1,
+      model: "test-model",
+      unclassifiedHandling: "preserveSourcePath",
+      onDecision(ids, choice) {
+        for (const id of ids) planDecisions = { ...planDecisions, [id]: choice };
+      },
+      onFramework(group, decision) {
+        frameworkDecisions = { ...frameworkDecisions, [group.key]: decision };
+      },
+      onRestore(snapshot) {
+        restoredSnapshots.push(snapshot);
+        for (const [id, val] of Object.entries(snapshot.plans)) {
+          if (val === undefined) {
+            const copy = { ...planDecisions };
+            delete copy[id];
+            planDecisions = copy;
+          } else {
+            planDecisions = { ...planDecisions, [id]: val };
+          }
+        }
+      },
+      onEdit() {},
+      onRegenerate() {},
+      onConfirm() {},
+      onKeepRemaining() {},
+    });
+  };
+
+  let tree = render();
+  const approveFrameworkBtn = nodes(tree, (item) => item.type === "button" && text(item) === "采用此目录")[0];
+  assert.ok(approveFrameworkBtn);
+  approveFrameworkBtn.props.onClick();
+
+  tree = render();
+  const toastNode = nodes(tree, (item) => String(item.props.className ?? "").includes("review-toast"))[0];
+  assert.ok(toastNode);
+  assert.match(text(toastNode), /已采用目录/);
+  const undoBtn = nodes(toastNode, (item) => item.type === "button" && text(item).includes("撤销"))[0];
+  assert.ok(undoBtn);
+  undoBtn.props.onClick();
+
+  assert.equal(restoredSnapshots.length, 1);
+  assert.equal(restoredSnapshots[0].frameworks["工作"], undefined);
+
+  tree = render();
+  assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("review-toast")).length, 0);
+
+  // 验证平滑折叠组件渲染原生 details/summary 并带有 review-disclosure 类
+  const disclosures = nodes(tree, (item) => typeof item.type === "function" && item.type.name === "ReviewDisclosure");
+  assert.ok(disclosures.length >= 3);
+  const disclosureState = [];
+  let dCursor = 0;
+  const DisclosureFn = disclosures[0].type;
+  // 直接检查 ReviewDisclosure 返回 <details> 结构
+  assert.ok(DisclosureFn.toString().includes("review-disclosure"));
+  assert.ok(dCursor === 0 && disclosureState.length === 0);
+});
+
+test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVertical 并收起三项行操作", () => {
+  const source = fs.readFileSync(path.resolve("src/app/components/ManageBookmarks.tsx"), "utf8");
+  assert.match(source, /GripVertical/);
+  assert.match(source, /bookmark-tree-row--draggable/);
+  assert.match(source, /bookmark-tree-row__grip/);
+  assert.match(source, /canDragBookmark\(bookmark\.id\)\s*\?\s*<GripVertical/);
+  assert.match(source, /<BookmarkRowActionMenu/);
+
+  const MenuItem = () => null;
+  const menuExports = transpileComponent("src/app/components/BookmarkRowActionMenu.tsx", {
+    "@radix-ui/react-dropdown-menu": {
+      Root: ({ children }) => ({ type: "Root", props: { children } }),
+      Trigger: ({ children }) => ({ type: "Trigger", props: { children } }),
+      Portal: ({ children }) => ({ type: "Portal", props: { children } }),
+      Content: ({ children, ...props }) => ({ type: "Content", props: { ...props, children } }),
+      Item: Object.assign(MenuItem, { displayName: "MenuItem" }),
+      Separator: () => null,
+    },
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "lucide-react": require("lucide-react"),
+  });
+
+  const calls = [];
+  const treeUnprotected = menuExports.BookmarkRowActionMenu({
+    bookmarkTitle: "开发文档",
+    isProtected: false,
+    hasDirectWhitelistEntry: false,
+    busy: false,
+    onToggleProtection: () => calls.push("protect"),
+    onEdit: () => calls.push("edit"),
+    onDelete: () => calls.push("delete"),
+  });
+
+  const trigger = nodes(treeUnprotected, (item) => item.type === "button")[0];
+  assert.match(trigger.props["aria-label"], /更多操作：开发文档/);
+  const content = nodes(treeUnprotected, (item) => String(item.props.className ?? "").includes("bookmark-row-menu") && item.props.side === "bottom")[0];
+  assert.ok(content);
+  const items = nodes(treeUnprotected, (item) => item.type === MenuItem);
+  assert.equal(items.length, 3);
+  assert.deepEqual(items.map((item) => text(item)), ["保护此书签", "编辑", "删除"]);
+  assert.deepEqual(items.map((item) => item.props.disabled), [false, false, false]);
+  items.forEach((item) => item.props.onSelect());
+  assert.deepEqual(calls, ["protect", "edit", "delete"]);
+
+  const treeDirectProtected = menuExports.BookmarkRowActionMenu({
+    bookmarkTitle: "受保护文档",
+    isProtected: true,
+    hasDirectWhitelistEntry: true,
+    protectionReason: "已手动加入白名单",
+    busy: false,
+    onToggleProtection() {},
+    onEdit() {},
+    onDelete() {},
+  });
+  const directItems = nodes(treeDirectProtected, (item) => item.type === MenuItem);
+  assert.deepEqual(directItems.map((item) => text(item)), ["解除白名单保护", "编辑", "删除"]);
+  assert.deepEqual(directItems.map((item) => item.props.disabled), [false, true, true]);
+
+  const treeFolderProtected = menuExports.BookmarkRowActionMenu({
+    bookmarkTitle: "文件夹受保护文档",
+    isProtected: true,
+    hasDirectWhitelistEntry: false,
+    busy: false,
+    onToggleProtection() {},
+    onEdit() {},
+    onDelete() {},
+  });
+  const folderItems = nodes(treeFolderProtected, (item) => item.type === MenuItem);
+  assert.deepEqual(folderItems.map((item) => text(item)), ["由文件夹白名单保护", "编辑", "删除"]);
+  assert.deepEqual(folderItems.map((item) => item.props.disabled), [true, true, true]);
+});
+

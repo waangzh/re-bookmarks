@@ -144,6 +144,13 @@ export async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<Current
   });
 }
 
+const DEFAULT_POPUP_RECENT_LIMIT = 2;
+const DEFAULT_SIDEBAR_RECENT_LIMIT = 5;
+
+export function getHomeRecentLimit(compact: boolean): number {
+  return compact ? DEFAULT_POPUP_RECENT_LIMIT : DEFAULT_SIDEBAR_RECENT_LIMIT;
+}
+
 export function SidebarHome({ showAllTasks = false, compact = false }: { showAllTasks?: boolean; compact?: boolean }) {
   const { settings, bookmarks, pendingRecommendations, lastReport, loadAll, loading, error } = useAppStore();
   const [previewState, setPreviewState] = useState<PreviewState>("none");
@@ -430,7 +437,15 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       setSavingUrl(null);
     }
   };
-  const recentBookmarks = useMemo(() => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, 2), [bookmarks]);
+  const recentLimit = getHomeRecentLimit(compact);
+  const recentBookmarks = useMemo(
+    () => [...bookmarks].sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0)).slice(0, recentLimit),
+    [bookmarks, recentLimit]
+  );
+  const visibleFrequentBookmarks = useMemo(
+    () => frequentBookmarks.slice(0, recentLimit),
+    [frequentBookmarks, recentLimit]
+  );
   const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
   const toolEntries = [
     { to: "/manage?task=duplicate", label: "重复检测", icon: Copy },
@@ -508,15 +523,34 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       )}
       </div>
       {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
-      {!showAllTasks && <section className="home-featured-task" aria-busy={busy} aria-labelledby="home-task-title">
+      {!showAllTasks && <section className={`home-featured-task${busy ? " is-loading" : ""}`} aria-busy={busy} aria-labelledby="home-task-title">
         <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
-        <h1 id="home-task-title">{busy ? "正在读取你的任务…" : deferred ? "已暂缓这项任务" : primary.title}</h1>
-        <p>{busy ? "正在同步书签、分类建议和最近的执行记录。" : deferred ? "待办仍保留在任务中心。需要时，可重新显示刚才的建议。" : primary.description}</p>
+        {busy ? (
+          <>
+            <h1 id="home-task-title" className="sr-only">正在读取你的任务…</h1>
+            <div className="home-skeleton-group" aria-hidden="true">
+              <span className="home-skeleton-block home-skeleton-line--title" />
+              <span className="home-skeleton-block home-skeleton-line--body" />
+              <span className="home-skeleton-block home-skeleton-line--short" />
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 id="home-task-title">{deferred ? "已暂缓这项任务" : primary.title}</h1>
+            <p>{deferred ? "待办仍保留在任务中心。需要时，可重新显示刚才的建议。" : primary.description}</p>
+          </>
+        )}
+
         {batchProgress && <div className="home-task-progress">
           <progress aria-label="整理批次进度" max={batchProgress.totalBatches} value={batchProgress.completedBatches} />
           <span>{batchProgress.completedBatches} / {batchProgress.totalBatches} 批</span>
         </div>}
-        {!busy && <div className="home-featured-task__actions">
+        {busy ? (
+          <div className="home-featured-task__actions" aria-hidden="true">
+            <span className="home-skeleton-block home-skeleton-action" />
+            <span className="home-skeleton-block home-skeleton-action--quiet" />
+          </div>
+        ) : <div className="home-featured-task__actions">
           {deferred ? <button type="button" className="home-primary" onClick={() => setDismissedTask("")}>重新显示建议 <ArrowRight aria-hidden="true" /></button> : <>
             <Link to={primary.to} className="home-primary">{primary.cta}<ArrowRight aria-hidden="true" /></Link>
             {model.tasks.length > 0 && !["running", "failed"].includes(primary.kind) && <button type="button" className="home-quiet-button" onClick={() => setDismissedTask(taskKey)}>稍后</button>}
@@ -525,7 +559,16 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       </section>}
       {(showAllTasks || model.tasks.length > 1) && <section className="home-task-queue" aria-busy={busy}>
         <div className="home-section-heading"><h2>{showAllTasks ? "全部待办" : "其他待办"}</h2>{!showAllTasks && <Link to="/tasks">查看全部 <ArrowRight aria-hidden="true" /></Link>}</div>
-        {busy ? <p className="sidebar-muted-copy">正在读取任务…</p> : (showAllTasks ? model.tasks : model.tasks.slice(1)).map((task) => <Link key={task.to} to={task.to} className="home-queue-row"><span className="home-queue-row__icon">{task.kind === "links" || task.kind === "duplicate" ? <Link2 aria-hidden="true" /> : <Folder aria-hidden="true" />}</span><span>{task.label}</span><ChevronRight aria-hidden="true" /></Link>)}
+        {busy ? (
+          <>
+            <span className="sr-only">正在读取任务…</span>
+            <div className="home-skeleton-list" aria-hidden="true">
+              {Array.from({ length: showAllTasks ? 3 : 2 }, (_, index) => (
+                <span key={index} className="home-skeleton-block home-skeleton-row" />
+              ))}
+            </div>
+          </>
+        ) : (showAllTasks ? model.tasks : model.tasks.slice(1)).map((task) => <Link key={task.to} to={task.to} className="home-queue-row"><span className="home-queue-row__icon">{task.kind === "links" || task.kind === "duplicate" ? <Link2 aria-hidden="true" /> : <Folder aria-hidden="true" />}</span><span>{task.label}</span><ChevronRight aria-hidden="true" /></Link>)}
         {!busy && !model.tasks.length && <p className="sidebar-muted-copy">{bookmarks.length ? "目前没有待办，可以继续浏览书签。" : "还没有书签，可收藏网页或导入已有书签。"}</p>}
       </section>}
       {!showAllTasks && model.tasks.length <= 1 && <Link to="/tasks" className="home-task-center-link">查看任务中心 <ChevronRight aria-hidden="true" /></Link>}
@@ -564,8 +607,17 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       {currentPage && currentPage.related.length > 0 && <details className="home-related"><summary>同网站的 {currentPage.related.length} 个书签</summary>{currentPage.related.map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span><ChevronRight aria-hidden="true" /></a>)}</details>}
       <section className="home-regular">
         <div className="home-section-heading"><h2>{historyGranted ? "常访问书签" : "最近收藏"}</h2><Link to={historyGranted ? "/history" : "/manage"}>查看全部 <ArrowRight aria-hidden="true" /></Link></div>
-        {(historyGranted ? frequentBookmarks.slice(0, 2) : recentBookmarks).map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title || "未命名书签"}</span><small>{getDomain(bookmark.url)}</small></a>)}
-        {!(historyGranted ? frequentBookmarks.length : recentBookmarks.length) && <p className="sidebar-muted-copy">{busy ? "正在读取书签…" : historyGranted ? "暂时没有已收藏网站的访问记录" : "收藏网页后，会在这里显示"}</p>}
+        {(historyGranted ? visibleFrequentBookmarks : recentBookmarks).map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title || "未命名书签"}</span><small>{getDomain(bookmark.url)}</small></a>)}
+        {!(historyGranted ? visibleFrequentBookmarks.length : recentBookmarks.length) && (busy ? (
+          <>
+            <span className="sr-only">正在读取书签…</span>
+            <div className="home-skeleton-list" aria-hidden="true">
+              {Array.from({ length: compact ? 2 : 3 }, (_, index) => (
+                <span key={index} className="home-skeleton-block home-skeleton-row--compact" />
+              ))}
+            </div>
+          </>
+        ) : <p className="sidebar-muted-copy">{historyGranted ? "暂时没有已收藏网站的访问记录" : "收藏网页后，会在这里显示"}</p>)}
       </section>
       <div className="home-tools">
         <button type="button" className="home-tools__toggle" onClick={() => setToolsOpen((open) => !open)} aria-expanded={toolsOpen} aria-controls="home-tool-list"><Grid2X2 aria-hidden="true" /><strong>更多工具</strong><ChevronDown aria-hidden="true" /></button>
