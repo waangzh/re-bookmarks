@@ -84,8 +84,9 @@ function mountCascadeSelect() {
   return { exports, render, timers, scheduled };
 }
 
-function mountOptions(initialSettings, { failSave = false } = {}) {
+function mountOptions(initialSettings, { failSave = false, clearPreviewPlan = async () => {} } = {}) {
   let persisted = structuredClone(initialSettings);
+  let saveCalls = 0;
   const state = [];
   let cursor = 0;
   const MockSwitch = () => null;
@@ -122,7 +123,7 @@ function mountOptions(initialSettings, { failSave = false } = {}) {
     "../services/previewTask": { requestClearPreviewTask: async () => {} },
     "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
     "../services/storage": {
-      clearPreviewPlan: async () => {},
+      clearPreviewPlan,
       DEFAULT_CLASSIFY_PROMPT: "prompt",
       DEFAULT_SETTINGS,
       getModelCatalog: async () => null,
@@ -134,6 +135,7 @@ function mountOptions(initialSettings, { failSave = false } = {}) {
         settings: persisted,
         loadSettings() {},
         saveSettings: async (next) => {
+          saveCalls += 1;
           if (failSave) throw new Error("写入失败");
           persisted = structuredClone(next);
         },
@@ -142,7 +144,7 @@ function mountOptions(initialSettings, { failSave = false } = {}) {
   });
 
   const render = () => { cursor = 0; return exports.Options(); };
-  return { exports, render, MockSwitch };
+  return { exports, render, MockSwitch, getSaveCalls: () => saveCalls };
 }
 
 test("FolderCascadeSelect 安全三角区：斜向移入右侧子菜单时命中，垂直浏览一级目录时不拦截", () => {
@@ -264,6 +266,35 @@ test("Options 使用统一 Switch 控件并完整反映脏状态、还原与保�
   const failBar = nodes(failTree, (item) => String(item.props.className ?? "").includes("settings-save-bar"))[0];
   assert.ok(failBar.props.className.includes("is-dirty"));
   assert.match(text(failBar), /写入失败/);
+});
+
+test("Options 清理旧预览失败后可直接重试，已保存设置只写入一次", async () => {
+  let cleanupCalls = 0;
+  const { render, MockSwitch, getSaveCalls } = mountOptions(DEFAULT_SETTINGS, {
+    clearPreviewPlan: async () => {
+      cleanupCalls += 1;
+      if (cleanupCalls === 1) throw new Error("删除缓存失败");
+    },
+  });
+  const submit = (tree) => nodes(tree, (item) => item.type === "button" &&
+    item.props.className?.includes("settings-save-bar__submit"))[0];
+  nodes(render(), (item) => item.type === MockSwitch && item.props["aria-label"] === "发送完整 URL")[0]
+    .props.onCheckedChange(true);
+  await submit(render()).props.onClick();
+
+  const failed = render();
+  assert.match(text(failed), /设置已保存，但清理旧整理任务失败/);
+  assert.match(text(failed), /删除缓存失败/);
+  assert.equal(submit(failed).props.disabled, false);
+  assert.equal(text(submit(failed)), "重试清理");
+  await submit(failed).props.onClick();
+
+  const recovered = render();
+  assert.equal(getSaveCalls(), 1);
+  assert.equal(cleanupCalls, 2);
+  assert.equal(submit(recovered).props.disabled, true);
+  assert.match(text(recovered), /设置已保存/);
+  assert.doesNotMatch(text(recovered), /删除缓存失败/);
 });
 
 test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近书签数量至 5 条", () => {
@@ -408,7 +439,7 @@ test("ReviewWorkbench 展示可撤销悬浮 Toast 且披露面板支持平滑关
     },
   });
 
-  const analysis = buildPreviewRiskAnalysis(plans, bookmarks, null);
+  let analysis = buildPreviewRiskAnalysis(plans, bookmarks, null);
   const render = () => {
     cursor = 0;
     const review = derivePreviewReview(analysis, planDecisions, frameworkDecisions);
@@ -469,6 +500,18 @@ test("ReviewWorkbench 展示可撤销悬浮 Toast 且披露面板支持平滑关
 
   tree = render();
   assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("review-toast")).length, 0);
+
+  const reviewButton = (current, label) => nodes(current, (item) => item.type === "button" && text(item) === label)[0];
+  reviewButton(tree, "同意移动").props.onClick();
+  reviewButton(render(), "保留原位").props.onClick();
+  assert.ok(reviewButton(render(), "撤销"));
+
+  delete planDecisions.a;
+  analysis = buildPreviewRiskAnalysis([{ ...plans[0], source: "manual", toFolderPath: ["工作", "档案"] }], bookmarks, null);
+  tree = render();
+  assert.equal(reviewButton(tree, "撤销"), undefined);
+  assert.equal(derivePreviewReview(analysis, planDecisions, frameworkDecisions).pending.length, 1);
+  assert.equal(restoredSnapshots.length, 1);
 
   // 验证平滑折叠组件渲染原生 details/summary 并带有 review-disclosure 类
   const disclosures = nodes(tree, (item) => typeof item.type === "function" && item.type.name === "ReviewDisclosure");

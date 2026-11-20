@@ -31,39 +31,38 @@ function isTrackingQueryParam(key: string): boolean {
   return lower.startsWith("utm_") || TRACKING_QUERY_PARAMS.has(lower);
 }
 
+function getHistoryMatchKeys(url: string): { trackingOnly: string; relaxed: string } {
+  const trimmed = url.trim();
+  const unchanged = { trackingOnly: trimmed, relaxed: trimmed };
+  if (!trimmed) return unchanged;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.host && !trimmed.startsWith(`${parsed.protocol}//`)) return unchanged;
+
+    const retainedQuery = parsed.search.slice(1).split("&").filter((part) => {
+      const name = new URLSearchParams(`?${part}`).keys().next().value;
+      return name === undefined || !isTrackingQueryParam(name);
+    }).join("&");
+    parsed.search = retainedQuery;
+    const trackingOnly = parsed.href;
+
+    if (parsed.pathname.length > 1) parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    parsed.searchParams.sort();
+    if (!parsed.hash.startsWith("#/") && !parsed.hash.startsWith("#!/")) parsed.hash = "";
+    return { trackingOnly, relaxed: parsed.href };
+  } catch {
+    return unchanged;
+  }
+}
+
 /**
  * Normalize a URL for local history-to-bookmark matching.
  * Keeps semantic query parameters and SPA route hashes (#/ or #!/),
  * while stripping common tracking params, ordinary anchors, and trailing slashes.
  */
 export function normalizeHistoryMatchUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return "";
-
-  try {
-    const parsed = new URL(trimmed);
-    if (!parsed.host && !trimmed.startsWith(`${parsed.protocol}//`)) {
-      return trimmed;
-    }
-
-    const pathname =
-      parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, "") || "/" : parsed.pathname;
-
-    const retainedParams = new URLSearchParams();
-    for (const [key, value] of parsed.searchParams.entries()) {
-      if (!isTrackingQueryParam(key)) {
-        retainedParams.append(key, value);
-      }
-    }
-    retainedParams.sort();
-    const search = retainedParams.toString();
-
-    const hash = parsed.hash.startsWith("#/") || parsed.hash.startsWith("#!/") ? parsed.hash : "";
-
-    return `${parsed.protocol}//${parsed.host}${pathname}${search ? `?${search}` : ""}${hash}`;
-  } catch {
-    return trimmed;
-  }
+  return getHistoryMatchKeys(url).relaxed;
 }
 
 /**
@@ -123,21 +122,33 @@ async function searchHistory(now = Date.now()) {
 
 export async function getFrequentBookmarks(now = Date.now()): Promise<FrequentBookmark[]> {
   const [bookmarks, historyItems] = await Promise.all([getAllBookmarks(), searchHistory(now)]);
-  const exactByUrl = new Map<string, (typeof bookmarks)[number]>();
-  const normalizedByUrl = new Map<string, (typeof bookmarks)[number]>();
+  type Bookmark = (typeof bookmarks)[number];
+  const exactByUrl = new Map<string, Bookmark>();
+  const trackingOnlyByUrl = new Map<string, Bookmark | null>();
+  const relaxedByUrl = new Map<string, Bookmark | null>();
+  const addCandidate = (index: Map<string, Bookmark | null>, key: string, bookmark: Bookmark) => {
+    const previous = index.get(key);
+    index.set(key, previous === undefined || previous?.url === bookmark.url ? bookmark : null);
+  };
 
   for (const bookmark of bookmarks) {
     if (!bookmark.url) continue;
     exactByUrl.set(bookmark.url, bookmark);
-    normalizedByUrl.set(normalizeHistoryMatchUrl(bookmark.url), bookmark);
+    const keys = getHistoryMatchKeys(bookmark.url);
+    addCandidate(trackingOnlyByUrl, keys.trackingOnly, bookmark);
+    addCandidate(relaxedByUrl, keys.relaxed, bookmark);
   }
 
   const byBookmarkId = new Map<string, FrequentBookmark>();
 
   for (const item of historyItems) {
     if (!item.url) continue;
-    const bookmark =
-      exactByUrl.get(item.url) ?? normalizedByUrl.get(normalizeHistoryMatchUrl(item.url));
+    let bookmark = exactByUrl.get(item.url);
+    if (!bookmark) {
+      const keys = getHistoryMatchKeys(item.url);
+      const trackingMatch = trackingOnlyByUrl.get(keys.trackingOnly);
+      bookmark = (trackingMatch === undefined ? relaxedByUrl.get(keys.relaxed) : trackingMatch) ?? undefined;
+    }
     if (!bookmark?.url) continue;
     const existing = byBookmarkId.get(bookmark.id);
     const visitCount = item.visitCount ?? 0;

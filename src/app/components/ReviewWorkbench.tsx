@@ -17,6 +17,7 @@ type ReviewToast = {
   id: number;
   message: string;
   undo?: ReviewDecisionSnapshot;
+  undoScope?: string;
 };
 
 type Props = {
@@ -45,6 +46,16 @@ type Props = {
 
 const TOAST_AUTO_DISMISS_MS = 4500;
 const DISCLOSURE_CLOSE_MS = 160;
+
+function getUndoScope(snapshot: ReviewDecisionSnapshot, review: Review, analysis: Analysis) {
+  const targets = review.items
+    .filter(({ plan }) => Object.hasOwn(snapshot.plans, plan.bookmarkId))
+    .map(({ plan }) => [plan.bookmarkId, plan.toFolderPath, plan.expectedTargetId, plan.source]);
+  const groups = analysis.frameworkGroups
+    .filter((group) => snapshot.frameworks && Object.hasOwn(snapshot.frameworks, group.key))
+    .map((group) => [group.key, group.items.map((item) => item.plan.bookmarkId)]);
+  return JSON.stringify([targets, groups]);
+}
 
 const matches = (item: PreviewRiskItem, query: string) =>
   [item.plan.bookmarkTitle, item.plan.bookmarkUrl, pathKey(item.sourcePath), pathKey(item.plan.toFolderPath)]
@@ -120,7 +131,7 @@ export function ReviewWorkbench(props: Props) {
   const [keepOpen, setKeepOpen] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const [toast, setToast] = useState<ReviewToast | null>(null);
+  const [pendingToast, setToast] = useState<ReviewToast | null>(null);
   const [toastPaused, setToastPaused] = useState(false);
   const toastSequence = useRef(0);
   const workspace = useRef<HTMLDivElement>(null);
@@ -140,17 +151,23 @@ export function ReviewWorkbench(props: Props) {
   const safeItems = review.items.filter((item) => item.level === "auto" || item.level === "keep");
   const decidedItems = review.items.filter((item) => !awaiting.has(item.plan.bookmarkId));
   const weakCount = analysis.keep.filter((item) => item.plan.source !== "manual" && item.plan.confidence < 0.55).length;
+  const undoIsStale = pendingToast?.undo && pendingToast.undoScope !== getUndoScope(pendingToast.undo, review, analysis);
+  const toast = undoIsStale ? null : pendingToast;
 
   useEffect(() => {
-    if (!toast || toastPaused) return;
+    if (undoIsStale && !busy) setToast(null);
+  }, [busy, undoIsStale]);
+
+  useEffect(() => {
+    if (!pendingToast || toastPaused) return;
     const timer = window.setTimeout(() => setToast(null), TOAST_AUTO_DISMISS_MS);
     return () => window.clearTimeout(timer);
-  }, [toast, toastPaused]);
+  }, [pendingToast, toastPaused]);
 
   const showToast = (message: string, undo?: ReviewDecisionSnapshot, announcement = message) => {
     toastSequence.current += 1;
     setToastPaused(false);
-    setToast({ id: toastSequence.current, message, undo });
+    setToast({ id: toastSequence.current, message, undo, undoScope: undo && getUndoScope(undo, review, analysis) });
     setNotice(announcement);
   };
 

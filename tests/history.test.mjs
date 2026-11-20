@@ -58,6 +58,33 @@ test("Frecency 综合频次与时间衰减排序，近期活跃书签优先于�
   assert.equal(results[0].currentFolder, "开发");
 });
 
+test("URL 匹配优先保留路径和锚点，只在宽松候选唯一时归因", async () => {
+  const now = 1_760_000_000_000;
+  const documents = [
+    ["file", "https://docs.test/docs"],
+    ["directory", "https://docs.test/docs/"],
+    ["section-a", "https://docs.test/guide#a"],
+    ["section-b", "https://docs.test/guide#b"],
+    ["unique", "https://docs.test/about"],
+  ].map(([id, url]) => ({ id, url, title: id, parentId: "root" }));
+
+  for (const children of [documents, [...documents].reverse()]) {
+    setupBrowser({ tree: [{ id: "0", title: "", children: [{ id: "root", title: "书签栏", children }] }] });
+    chrome.history = {
+      search: (_query, callback) => callback([
+        { url: "https://docs.test/docs?utm_source=share", visitCount: 4, lastVisitTime: now },
+        { url: "https://docs.test/docs/", visitCount: 3, lastVisitTime: now },
+        { url: "https://docs.test/docs#ambiguous", visitCount: 99, lastVisitTime: now },
+        { url: "https://docs.test/guide?gclid=tracking#a", visitCount: 2, lastVisitTime: now },
+        { url: "https://docs.test/about/#intro", visitCount: 1, lastVisitTime: now },
+      ]),
+    };
+    assert.deepEqual((await getFrequentBookmarks(now)).map(({ id, visitCount }) => [id, visitCount]), [
+      ["file", 4], ["directory", 3], ["section-a", 2], ["unique", 1],
+    ]);
+  }
+});
+
 test("缺少时间戳或出现边界值时安全计算得分，且结果上限为 20 条", async () => {
   const now = 1_760_000_000_000;
   assert.equal(calculateFrequentBookmarkScore(0, now, now), 0);

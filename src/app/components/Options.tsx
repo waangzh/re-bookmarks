@@ -72,13 +72,14 @@ export function Options() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [previewCleanupError, setPreviewCleanupError] = useState("");
   const [models, setModels] = useState<AIModelOption[]>([]);
   const [modelStatus, setModelStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [modelMessage, setModelMessage] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [modelFiltering, setModelFiltering] = useState(false);
   const isDirty = !areSettingsEqual(draft, settings);
-  const settingsSaved = message === "设置已保存" && !isDirty;
+  const settingsSaved = message === "设置已保存" && !isDirty && !previewCleanupError;
   const [highlightedModel, setHighlightedModel] = useState(0);
   const modelPicker = useRef<HTMLDivElement>(null);
   const modelInput = useRef<HTMLInputElement>(null);
@@ -318,29 +319,35 @@ export function Options() {
     }
   };
 
-  const persistDraft = async () => {
-    const nextDraft = {
-      ...draft,
-      providerConfigs: {
-        ...draft.providerConfigs,
-        [draft.provider.type]: draft.provider,
-      },
-    };
-    setDraft(nextDraft);
-    await saveSettings(nextDraft);
-    await Promise.all([clearPreviewPlan(), requestClearPreviewTask()]);
-    return nextDraft;
-  };
-
   const handleSave = async () => {
-    if (saving) return;
+    if (saving) return false;
     setSaving(true);
     setSaveError("");
     try {
-      await persistDraft();
+      if (isDirty) {
+        const nextDraft = {
+          ...draft,
+          providerConfigs: {
+            ...draft.providerConfigs,
+            [draft.provider.type]: draft.provider,
+          },
+        };
+        setDraft(nextDraft);
+        await saveSettings(nextDraft);
+      }
+      const cleanupResults = await Promise.allSettled([clearPreviewPlan(), requestClearPreviewTask()]);
+      const failedCleanup = cleanupResults.find((result) => result.status === "rejected");
+      if (failedCleanup) {
+        const detail = failedCleanup.reason instanceof Error ? `：${failedCleanup.reason.message}` : "";
+        setPreviewCleanupError(`设置已保存，但清理旧整理任务失败${detail}`);
+        return false;
+      }
+      setPreviewCleanupError("");
       setMessage("设置已保存");
+      return true;
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "保存设置失败，请重试");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -354,8 +361,7 @@ export function Options() {
   };
 
   const handleStartOrganize = async () => {
-    await persistDraft();
-    navigate("/preview");
+    if (await handleSave()) navigate("/preview");
   };
 
   return (
@@ -526,7 +532,7 @@ export function Options() {
               />
             </div>
 
-            <button type="button" onClick={() => void handleStartOrganize()} disabled={!draft.provider.enabled} className="extension-page__wide-primary">
+            <button type="button" onClick={() => void handleStartOrganize()} disabled={saving || !draft.provider.enabled} className="extension-page__wide-primary">
               <Sparkles aria-hidden="true" />开始整理
             </button>
 
@@ -875,10 +881,10 @@ export function Options() {
         <div className={`settings-save-bar${isDirty ? " is-dirty" : ""}`}>
           <div className="settings-save-bar__inner">
             <div className="settings-save-bar__status" role="status" aria-live="polite">
-              {saveError ? (
+              {saveError || previewCleanupError ? (
                 <span className="settings-save-bar__badge is-error">
                   <AlertCircle aria-hidden="true" />
-                  {saveError}
+                  {saveError || previewCleanupError}
                 </span>
               ) : isDirty ? (
                 <span className="settings-save-bar__badge is-dirty">
@@ -908,11 +914,12 @@ export function Options() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={!isDirty || saving}
+                disabled={saving || (!isDirty && !previewCleanupError)}
                 className="extension-page__wide-primary settings-save-bar__submit"
                 aria-live="polite"
               >
-                {saving ? "保存中…" : settingsSaved ? <><Check className="w-4 h-4" />已保存</> : "保存设置"}
+                {saving ? "保存中…" : settingsSaved ? <><Check className="w-4 h-4" />已保存</> :
+                  !isDirty && previewCleanupError ? "重试清理" : "保存设置"}
               </button>
             </div>
           </div>
