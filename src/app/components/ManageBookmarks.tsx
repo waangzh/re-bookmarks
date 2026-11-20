@@ -2589,7 +2589,7 @@ export function ManageBookmarks() {
             <div className="extension-section__bar extension-section__bar--plain">
               <h3 className="extension-section__title">添加新书签</h3>
               <button onClick={() => setShowAddForm(false)} className="extension-page__back" aria-label="关闭">
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5" />
               </button>
             </div>
             <div className="extension-form">

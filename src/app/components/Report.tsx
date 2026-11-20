@@ -145,9 +145,9 @@ function buildTargetFolderTree(plans: MovePlan[]) {
 }
 
 function getConfidenceClass(confidence: number) {
-  if (confidence >= 0.9) return "text-green-600 bg-green-50";
-  if (confidence >= 0.8) return "text-blue-600 bg-blue-50";
-  return "text-amber-600 bg-amber-50";
+  if (confidence >= 0.9) return "extension-confidence--green";
+  if (confidence >= 0.8) return "extension-confidence--blue";
+  return "extension-confidence--amber";
 }
 
 function BookmarkFavicon({ title, url }: { title: string; url?: string }) {

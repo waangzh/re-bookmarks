@@ -553,3 +553,63 @@ test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVert
   assert.deepEqual(folderItems.map((item) => item.props.disabled), [true, true, true]);
 });
 
+test("全局 CSS 已清理历史冗余样式，颜色全量抽象为语义变量并支持系统 Dark Mode", () => {
+  const redesignCss = fs.readFileSync(path.resolve("src/styles/redesign.css"), "utf8");
+  const previewCss = fs.readFileSync(path.resolve("src/styles/preview-review.css"), "utf8");
+  const globalsCss = fs.readFileSync(path.resolve("src/styles/globals.css"), "utf8");
+
+  assert.match(redesignCss, /:root\s*\{[\s\S]*color-scheme:\s*light dark;/);
+  assert.match(redesignCss, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{/);
+  for (const token of [
+    "--remarks-paper",
+    "--remarks-surface",
+    "--remarks-surface-elevated",
+    "--remarks-ink",
+    "--remarks-muted",
+    "--remarks-line",
+    "--remarks-blue",
+    "--remarks-blue-solid",
+    "--remarks-green",
+    "--remarks-amber",
+    "--remarks-red",
+    "--remarks-purple",
+  ]) {
+    const darkBlock = redesignCss.split("@media (prefers-color-scheme: dark)")[1] ?? "";
+    assert.ok(redesignCss.includes(`${token}:`), `Missing light token ${token}`);
+    assert.ok(darkBlock.includes(`${token}:`), `Missing dark token ${token}`);
+  }
+
+  // Portal 弹窗选择器不应被限制在 .remarks-app 后代内
+  assert.doesNotMatch(redesignCss, /\.remarks-app\s+\.preview-dialog/);
+  assert.match(redesignCss, /^\.preview-dialog\s*\{/m);
+
+  // 已弃用的旧版 Popup / v1 Sidebar / 旧版 Risk Board 样式应已从 globals.css 移除
+  assert.doesNotMatch(globalsCss, /\.bookmark-popup__(?:card|action|footer)/);
+  assert.doesNotMatch(globalsCss, /\.preview-risk-(?:board|overview|section)/);
+  assert.doesNotMatch(globalsCss, /\.sidebar-stat-card\b/);
+  assert.doesNotMatch(globalsCss, /\.habit-rule-card\b/);
+
+  // 三个样式文件在变量定义区之外不应残留硬编码色值，且括号闭合配平
+  for (const [label, css] of [["redesign.css", redesignCss], ["preview-review.css", previewCss], ["globals.css", globalsCss]]) {
+    let depth = 0;
+    for (const ch of css) {
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      assert.ok(depth >= 0, `${label} has unexpected closing brace`);
+    }
+    assert.equal(depth, 0, `${label} has unclosed braces`);
+
+    const nonTokenColorLines = css.split(/\r?\n/).filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("/*") || trimmed.startsWith("--remarks-")) return false;
+      return /#[0-9a-fA-F]{3,8}\b/.test(trimmed) || /rgba?\(/.test(trimmed);
+    });
+    assert.deepEqual(nonTokenColorLines, [], `${label} still contains hardcoded colors`);
+  }
+
+  for (const htmlPath of ["src/popup/index.html", "src/sidebar/index.html", "src/options/index.html"]) {
+    const html = fs.readFileSync(path.resolve(htmlPath), "utf8");
+    assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark"\s*\/?>/);
+  }
+});
+

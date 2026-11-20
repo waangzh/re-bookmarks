@@ -48,10 +48,10 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
     <div
       className={
         isPopupWindow
-          ? `remarks-app bookmark-popup-window bg-gray-50${isPopupHome ? " bookmark-popup-window--home" : ""}`
+          ? `remarks-app bookmark-popup-window${isPopupHome ? " bookmark-popup-window--home" : ""}`
           : isSidebarWindow
-            ? "remarks-app sidebar-shell bg-gray-50"
-            : "remarks-app w-full min-h-screen bg-gray-50"
+            ? "remarks-app sidebar-shell"
+            : "remarks-app w-full min-h-screen"
       }
     >
       <Routes>

@@ -867,8 +867,8 @@ export function Options() {
 
         {message && !settingsSaved && testStatus !== "error" && (
           <div className="extension-status extension-status--success">
-            <Check className="w-4 h-4 text-green-600" />
-            <span className="text-sm text-green-800">{message}</span>
+            <Check className="w-4 h-4 extension-status__icon" />
+            <span className="text-sm extension-status__text">{message}</span>
           </div>
         )}
 

@@ -93,17 +93,17 @@ const WEAK_MODEL_SIGNAL = 0.7;
 function ConfidenceSignal({ plan }: { plan: MovePlan }) {
   if (plan.source === "manual") {
     return (
-      <span className="extension-confidence extension-confidence--signal text-blue-600 bg-blue-50">
+      <span className="extension-confidence extension-confidence--signal extension-confidence--blue">
         人工调整
       </span>
     );
   }
 
   const level = plan.confidence >= STRONG_MODEL_SIGNAL
-    ? { label: "依据较充分", className: "text-green-600 bg-green-50" }
+    ? { label: "依据较充分", className: "extension-confidence--green" }
     : plan.confidence >= WEAK_MODEL_SIGNAL
-      ? { label: "需要确认", className: "text-blue-600 bg-blue-50" }
-      : { label: "依据不足", className: "text-amber-600 bg-amber-50" };
+      ? { label: "需要确认", className: "extension-confidence--blue" }
+      : { label: "依据不足", className: "extension-confidence--amber" };
   const detail = `模型自评 ${plan.confidence.toFixed(2)}，仅作相对排序参考，不代表正确率`;
 
   return (
