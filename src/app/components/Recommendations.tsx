@@ -1,8 +1,9 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices } from "./TopNotice";
 import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, Sparkles, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
+import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
@@ -293,27 +294,13 @@ export function Recommendations() {
           <PageHeading title="待处理推荐" subtitle={`${pendingRecommendations.length} 条建议待处理`} />
         </div>
 
-        {error && (
-          <div className="extension-notice extension-notice--amber">
-            <p>{error}</p>
-          </div>
-        )}
-        {operationNotice && (
-          <div className="extension-notice extension-notice--blue" role="status">
-            <p>{operationNotice} <Link to="/report">查看整理报告</Link></p>
-          </div>
-        )}
-        {dismissNotice && (
-          <div className="extension-notice extension-notice--blue" role="status">
-            <p>{dismissNotice}</p>
-          </div>
-        )}
-        {learningNotice && (
-          <div className="habit-learning-toast" role="status">
-            <Sparkles className="w-4 h-4" />
-            <p>{learningNotice}</p>
-          </div>
-        )}
+        <TopNotices>
+          <TopNotice message={error} tone="error" onDismiss={() => setError("")} />
+          <TopNotice message={operationNotice} tone="success" onDismiss={() => setOperationNotice("")}
+            action={<Link to="/report">查看整理报告</Link>} />
+          <TopNotice message={dismissNotice} tone="success" onDismiss={() => setDismissNotice("")} />
+          <TopNotice message={learningNotice} onDismiss={() => setLearningNotice("")} />
+        </TopNotices>
 
         {pendingRecommendations.length === 0 ? (
           <div className="extension-empty">

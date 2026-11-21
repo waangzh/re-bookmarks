@@ -327,6 +327,7 @@ test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近�
     "react/jsx-runtime": require("react/jsx-runtime"),
     "react-router": { Link: () => null, useNavigate: () => () => {} },
     "lucide-react": require("lucide-react"),
+    "./TopNotice": { TopNotice: () => null, TopNotices: () => null },
     "../services/history": { getFrequentBookmarks: async () => [], hasHistoryPermission: async () => false },
     "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
     "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },

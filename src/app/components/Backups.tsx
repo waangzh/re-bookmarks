@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices, type NoticeTone } from "./TopNotice";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
@@ -119,6 +120,7 @@ export function Backups() {
   const [backups, setBackups] = useState<BookmarkBackup[]>([]);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<NoticeTone>("success");
   const [restoreReport, setRestoreReport] = useState<BookmarkRestoreReport | null>(null);
   const [expandedBackupIds, setExpandedBackupIds] = useState<Set<string>>(new Set());
 
@@ -163,8 +165,10 @@ export function Backups() {
     try {
       const backup = await createManualBackup();
       await loadBackups();
+      setMessageTone("success");
       setMessage(`已创建手动备份，包含 ${backup.bookmarkCount} 个书签`);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "创建备份失败");
     } finally {
       setBusyAction(null);
@@ -186,8 +190,10 @@ export function Backups() {
       const report = await restoreBackup(backup.id);
       await Promise.all([loadAll(), loadBackups()]);
       setRestoreReport(report);
+      setMessageTone(report.failedItems.length ? "warning" : "success");
       setMessage(`恢复完成：处理 ${report.restoredCount + report.recreatedCount} 个书签，失败 ${report.failedItems.length} 个`);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "恢复备份失败");
     } finally {
       setBusyAction(null);
@@ -211,8 +217,10 @@ export function Backups() {
         return next;
       });
       await loadBackups();
+      setMessageTone("success");
       setMessage("已删除备份记录");
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "删除备份失败");
     } finally {
       setBusyAction(null);
@@ -241,11 +249,7 @@ export function Backups() {
           </div>
         </div>
 
-        {message && (
-          <div className={`extension-notice ${failedItems.length > 0 ? "extension-notice--amber" : "extension-notice--blue"}`}>
-            <p>{message}</p>
-          </div>
-        )}
+        <TopNotices><TopNotice message={message} tone={messageTone} onDismiss={() => setMessage("")} /></TopNotices>
 
         <section className="backup-summary-grid">
           <div className="extension-section backup-summary-card backup-summary-card--blue">

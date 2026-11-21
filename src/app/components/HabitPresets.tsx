@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices } from "./TopNotice";
 import { useEffect, useRef, useState, type ChangeEvent, type TextareaHTMLAttributes } from "react";
 import {
   Ban,
@@ -409,11 +410,7 @@ export function HabitPresets() {
           </div>
         </div>
 
-        {message && (
-          <div className={`extension-status extension-status--${messageTone}`} role={messageTone === "error" ? "alert" : "status"}>
-            <span>{message}</span>
-          </div>
-        )}
+        <TopNotices><TopNotice message={message} tone={messageTone} onDismiss={() => setMessage("")} /></TopNotices>
 
         <section className="extension-section habit-card habit-learning-card">
           <div className="habit-section-heading habit-learning-heading">

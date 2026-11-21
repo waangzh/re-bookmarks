@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { TopNotice, TopNotices } from "./TopNotice";
 import {
   ArrowLeft,
   ArrowRight,
@@ -522,7 +523,10 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
         </div>
       )}
       </div>
-      {(error || refreshError) && <p role="alert" className="home-notice">{error || refreshError}<button type="button" onClick={() => window.location.reload()}>重新加载</button></p>}
+      <TopNotices>
+        <TopNotice message={error || refreshError || ""} tone="error"
+          action={<button type="button" onClick={() => window.location.reload()}>重新加载</button>} />
+      </TopNotices>
       {!showAllTasks && <section className={`home-featured-task${busy ? " is-loading" : ""}`} aria-busy={busy} aria-labelledby="home-task-title">
         <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
         {busy ? (

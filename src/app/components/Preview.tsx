@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices } from "./TopNotice";
 import {
   useEffect,
   useMemo,
@@ -1325,6 +1326,7 @@ export function Preview() {
           : approvedPlans.length > 0
             ? `已批准移动 ${approvedPlans.length} 个书签`
             : "所有书签保持原位";
+  const errorNotice = <TopNotice message={error} tone="error" onDismiss={() => setError("")} />;
 
   return (
     <div className={`extension-page extension-page--preview${phase === "preview" && !loading && plans.length ? " review-page" : ""}`}>
@@ -1335,17 +1337,16 @@ export function Preview() {
 
         </div>
 
-        {error && (
-          <div className="extension-notice extension-notice--amber" role="alert">
-            <p>{error}</p>
-          </div>
-        )}
-
-        {cacheMessage && phase !== "preview" && (
-          <div className="extension-notice extension-notice--blue">
-            <p>{cacheMessage}</p>
-          </div>
-        )}
+        <TopNotices>
+          {!confirmOpen && !editingPlan && errorNotice}
+          <TopNotice message={cacheMessage} onDismiss={() => setCacheMessage("")} />
+          <TopNotice tone="warning" message={phase === "selection" && !loading
+            ? isDeepSelectionTooLarge ? deepSelectionLimitMessage : isQuickSelectionLarge ? quickSelectionLargeMessage : ""
+            : ""} />
+          <TopNotice tone="warning" message={phase === "preview" && loading && isTaskProgressStalled
+            ? "后台任务超过 2 分钟没有进度更新，建议取消后重试或减少本次整理数量。"
+            : ""} />
+        </TopNotices>
 
         {/* 选择阶段 */}
         {phase === "selection" && !loading && (
@@ -1502,18 +1503,6 @@ export function Preview() {
             </section>
             </CollapsibleSection>
 
-            {isDeepSelectionTooLarge && (
-              <div className="extension-notice extension-notice--amber">
-                <p>{deepSelectionLimitMessage}</p>
-              </div>
-            )}
-
-            {isQuickSelectionLarge && (
-              <div className="extension-notice extension-notice--amber">
-                <p>{quickSelectionLargeMessage}</p>
-              </div>
-            )}
-
             <section className="selection-tree-panel">
               <div className="selection-tree">
                 {renderSelectionTreeNode(selectionTree)}
@@ -1544,11 +1533,6 @@ export function Preview() {
                 <div className="preview-task-progress" aria-label="整理方案生成进度">
                   <span style={{ width: `${progressPercent}%` }} />
                 </div>
-                {isTaskProgressStalled && (
-                  <span className="preview-task-warning">
-                    后台任务超过 2 分钟没有进度更新，建议取消后重试或减少本次整理数量。
-                  </span>
-                )}
                 <button onClick={handleRegenerate} className="extension-page__wide-secondary">
                   <RefreshCw className="w-4 h-4" />
                   取消并重新选择
@@ -1582,6 +1566,7 @@ export function Preview() {
         )}
 
         {confirmOpen && <PreviewDialog
+          notice={error && <TopNotices inline>{errorNotice}</TopNotices>}
           label="最终执行确认"
           title="确认本次变更"
           description="确认变更范围后，先创建备份，再执行移动。可返回审核。"
@@ -1602,6 +1587,7 @@ export function Preview() {
           <p className="preview-dialog__note">先创建完整本地备份，备份失败则停止。可将最近一次整理移回原目录，但不恢复原排序。会清理本次移动后变空的源目录、空祖先及新建空目录；外部变化项会停止移动并写入失败原因。</p>
         </PreviewDialog>}
         {editingPlan && <PreviewDialog
+          notice={error && <TopNotices inline>{errorNotice}</TopNotices>}
           label="修改目标目录"
           title="修改目录"
           description="搜索已有目录或输入新路径，仅修改整理方案，不移动书签。"

@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices, type NoticeTone } from "./TopNotice";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -88,6 +89,7 @@ export function ImportBookmarks() {
   const [preview, setPreview] = useState<BookmarkImportPreview | null>(null);
   const [report, setReport] = useState<BookmarkImportReport | null>(null);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<NoticeTone>("success");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<BookmarkImportProgress>({ processed: 0, total: 0 });
 
@@ -129,6 +131,8 @@ export function ImportBookmarks() {
     setSelectedFileName(file.name);
 
     if (!isHtmlBookmarkFile(file)) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setMessageTone("error");
       setMessage("请选择浏览器导出的 HTML 书签文件");
       return;
     }
@@ -138,8 +142,10 @@ export function ImportBookmarks() {
       const text = await file.text();
       const nextPreview = buildBookmarkImportPreview(text, bookmarks, file.name);
       setPreview(nextPreview);
+      setMessageTone("success");
       setMessage(`已解析 ${nextPreview.bookmarkCount} 个书签，默认将导入 ${nextPreview.readyCount} 个。`);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "解析书签文件失败");
     } finally {
       setBusy(false);
@@ -158,6 +164,7 @@ export function ImportBookmarks() {
 
   const handleImport = async () => {
     if (!preview || preview.readyCount === 0) {
+      setMessageTone("warning");
       setMessage("没有可导入的书签");
       return;
     }
@@ -176,8 +183,10 @@ export function ImportBookmarks() {
       await loadAll();
       setReport(nextReport);
       setPreview(null);
+      setMessageTone(nextReport.failedItems.length ? "warning" : "success");
       setMessage(`导入完成：成功 ${nextReport.importedCount} 个，失败 ${nextReport.failedItems.length} 个。`);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "导入书签失败");
     } finally {
       setBusy(false);
@@ -193,11 +202,7 @@ export function ImportBookmarks() {
           <PageHeading title="导入书签" />
         </div>
 
-        {message && (
-          <div className={`extension-notice ${report?.failedItems.length ? "extension-notice--amber" : "extension-notice--blue"}`}>
-            <p>{message}</p>
-          </div>
-        )}
+        <TopNotices><TopNotice message={message} tone={messageTone} onDismiss={() => setMessage("")} /></TopNotices>
 
         <section className="extension-section import-file-card">
           <div className="import-file-card__icon">

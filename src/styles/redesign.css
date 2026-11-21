@@ -480,9 +480,9 @@
 .remarks-app .settings-save-bar__discard { width: auto; min-width: 72px; }
 .remarks-app .settings-save-bar__submit { width: auto; min-width: 112px; }
 .remarks-app .report-result__time { display: block; margin-top: 4px; font-size: 12px; color: var(--remarks-green); font-variant-numeric: tabular-nums; }
-.remarks-app .extension-success.report-result--warning { border-color: var(--remarks-amber-border); background: var(--remarks-amber-soft); }
-.remarks-app .report-result--warning :is(h2, .extension-success__icon) { color: var(--remarks-amber); }
-.remarks-app .report-result--warning .report-result__time { color: var(--remarks-amber); opacity: 0.9; }
+.remarks-app .extension-success.report-result--incomplete { border-color: var(--remarks-line); background: var(--remarks-surface); }
+.remarks-app .report-result--incomplete :is(h2, p, .extension-success__icon) { color: var(--remarks-ink); }
+.remarks-app .report-result--incomplete .report-result__time { color: var(--remarks-muted); }
 .remarks-app .report-failure-list .extension-compact-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .remarks-app .report-failure-list .extension-compact-row > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .remarks-app .report-failure-list .extension-compact-row > span:first-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }

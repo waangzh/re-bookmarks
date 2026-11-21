@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices } from "./TopNotice";
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, TrendingUp, Clock, AlertCircle, Search, Globe2 } from "lucide-react";
 import type { FrequentBookmark } from "../types";
@@ -29,6 +30,7 @@ function HistoryFavicon({ title, url }: { title: string; url: string }) {
 export function History() {
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [enabled, setEnabled] = useState(false);
+  const [permissionChecked, setPermissionChecked] = useState(false);
   const [bookmarks, setBookmarks] = useState<FrequentBookmark[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,6 +44,7 @@ export function History() {
     let alive = true;
     hasHistoryPermission().then((granted) => {
       if (!alive) return;
+      setPermissionChecked(true);
       if (settings.enableHistory && !granted) {
         setEnabled(false);
         setMessage("浏览历史权限已被拒绝或撤销，常访问书签已关闭。");
@@ -64,6 +67,7 @@ export function History() {
   }, [enabled]);
 
   const handleEnable = async () => {
+    setMessage("");
     const granted = await requestHistoryPermission();
     if (!granted) {
       setMessage("未授予浏览历史权限");
@@ -71,6 +75,7 @@ export function History() {
     }
     await saveSettings({ ...settings, enableHistory: true });
     setEnabled(true);
+    setMessage("");
   };
 
   const formatTime = (timestamp: number) => {
@@ -112,19 +117,21 @@ export function History() {
           <PageHeading title="常访问书签" subtitle={enabled ? loading ? "正在统计…" : `${bookmarks.length} 个书签` : undefined} />
         </div>
 
+        <TopNotices>
+          <TopNotice message={!enabled && permissionChecked ? message || "需要浏览历史权限" : ""}
+            tone={message ? "error" : "warning"} />
+        </TopNotices>
+
         {!enabled ? (
           <section className="extension-section extension-section--center">
             <AlertCircle className="extension-empty__icon extension-empty__icon--amber" />
             <h2>功能未启用</h2>
-            <div className="extension-notice extension-notice--amber extension-notice--left">
-              <p className="extension-notice__label">需要浏览历史权限</p>
-              <ul className="extension-copy-list">
-                <li>仅统计已收藏网址的访问次数</li>
-                <li>浏览历史不会发送给 AI</li>
-                <li>所有数据仅在本地处理</li>
-              </ul>
-            </div>
-            {message && <p>{message}</p>}
+            <ul className="extension-copy-list">
+              <li>启用需授予浏览历史权限</li>
+              <li>仅统计已收藏网址的访问次数</li>
+              <li>浏览历史不会发送给 AI</li>
+              <li>所有数据仅在本地处理</li>
+            </ul>
             <button onClick={handleEnable} className="extension-page__wide-primary">
               启用功能
             </button>

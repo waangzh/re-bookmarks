@@ -10,6 +10,7 @@ type PreviewDialogProps = {
   onClose: () => void;
   children?: ReactNode;
   actions?: ReactNode;
+  notice?: ReactNode;
 };
 
 export function PreviewDialog({
@@ -20,6 +21,7 @@ export function PreviewDialog({
   onClose,
   children,
   actions,
+  notice,
 }: PreviewDialogProps) {
   const opener = useRef<HTMLElement | null>(null);
   return <Dialog.Root open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
@@ -38,6 +40,7 @@ export function PreviewDialog({
           if (busy || target?.closest('[aria-expanded="true"][aria-controls]')) event.preventDefault();
         }}
         onPointerDownOutside={(event) => event.preventDefault()}>
+        {notice}
         <div className="preview-dialog__header">
           <Dialog.Title className="preview-dialog__title">{title ?? label}</Dialog.Title>
           {description && <Dialog.Description className="preview-dialog__description">{description}</Dialog.Description>}

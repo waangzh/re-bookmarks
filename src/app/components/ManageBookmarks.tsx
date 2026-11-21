@@ -1,4 +1,5 @@
 import { PageHeading } from "./PageHeading";
+import { TopNotice, TopNotices } from "./TopNotice";
 import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { BookmarkRowActionMenu } from "./BookmarkRowActionMenu";
@@ -287,11 +288,11 @@ export function ManageBookmarks() {
     () => new Set(["__root__"])
   );
   const [selectedFolder, setSelectedFolder] = useState<string>("__root__");
-  const [feedback, setFeedback] = useState<{ text: string; kind: "notice" | "success" } | null>(null);
-  const setMessage = useCallback((text: string, kind: "notice" | "success" = "notice") => {
-    setFeedback(text ? { text, kind } : null);
+  const feedbackSequence = useRef(0);
+  const [feedback, setFeedback] = useState<{ id: number; text: string; kind: "info" | "success" | "error" } | null>(null);
+  const setMessage = useCallback((text: string, kind: "info" | "success" | "error" = "info") => {
+    setFeedback(text ? { id: ++feedbackSequence.current, text, kind } : null);
   }, []);
-  const message = feedback?.kind === "notice" ? feedback.text : "";
   const [busy, setBusy] = useState(false);
   const [busyRecommendationId, setBusyRecommendationId] = useState<string | null>(null);
   const [ignoringManualSelection, setIgnoringManualSelection] = useState(false);
@@ -330,14 +331,6 @@ export function ManageBookmarks() {
   const hoverExpandFolderKeyRef = useRef<string | null>(null);
   const didApplyDefaultExpandedFolderRef = useRef(false);
   const resumedLinkScanIdsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (feedback?.kind !== "success") return;
-    const timer = window.setTimeout(() => {
-      setFeedback((current) => current === feedback ? null : current);
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [feedback]);
 
   const loadManagedBookmarks = useCallback(async () => {
     const [, , nextFolders, protection, nextSemanticIndex] = await Promise.all([
@@ -887,9 +880,9 @@ export function ManageBookmarks() {
             appendFolderImpression(bookmark.url, targetFolder.path).catch(() => undefined),
           ]);
           await loadManagedBookmarks();
-          setMessage(learningNotice ?? `已移动到 ${targetFolder.path.join(" / ") || targetFolder.title}`);
+          setMessage(learningNotice ?? `已移动到 ${targetFolder.path.join(" / ") || targetFolder.title}`, "success");
         } catch (error) {
-          setMessage(error instanceof Error ? error.message : "移动失败");
+          setMessage(error instanceof Error ? error.message : "移动失败", "error");
         } finally {
           setBusy(false);
         }
@@ -1177,7 +1170,7 @@ export function ManageBookmarks() {
       setEditingId(null);
       setMessage(learningNotice ?? "书签修改已保存", "success");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "保存失败");
+      setMessage(error instanceof Error ? error.message : "保存失败", "error");
     } finally {
       setBusy(false);
     }
@@ -2345,14 +2338,8 @@ export function ManageBookmarks() {
           )}
         </div>
 
-        {message && (
-          <div className="extension-notice extension-notice--amber" role="status">
-            <p>{message}</p>
-          </div>
-        )}
-
         {backfillFailures.length > 0 && (
-          <details className="extension-notice extension-notice--amber">
+          <details className="extension-section">
             <summary>上次用途识别：{backfillFailures.length} 个失败，查看原因</summary>
             <ul className="mt-2 space-y-2" style={{ overflowWrap: "anywhere" }}>
               {backfillFailures.map((failure) => (
@@ -2627,14 +2614,9 @@ export function ManageBookmarks() {
           </div>
         )}
       </div>
-      <div className="bookmark-action-toast" role="status">
-        {feedback?.kind === "success" && (
-          <div className="bookmark-action-toast__body">
-            <Check className="bookmark-action-toast__icon" aria-hidden="true" />
-            <span>{feedback.text}</span>
-          </div>
-        )}
-      </div>
+      <TopNotices>
+        {feedback && <TopNotice key={feedback.id} message={feedback.text} tone={feedback.kind} />}
+      </TopNotices>
     </div>
   );
 }
