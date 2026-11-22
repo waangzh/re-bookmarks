@@ -15,6 +15,9 @@ const {
   openExtensionSidebar,
   getPendingAnalysisBookmarkIds,
   PENDING_ANALYSIS_STATUS_MESSAGE,
+  PENDING_SIDEBAR_ROUTE_STORAGE_KEY,
+  readFreshPendingSidebarRoute,
+  consumePendingSidebarRoute,
 } = await loadService("src/app/services/sidePanel.ts");
 
 function nodes(root, predicate) {
@@ -419,95 +422,245 @@ test("sidePanel 服务适配 Chromium sidePanel.open、Firefox sidebarAction.ope
   }
 });
 
-test("PopupHome 仅保留快捷卡、搜索与高频入口，省略完整待办大卡与工具长菜单", () => {
-  const state = [];
-  let cursor = 0;
-  const MockQuickCard = () => ({ type: "MockQuickCard", props: {} });
-  const exports = transpileComponent("src/app/components/PopupHome.tsx", {
-    react: {
-      useEffect() {},
-      useMemo: (fn) => fn(),
-      useRef: (value) => ({ current: value }),
-      useState(initial) {
-        const index = cursor++;
-        if (state.length <= index) state[index] = typeof initial === "function" ? initial() : initial;
-        return [
-          state[index],
-          (next) => {
-            state[index] = typeof next === "function" ? next(state[index]) : next;
-          },
-        ];
+test("sidePanel 服务支持跨视图直达目标路由，并在失败或无目标时清理残留状态", async () => {
+  const prevChrome = globalThis.chrome;
+  const prevBrowser = globalThis.browser;
+  try {
+    const store = new Map();
+    globalThis.browser = undefined;
+    globalThis.chrome = {
+      sidePanel: {
+        open: async () => {},
       },
-    },
-    "react/jsx-runtime": require("react/jsx-runtime"),
-    "react-router": { Link: ({ to, children, ...props }) => ({ type: "a", props: { href: to, ...props, children } }) },
-    "lucide-react": require("lucide-react"),
-    "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
-    "../services/bookmarkTasks": { countDuplicateGroups: () => 1, getLinkHealthProblemResults: () => [] },
-    "../services/homeTasks": {
-      getHomeTasks: () => ({
-        pendingCount: 2,
-        tasks: [
-          { kind: "archive", label: "2 个书签待归档", to: "/manage?task=unsorted", title: "待归档", description: "", cta: "" },
-          { kind: "duplicate", label: "1 组重复链接", to: "/manage?task=duplicate", title: "重复", description: "", cta: "" },
-        ],
-      }),
-      getOrganizeAction: () => ({ label: "开始智能整理", to: "/preview" }),
-    },
-    "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
-    "../services/impressionSearch": {
-      getImpressionMatchIcon: () => "",
-      isImpressionMatch: () => false,
-      searchBookmarksByImpression: () => [],
-    },
-    "../services/previewTask": { getPreviewTask: async () => null },
-    "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
-    "../services/sidePanel": { canOpenExtensionSidebar: () => true, openExtensionSidebar: async () => {} },
-    "../services/storage": {
-      getIgnoredManualTaskBookmarkIds: async () => [],
-      getLinkHealthReport: async () => null,
-      getPreviewPlan: async () => null,
-    },
-    "../services/whitelist": {
-      filterAvailableBookmarks: (items) => items,
-      getCurrentWhitelist: async () => ({ entries: [], index: null }),
-      whitelistFingerprint: () => "",
-    },
-    "../hooks/useDeepImpressionSearch": {
-      useDeepImpressionSearch: () => ({
-        state: { query: "", stage: "idle", expandedTerms: [] },
-        run() {},
-        cancel() {},
-        hasResult: false,
-        running: false,
-      }),
-    },
-    "../hooks/useDuplicateBookmarkIgnores": {
-      useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }),
-      useLinkHealthBookmarkIgnores: () => ({ entries: [], error: "" }),
-    },
-    "../store/useAppStore": {
-      useAppStore: () => ({
-        settings: { maxNestingLevel: 2, provider: { apiKey: "k", enabled: true } },
-        bookmarks: [{ id: "1", title: "示例", url: "https://example.test/", path: [], type: "url" }],
-        pendingRecommendations: [],
-        lastReport: null,
-        loadAll() {},
-        loading: false,
-        error: "",
-      }),
-    },
-    "./PopupQuickCard": { PopupQuickCard: MockQuickCard },
-    "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
-    "./SidebarHome": { getCurrentPage: async () => null },
-    "./TopNotice": { TopNotice: () => null, TopNotices: () => null },
-  });
+      storage: {
+        local: {
+          set: (patch, cb) => {
+            Object.entries(patch).forEach(([k, v]) => store.set(k, v));
+            cb?.();
+          },
+          get: (key, cb) => {
+            cb?.({ [key]: store.get(key) });
+          },
+          remove: (key, cb) => {
+            store.delete(key);
+            cb?.();
+          },
+        },
+      },
+    };
 
-  const tree = exports.PopupHome();
-  assert.equal(nodes(tree, (item) => item.type === MockQuickCard).length, 1);
-  assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("home-featured-task")).length, 0);
-  assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("home-recent-row")).length, 0);
-  assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("home-tool-list")).length, 0);
-  assert.equal(nodes(tree, (item) => item.props.className === "home-quick").length, 2);
-  assert.match(text(tree), /另有 1 项待办，去侧边栏处理/);
+    await openExtensionSidebar(9, "/manage?task=duplicate");
+    assert.equal(store.get(PENDING_SIDEBAR_ROUTE_STORAGE_KEY)?.to, "/manage?task=duplicate");
+    assert.equal(await consumePendingSidebarRoute(), "/manage?task=duplicate");
+    assert.equal(store.has(PENDING_SIDEBAR_ROUTE_STORAGE_KEY), false);
+
+    // 传入无目标路由时，清理历史残留目标
+    store.set(PENDING_SIDEBAR_ROUTE_STORAGE_KEY, { to: "/report", createdAt: Date.now() });
+    await openExtensionSidebar(9);
+    assert.equal(store.has(PENDING_SIDEBAR_ROUTE_STORAGE_KEY), false);
+
+    // 过期或非法路由不被消费
+    assert.equal(readFreshPendingSidebarRoute({ to: "https://evil.test", createdAt: Date.now() }), null);
+    assert.equal(readFreshPendingSidebarRoute({ to: "/report", createdAt: Date.now() - 60_000 }), null);
+
+    // 打开失败时自动清理目标路由
+    globalThis.chrome.sidePanel.open = async () => {
+      throw new Error("boom");
+    };
+    await assert.rejects(() => openExtensionSidebar(9, "/manage?task=invalid"), /boom/);
+    assert.equal(store.has(PENDING_SIDEBAR_ROUTE_STORAGE_KEY), false);
+  } finally {
+    globalThis.chrome = prevChrome;
+    globalThis.browser = prevBrowser;
+  }
+});
+
+test("PopupHome 无归档建议时在当前网页下方展示待办卡并直达侧边栏对应页面，有归档建议时隐藏待办", async () => {
+  const mountHome = ({ pendingRecommendations = [], tasks = [] } = {}) => {
+    const state = [];
+    let cursor = 0;
+    const openedTargets = [];
+    const MockQuickCard = () => ({ type: "MockQuickCard", props: {} });
+    const MockTodoIcon = (props) => ({ type: "svg", props });
+    const mockWindow = { closeCalled: 0 };
+    const exports = transpileComponent(
+      "src/app/components/PopupHome.tsx",
+      {
+        react: {
+          useEffect() {},
+          useMemo: (fn) => fn(),
+          useRef: (value) => ({ current: value }),
+          useState(initial) {
+            const index = cursor++;
+            if (state.length <= index) state[index] = typeof initial === "function" ? initial() : initial;
+            return [
+              state[index],
+              (next) => {
+                state[index] = typeof next === "function" ? next(state[index]) : next;
+              },
+            ];
+          },
+        },
+        "react/jsx-runtime": require("react/jsx-runtime"),
+        "react-router": { Link: ({ to, children, ...props }) => ({ type: "a", props: { href: to, ...props, children } }) },
+        "lucide-react": require("lucide-react"),
+        "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
+        "../services/bookmarkTasks": { countDuplicateGroups: () => 1, getLinkHealthProblemResults: () => [] },
+        "../services/homeTasks": {
+          getHomeTasks: () => ({
+            pendingCount: pendingRecommendations.length,
+            tasks,
+          }),
+          getOrganizeAction: () => ({ label: "开始智能整理", to: "/preview" }),
+        },
+        "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
+        "../services/impressionSearch": {
+          getImpressionMatchIcon: () => "",
+          isImpressionMatch: () => false,
+          searchBookmarksByImpression: () => [],
+        },
+        "../services/popupQuickCard": { resolvePopupQuickTarget },
+        "../services/previewTask": { getPreviewTask: async () => null },
+        "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
+        "../services/sidePanel": {
+          canOpenExtensionSidebar: () => true,
+          openExtensionSidebar: async (_windowId, targetTo) => {
+            openedTargets.push(targetTo ?? null);
+          },
+        },
+        "../services/storage": {
+          getIgnoredManualTaskBookmarkIds: async () => [],
+          getLinkHealthReport: async () => null,
+          getPreviewPlan: async () => null,
+        },
+        "../services/whitelist": {
+          filterAvailableBookmarks: (items) => items,
+          getCurrentWhitelist: async () => ({ entries: [], index: null }),
+          whitelistFingerprint: () => "",
+        },
+        "../hooks/useDeepImpressionSearch": {
+          useDeepImpressionSearch: () => ({
+            state: { query: "", stage: "idle", expandedTerms: [] },
+            run() {},
+            cancel() {},
+            hasResult: false,
+            running: false,
+          }),
+        },
+        "../hooks/useDuplicateBookmarkIgnores": {
+          useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }),
+          useLinkHealthBookmarkIgnores: () => ({ entries: [], error: "" }),
+        },
+        "../store/useAppStore": {
+          useAppStore: () => ({
+            settings: { maxNestingLevel: 2, provider: { apiKey: "k", enabled: true } },
+            bookmarks: [{ id: "1", title: "示例", url: "https://example.test/", path: ["书签栏"], type: "url" }],
+            pendingRecommendations,
+            lastReport: null,
+            loadAll() {},
+            loading: false,
+            error: "",
+          }),
+        },
+        "./PopupQuickCard": { PopupQuickCard: MockQuickCard },
+        "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+        "./SidebarHome": {
+          getCurrentPage: async () => null,
+          getHomeTaskVisual: () => ({ icon: MockTodoIcon, tone: "amber" }),
+        },
+        "./TopNotice": { TopNotice: () => null, TopNotices: () => null },
+      },
+      {
+        window: {
+          close() {
+            mockWindow.closeCalled += 1;
+          },
+          location: { hash: "" },
+        },
+      }
+    );
+
+    const tree = exports.PopupHome();
+    return { tree, openedTargets, MockQuickCard, mockWindow };
+  };
+
+  // 1. 无归档建议 + 有待办 -> 在 MockQuickCard 与搜索面板之间展示待办卡，点击直接跳侧边栏目标页
+  {
+    const { tree, openedTargets, MockQuickCard, mockWindow } = mountHome({
+      pendingRecommendations: [],
+      tasks: [
+        { kind: "archive", label: "2 个书签待归档", to: "/manage?task=unsorted", title: "待归档", description: "", cta: "" },
+        {
+          kind: "duplicate",
+          label: "1 组重复链接",
+          to: "/manage?task=duplicate",
+          title: "有 1 组重复链接",
+          description: "先核对书签所在文件夹，再决定保留哪些副本。",
+          cta: "核对重复书签",
+        },
+        {
+          kind: "links",
+          label: "3 个链接需要复查",
+          to: "/manage?task=invalid",
+          title: "有 3 条链接值得复查",
+          description: "确认后再决定是否清理。",
+          cta: "复查这 3 条链接",
+        },
+      ],
+    });
+
+    const children = Array.isArray(tree.props.children) ? tree.props.children.flat().filter(Boolean) : [];
+    const quickCardIndex = children.findIndex((item) => item?.type === MockQuickCard);
+    const todoIndex = children.findIndex((item) => String(item?.props?.className ?? "").includes("popup-todo-card"));
+    const searchIndex = children.findIndex((item) => String(item?.props?.className ?? "").includes("home-search-panel"));
+    assert.ok(quickCardIndex >= 0 && todoIndex > quickCardIndex && searchIndex > todoIndex);
+
+    assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("popup-sidebar-hint")).length, 0);
+    assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("home-featured-task")).length, 0);
+    assert.equal(nodes(tree, (item) => item.props.className === "home-quick").length, 2);
+    assert.match(text(tree), /有 1 组重复链接/);
+    assert.match(text(tree), /全部 2 项/);
+
+    const ctaBtn = nodes(tree, (item) => item.type === "button" && text(item).includes("核对重复书签"))[0];
+    assert.ok(ctaBtn);
+    ctaBtn.props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(openedTargets, ["/manage?task=duplicate"]);
+    assert.equal(mockWindow.closeCalled, 1);
+
+    const allBtn = nodes(tree, (item) => item.type === "button" && text(item).includes("全部 2 项"))[0];
+    assert.ok(allBtn);
+    allBtn.props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(openedTargets, ["/manage?task=duplicate", "/tasks"]);
+  }
+
+  // 2. 有归档建议 -> 不显示待办任务部分
+  {
+    const { tree } = mountHome({
+      pendingRecommendations: [
+        {
+          id: "rec-1",
+          bookmarkId: "1",
+          bookmarkTitle: "示例",
+          bookmarkUrl: "https://example.test/",
+          createdAt: 100,
+          suggestedFolderPath: ["工具"],
+          confidence: 0.9,
+        },
+      ],
+      tasks: [
+        {
+          kind: "duplicate",
+          label: "1 组重复链接",
+          to: "/manage?task=duplicate",
+          title: "有 1 组重复链接",
+          description: "先核对书签所在文件夹，再决定保留哪些副本。",
+          cta: "核对重复书签",
+        },
+      ],
+    });
+    assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("popup-todo-card")).length, 0);
+    assert.equal(nodes(tree, (item) => String(item.props.className ?? "").includes("popup-sidebar-hint")).length, 0);
+  }
 });

@@ -3830,7 +3830,8 @@ select.extension-control option,
   background: var(--remarks-surface);
 }
 
-.bookmark-task-panel + .bookmark-health-panel {
+.bookmark-task-panel + .bookmark-health-panel,
+.bookmark-health-panel + .bookmark-health-panel {
   margin-top: 12px;
 }
 
@@ -4060,24 +4061,6 @@ label.bookmark-duplicates__row-label {
 
 .bookmark-duplicates__links li span {
   color: var(--remarks-muted);
-}
-
-.bookmark-duplicates__ignored {
-  padding: 8px 12px;
-}
-
-.bookmark-duplicates__ignored .bookmark-duplicates__links {
-  border-top: 0;
-}
-
-.bookmark-duplicates__ignored summary {
-  padding: 4px 0;
-}
-
-.bookmark-duplicates__ignored li > button {
-  justify-self: start;
-  width: auto;
-  margin-top: 4px;
 }
 
 .bookmark-tree-panel__delete-button {

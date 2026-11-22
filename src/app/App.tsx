@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { HashRouter, Routes, Route, useLocation } from "react-router";
+import { useEffect, useRef } from "react";
+import { HashRouter, Routes, Route, useLocation, useNavigate } from "react-router";
 import { SidebarHome } from "./components/SidebarHome";
 import { PopupHome } from "./components/PopupHome";
 import { Options } from "./components/Options";
@@ -13,6 +13,12 @@ import { Backups } from "./components/Backups";
 import { ImportBookmarks } from "./components/ImportBookmarks";
 import { Onboarding } from "./components/Onboarding";
 import { MoreTools } from "./components/MoreTools";
+import {
+  clearPendingSidebarRoute,
+  consumePendingSidebarRoute,
+  PENDING_SIDEBAR_ROUTE_STORAGE_KEY,
+  readFreshPendingSidebarRoute,
+} from "./services/sidePanel";
 import { useAppStore } from "./store/useAppStore";
 
 type AppProps = {
@@ -21,6 +27,9 @@ type AppProps = {
 
 function AppRoutes({ defaultView = "popup" }: AppProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const locationRef = useRef(`${location.pathname}${location.search}`);
+  locationRef.current = `${location.pathname}${location.search}`;
   const { settings, loadSettings } = useAppStore();
   const isPopupHome = defaultView === "popup" && ["/", "/home"].includes(location.pathname);
   const isPopupWindow = defaultView === "popup";
@@ -29,6 +38,39 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!isSidebarWindow) return;
+    let active = true;
+    const applyTarget = (target: string | null) => {
+      if (!active || !target) return;
+      if (locationRef.current !== target) {
+        void navigate(target);
+      }
+    };
+    void consumePendingSidebarRoute().then(applyTarget);
+
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const handleStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== "local" || !changes[PENDING_SIDEBAR_ROUTE_STORAGE_KEY]) return;
+      const target = readFreshPendingSidebarRoute(changes[PENDING_SIDEBAR_ROUTE_STORAGE_KEY].newValue);
+      if (!target) return;
+      void clearPendingSidebarRoute().finally(() => {
+        applyTarget(target);
+      });
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChanged);
+    return () => {
+      active = false;
+      chrome.storage.onChanged.removeListener(handleStorageChanged);
+    };
+  }, [isSidebarWindow, navigate]);
 
   useEffect(() => {
     // 首页记录离开时的滚动位置；返回首页时由 SidebarHome 恢复，避免打断其它页面的顶部定位

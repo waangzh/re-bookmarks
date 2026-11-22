@@ -18,6 +18,7 @@ import {
   Bookmark,
   ChevronDown,
   ChevronRight,
+  EyeOff,
   X,
   Check,
   RefreshCw,
@@ -2123,22 +2124,65 @@ export function ManageBookmarks() {
   };
 
   const renderIgnoredBookmarks = (items: BookmarkNode[], restore: (bookmark: BookmarkNode) => void, disabled: boolean) => items.length > 0 && (
-    <section className="bookmark-health-panel bookmark-duplicates__ignored">
-      <details className="bookmark-duplicates__links">
-        <summary>已忽略的书签（{items.length}）</summary>
-        <ul>
-          {items.map((bookmark) => (
-            <li key={bookmark.id}>
-              <strong>{bookmark.title}</strong>
-              <span>{bookmark.path.join(" / ") || "根目录"}</span>
-              <span>{bookmark.url}</span>
-              <button type="button" className="extension-page__wide-secondary" disabled={disabled}
-                aria-label={`恢复检测：${bookmark.title}`}
-                onClick={() => restore(bookmark)}>
-                恢复检测
-              </button>
-            </li>
-          ))}
+    <section className="bookmark-health-panel bookmark-ignored-panel">
+      <details className="bookmark-ignored__details">
+        <summary className="bookmark-ignored__summary">
+          <span className="bookmark-ignored__summary-main">
+            <ChevronRight className="bookmark-ignored__chevron" aria-hidden="true" />
+            <EyeOff className="bookmark-ignored__icon" aria-hidden="true" />
+            <span>已忽略的书签</span>
+          </span>
+          <span className="bookmark-ignored__count">{items.length}</span>
+        </summary>
+        <ul className="bookmark-ignored__list">
+          {items.map((bookmark) => {
+            const folderPath = bookmark.path.join(" / ") || "根目录";
+            return (
+              <li key={bookmark.id} className="bookmark-ignored__item">
+                <div className="bookmark-ignored__row">
+                  <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
+                  <div className="bookmark-ignored__main">
+                    <div className="bookmark-ignored__title-line">
+                      <strong className="bookmark-ignored__title" title={bookmark.title || bookmark.url}>
+                        {bookmark.title || bookmark.url}
+                      </strong>
+                      {bookmark.url && (
+                        <a
+                          href={bookmark.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="extension-link-icon bookmark-ignored__link"
+                          aria-label={`打开书签：${bookmark.title}`}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                    <div className="bookmark-ignored__meta">
+                      <span className="bookmark-ignored__path" title={folderPath}>
+                        <Folder aria-hidden="true" />
+                        <span>{folderPath}</span>
+                      </span>
+                      {bookmark.url && (
+                        <span className="bookmark-ignored__url" title={bookmark.url}>
+                          {bookmark.url}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="bookmark-ignored__restore"
+                    disabled={disabled}
+                    aria-label={`恢复检测：${bookmark.title}`}
+                    onClick={() => restore(bookmark)}
+                  >
+                    恢复检测
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </details>
     </section>

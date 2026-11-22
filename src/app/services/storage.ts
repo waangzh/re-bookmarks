@@ -33,6 +33,7 @@ export const STORAGE_KEYS = {
   modelCatalog: "remarks.modelCatalog",
   semanticIndex: "remarks.semanticIndex",
   homeSearchKeywords: "remarks.homeSearchKeywords",
+  pendingSidebarRoute: "remarks.pendingSidebarRoute",
 } as const;
 
 /** 模型列表缓存的过期时间：24 小时 */

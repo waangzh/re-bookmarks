@@ -45,6 +45,7 @@ type PopupQuickCardProps = {
   maxNestingLevel: number;
   onRefresh: () => Promise<void> | void;
   onCurrentPageSaved: (url: string) => void;
+  onAnalyzingIdsChange?: (bookmarkIds: string[]) => void;
 };
 
 type QuickFeedback = {
@@ -88,6 +89,7 @@ export function PopupQuickCard({
   maxNestingLevel,
   onRefresh,
   onCurrentPageSaved,
+  onAnalyzingIdsChange,
 }: PopupQuickCardProps) {
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [analyzingBookmarkIds, setAnalyzingBookmarkIds] = useState<string[]>([]);
@@ -143,6 +145,10 @@ export function PopupQuickCard({
     () => [...new Set([...analyzingBookmarkIds, ...optimisticAnalyzingIds])],
     [analyzingBookmarkIds, optimisticAnalyzingIds]
   );
+
+  useEffect(() => {
+    onAnalyzingIdsChange?.(combinedAnalyzingIds);
+  }, [combinedAnalyzingIds, onAnalyzingIdsChange]);
 
   useEffect(() => {
     if (combinedAnalyzingIds.length === 0) {

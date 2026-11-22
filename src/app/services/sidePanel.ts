@@ -1,6 +1,13 @@
 export const PENDING_ANALYSIS_STATUS_MESSAGE = "remarks:getPendingAnalysisStatus";
 export const PENDING_ANALYSIS_UPDATED_MESSAGE = "remarks:pendingAnalysisUpdated";
 export const OPEN_SIDE_PANEL_MESSAGE = "remarks:openSidePanel";
+export const PENDING_SIDEBAR_ROUTE_STORAGE_KEY = "remarks.pendingSidebarRoute";
+const PENDING_SIDEBAR_ROUTE_TTL_MS = 30_000;
+
+export type PendingSidebarRoute = {
+  to: string;
+  createdAt: number;
+};
 
 type FirefoxSidebarAction = {
   open: () => Promise<void>;
@@ -36,15 +43,69 @@ export function isOpenSidePanelMessage(
   );
 }
 
+export function isValidSidebarRouteTarget(to: unknown): to is string {
+  return typeof to === "string" && to.startsWith("/");
+}
+
+export function readFreshPendingSidebarRoute(raw: unknown, now = Date.now()): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as { to?: unknown; createdAt?: unknown };
+  if (!isValidSidebarRouteTarget(candidate.to) || typeof candidate.createdAt !== "number") return null;
+  if (candidate.createdAt > now + 5_000 || now - candidate.createdAt > PENDING_SIDEBAR_ROUTE_TTL_MS) return null;
+  return candidate.to;
+}
+
+export function queuePendingSidebarRoute(to: string): Promise<void> {
+  if (!isValidSidebarRouteTarget(to) || typeof chrome === "undefined" || !chrome.storage?.local) {
+    return Promise.resolve();
+  }
+  const payload: PendingSidebarRoute = { to, createdAt: Date.now() };
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [PENDING_SIDEBAR_ROUTE_STORAGE_KEY]: payload }, () => {
+      if (chrome.runtime?.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export function clearPendingSidebarRoute(): Promise<void> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    chrome.storage.local.remove(PENDING_SIDEBAR_ROUTE_STORAGE_KEY, () => {
+      resolve();
+    });
+  });
+}
+
+export function consumePendingSidebarRoute(): Promise<string | null> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    chrome.storage.local.get(PENDING_SIDEBAR_ROUTE_STORAGE_KEY, (result) => {
+      if (chrome.runtime?.lastError) {
+        resolve(null);
+        return;
+      }
+      const target = readFreshPendingSidebarRoute(result[PENDING_SIDEBAR_ROUTE_STORAGE_KEY]);
+      chrome.storage.local.remove(PENDING_SIDEBAR_ROUTE_STORAGE_KEY, () => {
+        resolve(target);
+      });
+    });
+  });
+}
+
 export function canOpenExtensionSidebar(): boolean {
   if (typeof chrome !== "undefined" && Boolean(chrome.sidePanel?.open)) return true;
   return Boolean(getFirefoxSidebarAction()?.open);
 }
 
-/**
- * 在用户手势上下文中打开扩展侧边栏，供 Popup 主入口一键切换完整面板。
- */
-export async function openExtensionSidebar(windowId?: number): Promise<void> {
+async function openExtensionSidebarNative(windowId?: number): Promise<void> {
   const firefoxSidebar = getFirefoxSidebarAction();
   if (firefoxSidebar?.open) {
     await firefoxSidebar.open();
@@ -66,6 +127,25 @@ export async function openExtensionSidebar(windowId?: number): Promise<void> {
   }
 
   throw new Error("当前浏览器暂不支持从弹窗直接打开侧边栏");
+}
+
+/**
+ * 在用户手势上下文中打开扩展侧边栏；如传入目标路由，则在打开后由侧边栏直达对应页面。
+ */
+export async function openExtensionSidebar(windowId?: number, targetTo?: string): Promise<void> {
+  // 必须同步发起存储写入或清理，避免 await 打断 Firefox / Chromium 的用户手势上下文
+  const routeSyncPromise =
+    targetTo && isValidSidebarRouteTarget(targetTo)
+      ? queuePendingSidebarRoute(targetTo)
+      : clearPendingSidebarRoute();
+
+  try {
+    await openExtensionSidebarNative(windowId);
+    await routeSyncPromise;
+  } catch (error) {
+    await clearPendingSidebarRoute().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**

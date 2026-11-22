@@ -30,8 +30,8 @@ import { useDuplicateBookmarkIgnores, useLinkHealthBookmarkIgnores } from "../ho
 import { useAppStore } from "../store/useAppStore";
 import { PopupQuickCard } from "./PopupQuickCard";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
-import { getCurrentPage } from "./SidebarHome";
-import type { PopupCurrentPage } from "../services/popupQuickCard";
+import { getCurrentPage, getHomeTaskVisual } from "./SidebarHome";
+import { resolvePopupQuickTarget, type PopupCurrentPage } from "../services/popupQuickCard";
 import { TopNotice, TopNotices } from "./TopNotice";
 
 function getDomain(url?: string) {
@@ -64,6 +64,7 @@ export function PopupHome() {
   const { entries: duplicateIgnores } = useDuplicateBookmarkIgnores();
   const { entries: linkHealthIgnores } = useLinkHealthBookmarkIgnores();
   const [currentPage, setCurrentPage] = useState<PopupCurrentPage | null>(null);
+  const [analyzingBookmarkIds, setAnalyzingBookmarkIds] = useState<string[]>([]);
   const [previewState, setPreviewState] = useState<"none" | "running" | "ready">("none");
   const [previewTask, setPreviewTask] = useState<PreviewTaskCache | null>(null);
   const [linkHealthReport, setLinkHealthReport] = useState<BookmarkLinkHealthReport | null>(null);
@@ -210,6 +211,24 @@ export function PopupHome() {
     () => taskSummary.tasks.filter((task) => task.kind !== "archive" && task.to !== organizeAction.to),
     [organizeAction.to, taskSummary.tasks]
   );
+  const quickTarget = useMemo(
+    () =>
+      resolvePopupQuickTarget({
+        currentPage,
+        bookmarks,
+        pendingRecommendations,
+        analyzingBookmarkIds,
+      }),
+    [analyzingBookmarkIds, bookmarks, currentPage, pendingRecommendations]
+  );
+  const hasQuickArchiveTask = Boolean(
+    quickTarget.isAnalyzingCurrent ||
+      quickTarget.currentRecommendation ||
+      quickTarget.latestOtherRecommendation
+  );
+  const primaryTodoTask = !hasQuickArchiveTask ? extraSidebarTasks[0] ?? null : null;
+  const todoVisual = primaryTodoTask ? getHomeTaskVisual(primaryTodoTask.kind) : null;
+  const TodoIcon = todoVisual?.icon ?? null;
 
   const queryText = query.trim();
   const searchableBookmarks = useMemo(
@@ -296,9 +315,9 @@ export function PopupHome() {
     }
   };
 
-  const handleOpenSidebar = async () => {
+  const handleOpenSidebar = async (targetTo?: string) => {
     try {
-      await openExtensionSidebar(currentPage?.windowId);
+      await openExtensionSidebar(currentPage?.windowId, targetTo);
       window.close();
     } catch (cause) {
       setRefreshError(cause instanceof Error ? cause.message : "打开侧边栏失败");
@@ -341,7 +360,56 @@ export function PopupHome() {
         maxNestingLevel={settings.maxNestingLevel}
         onRefresh={loadAll}
         onCurrentPageSaved={(url) => setCurrentPage((page) => (page?.url === url ? { ...page, saved: true } : page))}
+        onAnalyzingIdsChange={setAnalyzingBookmarkIds}
       />
+
+      {primaryTodoTask && TodoIcon && todoVisual && (
+        <section className={`popup-todo-card popup-todo-card--${todoVisual.tone}`} aria-label="待办任务">
+          <div className="popup-todo-card__top">
+            <span className="popup-todo-card__badge">
+              <TodoIcon className={todoVisual.spin ? "home-action-spinner" : undefined} aria-hidden="true" />
+              <span>待办任务</span>
+            </span>
+            {extraSidebarTasks.length > 1 &&
+              (sidebarAvailable ? (
+                <button
+                  type="button"
+                  className="popup-quick-card__more"
+                  onClick={() => void handleOpenSidebar("/tasks")}
+                >
+                  全部 {extraSidebarTasks.length} 项
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              ) : (
+                <Link to="/tasks" className="popup-quick-card__more">
+                  全部 {extraSidebarTasks.length} 项
+                  <ChevronRight aria-hidden="true" />
+                </Link>
+              ))}
+          </div>
+          <div className="popup-todo-card__body">
+            <strong className="popup-todo-card__title">{primaryTodoTask.title}</strong>
+            <p className="popup-todo-card__desc">{primaryTodoTask.description}</p>
+          </div>
+          <div className="popup-todo-card__actions">
+            {sidebarAvailable ? (
+              <button
+                type="button"
+                className="popup-quick-card__btn popup-quick-card__btn--primary"
+                onClick={() => void handleOpenSidebar(primaryTodoTask.to)}
+              >
+                <PanelRightOpen aria-hidden="true" />
+                <span>{primaryTodoTask.cta}</span>
+              </button>
+            ) : (
+              <Link to={primaryTodoTask.to} className="popup-quick-card__btn popup-quick-card__btn--primary">
+                <span>{primaryTodoTask.cta}</span>
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            )}
+          </div>
+        </section>
+      )}
 
       <div className={`home-search-panel${queryText ? " home-search-panel--results" : ""}`}>
         <SearchKeywordDropdown query={query} onQueryChange={changeQuery} semanticIndex={semanticIndex} inputRef={searchRef}>
@@ -506,24 +574,6 @@ export function PopupHome() {
             <ChevronRight className="home-row-chevron" aria-hidden="true" />
           </Link>
         </nav>
-
-        {extraSidebarTasks.length > 0 && (
-          sidebarAvailable ? (
-            <button
-              type="button"
-              className="popup-sidebar-hint"
-              onClick={() => void handleOpenSidebar()}
-            >
-              <span>另有 {extraSidebarTasks.length} 项待办，去侧边栏处理</span>
-              <ChevronRight aria-hidden="true" />
-            </button>
-          ) : (
-            <Link to="/tasks" className="popup-sidebar-hint">
-              <span>另有 {extraSidebarTasks.length} 项待办，查看任务中心</span>
-              <ChevronRight aria-hidden="true" />
-            </Link>
-          )
-        )}
       </section>
     </main>
   );
