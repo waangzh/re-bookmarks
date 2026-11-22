@@ -22,6 +22,8 @@ export type ModelCatalogCache = {
 
 export type FixedDomainRule = { id: string; domain: string; folderId: string; folderPath: string[]; createdAt: number };
 
+export type DuplicateBookmarkIgnore = { id: string; url: string };
+
 export type BookmarkWhitelistEntry = {
   type: "bookmark" | "folder";
   id: string;

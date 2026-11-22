@@ -2,6 +2,7 @@ import type {
   BookmarkBackup,
   BookmarkWhitelistEntry,
   BookmarkLinkHealthReport,
+  DuplicateBookmarkIgnore,
   FolderHabitProfile,
   ModelCatalogCache,
   OrganizeReport,
@@ -24,6 +25,7 @@ export const STORAGE_KEYS = {
   folderHabitProfile: "remarks.folderHabitProfile",
   linkHealthReport: "remarks.linkHealthReport",
   ignoredManualTaskBookmarkIds: "remarks.ignoredManualTaskBookmarkIds",
+  duplicateBookmarkIgnores: "remarks.duplicateBookmarkIgnores",
   bookmarkWhitelist: "remarks.bookmarkWhitelist",
   fixedDomainRules: "remarks.fixedDomainRules",
   previewReview: "remarks.previewReview",
@@ -199,6 +201,38 @@ export function getIgnoredManualTaskBookmarkIds(): Promise<string[]> {
 
 export function saveIgnoredManualTaskBookmarkIds(bookmarkIds: string[]): Promise<void> {
   return setStorageValue(STORAGE_KEYS.ignoredManualTaskBookmarkIds, bookmarkIds);
+}
+
+export async function getDuplicateBookmarkIgnores(): Promise<DuplicateBookmarkIgnore[]> {
+  if (!hasChromeStorage()) return [];
+  const key = STORAGE_KEYS.duplicateBookmarkIgnores;
+  return new Promise((resolve, reject) => chrome.storage.local.get(key, (result) => {
+    if (chrome.runtime.lastError) {
+      reject(new Error("读取重复检测忽略记录失败，请重试"));
+      return;
+    }
+    const entries = result[key] ?? [];
+    if (!Array.isArray(entries) || entries.some((entry) =>
+      !entry || typeof entry.id !== "string" || typeof entry.url !== "string"
+    )) {
+      reject(new Error("重复检测忽略记录格式无效"));
+      return;
+    }
+    resolve(entries);
+  }));
+}
+
+export function updateDuplicateBookmarkIgnores(bookmarks: DuplicateBookmarkIgnore[], ignore: boolean) {
+  const key = STORAGE_KEYS.duplicateBookmarkIgnores;
+  return withStorageMutation(key, async () => {
+    const entries = await getDuplicateBookmarkIgnores();
+    const urls = new Map(entries.map(({ id, url }) => [id, url]));
+    for (const { id, url } of bookmarks) {
+      if (ignore) urls.set(id, url);
+      else if (urls.get(id) === url) urls.delete(id);
+    }
+    await setStorageValue(key, [...urls].map(([id, url]) => ({ id, url })));
+  });
 }
 
 export function getLinkHealthReport(): Promise<BookmarkLinkHealthReport | null> {

@@ -35,14 +35,15 @@ import {
   ensureFolderPath,
   getAllBookmarkFolders,
   getBookmarkFaviconUrl,
+  getUrlBookmarks,
   moveBookmark,
   parseFolderPath,
   removeBookmark,
   updateBookmark,
 } from "../services/bookmarks";
 import {
-  filterDuplicateBookmarks,
   getDuplicateBookmarkGroups,
+  getIgnoredDuplicateBookmarkIds,
   getLinkHealthProblemCount as countLinkHealthProblems,
   getUnsortedTaskCount,
   getVisibleUnsortedBookmarks,
@@ -58,12 +59,15 @@ import { appendFolderImpression, getSemanticIndexCoverage, getSemanticIndexMap }
 import { backfillImpressions, getImpressionBackfillBatchSize, getMissingImpressionBookmarks, type ImpressionBackfillFailure, type ImpressionBackfillProgress } from "../services/impressionBackfill";
 import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
+import { useDuplicateBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
 import {
   STORAGE_KEYS,
+  getDuplicateBookmarkIgnores,
   getIgnoredManualTaskBookmarkIds,
   getLinkHealthReport,
   removeBookmarkFromLinkHealthReport,
   saveIgnoredManualTaskBookmarkIds,
+  updateDuplicateBookmarkIgnores,
 } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 import { ensureRequiredHostPermission, hasRequiredHostPermission } from "../services/hostPermissions";
@@ -255,26 +259,11 @@ function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
   };
 }
 
-function getDuplicateGroupLabel() {
-  return "精确重复";
-}
-
-function getDuplicateGroupDescription(group: DuplicateBookmarkGroup) {
-  if (group.kind === "exact") return group.key;
-  if (group.kind === "normalized-path") return group.key;
-  return group.domain || group.key;
-}
-
-function getDuplicateGroupKindLabel(group: DuplicateBookmarkGroup) {
-  if (group.kind === "exact") return getDuplicateGroupLabel();
-  if (group.kind === "normalized-path") return "同路径疑似重复";
-  return "标题相似疑似重复";
-}
-
 export function ManageBookmarks() {
   const { bookmarks, pendingRecommendations, loadBookmarks, loadRecommendations, loadReports, settings } = useAppStore();
   const [searchParams] = useSearchParams();
   const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
+  const { entries: duplicateIgnores, error: duplicateIgnoresError } = useDuplicateBookmarkIgnores(taskMode === "duplicate");
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [searchQuery, setSearchQuery] = useState(() => {
     const value = searchParams.get("search") ?? "";
@@ -469,17 +458,23 @@ export function ManageBookmarks() {
     );
   }, [linkHealthReport]);
 
+  const duplicateGroups = useMemo(() => {
+    if (taskMode !== "duplicate" || !duplicateIgnores) return [];
+    return getDuplicateBookmarkGroups(bookmarks, duplicateIgnores, whitelistIndex.protectedBookmarkIds);
+  }, [bookmarks, duplicateIgnores, taskMode, whitelistIndex]);
+
+  const ignoredDuplicateBookmarks = useMemo(() => {
+    if (taskMode !== "duplicate" || !duplicateIgnores?.length) return [];
+    const ignoredIds = getIgnoredDuplicateBookmarkIds(bookmarks, duplicateIgnores);
+    return bookmarks.filter((bookmark) => ignoredIds.has(bookmark.id));
+  }, [bookmarks, duplicateIgnores, taskMode]);
+
   const taskBookmarks = useMemo(() => {
     if (taskMode === "unsorted") return bookmarks.filter((bookmark) => isUnsortedBookmark(bookmark) && !whitelistIndex.protectedBookmarkIds.has(bookmark.id));
-    if (taskMode === "duplicate") return filterDuplicateBookmarks(bookmarks);
+    if (taskMode === "duplicate") return duplicateGroups.flatMap((group) => group.items);
     if (taskMode === "invalid") return bookmarks.filter((bookmark) => invalidBookmarkIds.has(bookmark.id) && !whitelistIndex.protectedBookmarkIds.has(bookmark.id));
     return bookmarks;
-  }, [bookmarks, invalidBookmarkIds, taskMode, whitelistIndex]);
-
-  const duplicateGroups = useMemo(() => {
-    if (taskMode !== "duplicate") return [];
-    return getDuplicateBookmarkGroups(bookmarks);
-  }, [bookmarks, taskMode]);
+  }, [bookmarks, duplicateGroups, invalidBookmarkIds, taskMode, whitelistIndex]);
 
   const visibleTaskBookmarks = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks;
@@ -567,12 +562,7 @@ export function ManageBookmarks() {
     if (taskMode !== "duplicate") return [];
     if (!searchQuery.trim()) return duplicateGroups;
 
-    return duplicateGroups
-      .map((group) => ({
-        ...group,
-        items: group.items.filter((bookmark) => impressionResultById.has(bookmark.id)),
-      }))
-      .filter((group) => group.items.length > 0);
+    return duplicateGroups.filter((group) => group.items.some((bookmark) => impressionResultById.has(bookmark.id)));
   }, [duplicateGroups, impressionResultById, searchQuery, taskMode]);
 
   const filteredDuplicateBookmarkCount = useMemo(() => {
@@ -685,12 +675,10 @@ export function ManageBookmarks() {
 
   const pageSubtitle = useMemo(() => {
     if (taskMode === "duplicate") {
-      const exactCount = duplicateGroups.filter((group) => group.kind === "exact").length;
-      const suspectedCount = duplicateGroups.length - exactCount;
-      const summary = [];
-      if (exactCount) summary.push(`${exactCount} 组精确重复`);
-      if (suspectedCount) summary.push(`${suspectedCount} 组疑似重复`);
-      return summary.length ? `${summary.join("，")}，涉及 ${taskBookmarks.length} 个书签` : "未发现重复链接";
+      if (!duplicateIgnores) return undefined;
+      return duplicateGroups.length
+        ? `${duplicateGroups.length} 组重复链接，涉及 ${taskBookmarks.length} 个书签`
+        : "未发现重复链接";
     }
     if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理`;
     if (taskMode === "invalid") {
@@ -698,7 +686,7 @@ export function ManageBookmarks() {
       return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${countLinkHealthProblems(linkHealthReport, bookmarks)} 个`;
     }
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks.length, duplicateGroups, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
+  }, [bookmarks.length, duplicateGroups.length, duplicateIgnores, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -1029,7 +1017,7 @@ export function ManageBookmarks() {
     });
 
     if (fullySelectedGroup) {
-      setMessage(`不能删除「${getDuplicateGroupDescription(fullySelectedGroup)}」的全部副本，请至少保留一个书签`);
+      setMessage(`不能删除「${fullySelectedGroup.key}」的全部副本，请至少保留一个书签`);
       return;
     }
 
@@ -1043,12 +1031,21 @@ export function ManageBookmarks() {
     try {
       await createDuplicateDeleteBackup();
 
+      const [protection, ignored] = await Promise.all([getCurrentWhitelist(), getDuplicateBookmarkIgnores()]);
+      const currentGroups = getDuplicateBookmarkGroups(getUrlBookmarks(protection.tree), ignored, protection.index.protectedBookmarkIds);
+      const currentTargets = new Map(currentGroups
+        .filter((group) => group.items.some(({ id }) => !selectedIds.has(id)))
+        .flatMap((group) => group.items.map((bookmark) => [bookmark.id, bookmark] as const)));
       const deletedIds = new Set<string>();
       const failedItems: string[] = [];
       let nextReport = linkHealthReport;
 
       for (const bookmark of selectedBookmarks) {
         try {
+          const current = currentTargets.get(bookmark.id);
+          if (!current || current.url !== bookmark.url || current.parentId !== bookmark.parentId) {
+            throw new Error("书签或保留副本已变化，请重新核对");
+          }
           await removeBookmark(bookmark.id);
           deletedIds.add(bookmark.id);
           nextReport = await removeBookmarkFromLinkHealthReport(bookmark.id);
@@ -1072,6 +1069,22 @@ export function ManageBookmarks() {
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量删除重复书签失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDuplicateIgnore = async (items: BookmarkNode[], ignore: boolean) => {
+    const entries = items.flatMap(({ id, url }) => url ? [{ id, url }] : []);
+    if (!entries.length) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await updateDuplicateBookmarkIgnores(entries, ignore);
+      setSelectedDuplicateBookmarkIds(new Set());
+      setMessage(ignore ? `已在重复检测中忽略 ${entries.length} 个书签` : "已恢复重复检测", "success");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更新重复检测忽略记录失败");
     } finally {
       setBusy(false);
     }
@@ -2019,9 +2032,13 @@ export function ManageBookmarks() {
                   {areAllVisibleDuplicatesSelected ? "取消建议项勾选" : "勾选建议删除项"}
                 </button>
               )}
-              <button type="button" onClick={() => void protectSelectedBookmarks([...selectedDuplicateBookmarkIds])}
-                disabled={busy || selectedDuplicateCount === 0} className="extension-page__wide-secondary">
-                保护所选
+              <button type="button" onClick={() => {
+                const ids = new Set(visibleDuplicateBookmarkIds.filter((id) => selectedDuplicateBookmarkIds.has(id)));
+                void handleDuplicateIgnore(taskBookmarks.filter(({ id }) => ids.has(id)), true);
+              }}
+                disabled={busy || selectedDuplicateCount === 0} className="extension-page__wide-secondary"
+                title="仅在重复检测中忽略所选书签">
+                忽略所选
               </button>
               <button
                 type="button"
@@ -2036,22 +2053,19 @@ export function ManageBookmarks() {
         </div>
         <div className="bookmark-unsorted-list">
           {filteredDuplicateGroups.map((group) => (
-            <article key={group.id} className="bookmark-unsorted-card bookmark-duplicates__card">
+            <article key={group.key} className="bookmark-unsorted-card bookmark-duplicates__card">
               <div className="bookmark-unsorted-card__content">
                 <div className="bookmark-unsorted-card__title-row">
-                  <h4>{getDuplicateGroupKindLabel(group)}</h4>
+                  <h4>相同链接</h4>
                   <span>{group.items.length} 个</span>
                 </div>
-                <p className="bookmark-unsorted-card__url">{getDuplicateGroupDescription(group)}</p>
-                <p className="bookmark-unsorted-card__reason">
-                  {group.kind === "normalized-path" ? "检测时忽略查询参数、页面锚点和末尾斜杠。" : group.reason}
-                </p>
+                <p className="bookmark-unsorted-card__url">{group.key}</p>
               </div>
               <div className="bookmark-tree">
                 {group.items.map((bookmark) => renderDuplicateBookmarkRow(bookmark, group))}
               </div>
               <details className="bookmark-duplicates__links">
-                <summary>{group.items.length > 1 ? "对比原始链接" : "查看原始链接"}</summary>
+                <summary>对比原始链接</summary>
                 <ul>
                   {group.items.map((bookmark) => (
                     <li key={bookmark.id}>
@@ -2067,6 +2081,28 @@ export function ManageBookmarks() {
       </section>
     );
   };
+
+  const renderIgnoredDuplicates = () => ignoredDuplicateBookmarks.length > 0 && (
+    <section className="bookmark-health-panel bookmark-duplicates__ignored">
+      <details className="bookmark-duplicates__links">
+        <summary>已忽略的书签（{ignoredDuplicateBookmarks.length}）</summary>
+        <ul>
+          {ignoredDuplicateBookmarks.map((bookmark) => (
+            <li key={bookmark.id}>
+              <strong>{bookmark.title}</strong>
+              <span>{bookmark.path.join(" / ") || "根目录"}</span>
+              <span>{bookmark.url}</span>
+              <button type="button" className="extension-page__wide-secondary" disabled={busy}
+                aria-label={`恢复检测：${bookmark.title}`}
+                onClick={() => void handleDuplicateIgnore([bookmark], false)}>
+                恢复检测
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </section>
+  );
 
   const renderInvalidBookmarkRow = (bookmark: BookmarkNode) => {
     if (editingId === bookmark.id) return renderBookmarkRow(bookmark, 0);
@@ -2319,6 +2355,7 @@ export function ManageBookmarks() {
   };
 
   const emptyMessage = useMemo(() => {
+    if (taskMode === "duplicate") return searchQuery.trim() ? "未找到匹配的重复链接" : "暂无重复链接";
     if (searchQuery) {
       if (deepSearchRunning) return "AI 正在根据描述查找书签…";
       if (deepSearchActive) return "AI 没有找到更匹配的书签，可换个说法再试";
@@ -2327,7 +2364,6 @@ export function ManageBookmarks() {
     if (taskMode === "unsorted") {
       return "暂无待整理书签";
     }
-    if (taskMode === "duplicate") return "暂无重复链接";
     if (taskMode === "invalid") {
       return linkHealthReport ? "未发现需要复查的链接" : "尚未检测链接，点击开始检测后查看结果";
     }
@@ -2566,7 +2602,10 @@ export function ManageBookmarks() {
         ) : taskMode === "unsorted" ? (
           renderUnsortedTasks()
         ) : taskMode === "duplicate" ? (
-          renderDuplicateTasks()
+          <>
+            {renderDuplicateTasks()}
+            {renderIgnoredDuplicates()}
+          </>
         ) : (
           <section className="bookmark-tree-panel">
             <div className="bookmark-tree-panel__head">
@@ -2610,7 +2649,9 @@ export function ManageBookmarks() {
 
         {taskMode !== "unsorted" && (taskMode === "duplicate" ? filteredDuplicateGroups.length === 0 : filteredBookmarks.length === 0) && (
           <div className="extension-empty extension-empty--compact">
-            {emptyMessage}
+            {taskMode === "duplicate" && !duplicateIgnores
+              ? duplicateIgnoresError || "正在读取重复检测记录…"
+              : emptyMessage}
           </div>
         )}
         {draggedBookmark && (

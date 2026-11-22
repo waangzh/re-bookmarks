@@ -18,6 +18,7 @@ import {
 import type { AIProviderConfig, AIProviderType, MovePlan, PreviewTaskProgress, Settings, TokenUsage } from "../types";
 import { AI_PROVIDER_OPTIONS, AI_PROVIDER_PROFILES, protocolFor, testAIConnection } from "../services/aiProvider";
 import { countDuplicateGroups, isUnsortedBookmark } from "../services/bookmarkTasks";
+import { useDuplicateBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
 import { getAllBookmarkFolders, parseFolderPath } from "../services/bookmarks";
 import { recordHabitFeedback } from "../services/habits";
 import { executeMovePlans } from "../services/organizer";
@@ -128,13 +129,15 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
     };
   }, [activeTaskId, sampleState]);
 
+  const { entries: duplicateIgnores } = useDuplicateBookmarkIgnores();
   const stats = useMemo(() => ({
     total: bookmarks.length,
     unsorted: bookmarks.filter(isUnsortedBookmark).length,
-    duplicates: countDuplicateGroups(bookmarks),
+    duplicates: duplicateIgnores && whitelistIndex
+      ? countDuplicateGroups(bookmarks, duplicateIgnores, whitelistIndex.protectedBookmarkIds) : "—",
     folders: folderCount,
     organizable: whitelistIndex ? filterAvailableBookmarks(bookmarks, whitelistIndex).length : bookmarks.length,
-  }), [bookmarks, folderCount, whitelistIndex]);
+  }), [bookmarks, duplicateIgnores, folderCount, whitelistIndex]);
 
   const providerProfile = AI_PROVIDER_PROFILES[draft.provider.type];
   const usesResponses = protocolFor(draft.provider) === "responses";
@@ -389,7 +392,7 @@ export function Onboarding({ defaultView = "popup" }: OnboardingProps) {
                 <small>个书签</small>
               </div>
               <div className="onboarding__metric"><Files aria-hidden="true" /><span>未分类</span><strong>{stats.unsorted}</strong></div>
-              <div className="onboarding__metric"><Layers3 aria-hidden="true" /><span>疑似重复</span><strong>{stats.duplicates}</strong></div>
+              <div className="onboarding__metric"><Layers3 aria-hidden="true" /><span>重复链接</span><strong>{stats.duplicates}</strong></div>
               <div className="onboarding__metric"><FolderTree aria-hidden="true" /><span>当前文件夹</span><strong>{stats.folders}</strong></div>
             </div>
             <div className="onboarding__estimate">

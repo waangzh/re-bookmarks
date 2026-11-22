@@ -343,6 +343,7 @@ test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近�
       }),
     },
     "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
+    "../hooks/useDuplicateBookmarkIgnores": { useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }) },
     "../services/bookmarkTasks": { countDuplicateGroups: () => 0, getLinkHealthProblemResults: () => [] },
     "../services/currentPage": { saveCurrentPage: async () => ({ created: true }) },
     "../services/homeTasks": {

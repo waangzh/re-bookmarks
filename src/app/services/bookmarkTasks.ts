@@ -1,6 +1,7 @@
 import type {
   BookmarkLinkHealthReport,
   BookmarkLinkHealthResult,
+  DuplicateBookmarkIgnore,
   BookmarkNode,
   PendingRecommendation,
 } from "../types";
@@ -30,100 +31,26 @@ const REQUEST_TIMEOUT_MS = 8000;
 const RETRY_DELAY_MS = 800;
 const GET_RETRY_COUNT = 1;
 const LINK_CHECK_CONCURRENCY = 4;
-const SIMILAR_TITLE_DOMAIN_LIMIT = 150;
-const TRACKING_PARAM_PATTERNS = [
-  /^utm_/i,
-  /^fbclid$/i,
-  /^gclid$/i,
-  /^msclkid$/i,
-  /^mc_cid$/i,
-  /^mc_eid$/i,
-];
-
-export type DuplicateBookmarkMatchKind = "exact" | "normalized-path" | "similar-title";
 
 export type DuplicateBookmarkGroup = {
-  id: string;
-  kind: DuplicateBookmarkMatchKind;
   key: string;
-  domain: string;
   items: BookmarkNode[];
   recommendedKeepId: string;
   suggestedDeleteIds: string[];
-  reason: string;
 };
 
-function isTrackingParam(name: string) {
-  return TRACKING_PARAM_PATTERNS.some((pattern) => pattern.test(name));
-}
-
-export function normalizeBookmarkUrl(url: string) {
+function normalizeBookmarkUrl(url: string) {
   try {
-    const parsed = new URL(url.trim());
-    parsed.protocol = parsed.protocol.toLowerCase();
-    parsed.hostname = parsed.hostname.toLowerCase();
-    Array.from(parsed.searchParams.keys()).forEach((key) => {
-      if (isTrackingParam(key)) parsed.searchParams.delete(key);
-    });
-    parsed.searchParams.sort();
-    if (parsed.hash === "#") parsed.hash = "";
-    return parsed.toString();
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : url;
   } catch {
-    return url.trim();
+    return url;
   }
 }
 
-function getUrlDomain(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-function normalizeUrlPathKey(url: string) {
-  try {
-    const parsed = new URL(url.trim());
-    const protocol = parsed.protocol.toLowerCase();
-    const hostname = parsed.hostname.toLowerCase();
-    let pathname = decodeURIComponent(parsed.pathname || "/").replace(/\/+$/, "");
-    if (!pathname) pathname = "/";
-    return `${protocol}//${hostname}${pathname}`;
-  } catch {
-    return url.trim();
-  }
-}
-
-function normalizeTitleForMatch(title: string) {
-  return title
-    .toLowerCase()
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function titleTokens(title: string) {
-  return normalizeTitleForMatch(title)
-    .split(" ")
-    .filter((token) => token.length >= 2);
-}
-
-function titleSimilarity(left: string, right: string) {
-  const leftTitle = normalizeTitleForMatch(left);
-  const rightTitle = normalizeTitleForMatch(right);
-  if (!leftTitle || !rightTitle) return 0;
-  if (leftTitle === rightTitle) return 1;
-  if ((leftTitle.length >= 8 && rightTitle.includes(leftTitle)) || (rightTitle.length >= 8 && leftTitle.includes(rightTitle))) {
-    return 0.9;
-  }
-
-  const leftTokens = new Set(titleTokens(leftTitle));
-  const rightTokens = new Set(titleTokens(rightTitle));
-  if (!leftTokens.size || !rightTokens.size) return 0;
-  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
-  const union = new Set([...leftTokens, ...rightTokens]).size;
-  return union ? intersection / union : 0;
+export function getIgnoredDuplicateBookmarkIds(bookmarks: BookmarkNode[], ignored: DuplicateBookmarkIgnore[]) {
+  const ignoredUrls = new Map(ignored.map(({ id, url }) => [id, url]));
+  return new Set(bookmarks.filter(({ id, url }) => url && ignoredUrls.get(id) === url).map(({ id }) => id));
 }
 
 function pickRecommendedKeep(items: BookmarkNode[]) {
@@ -174,47 +101,15 @@ export function getUnsortedTaskCount(
   return ids.size;
 }
 
-export function getDuplicateUrlCounts(bookmarks: BookmarkNode[]) {
-  const counts = new Map<string, number>();
-  bookmarks.forEach((bookmark) => {
-    if (!bookmark.url) return;
-    const key = normalizeBookmarkUrl(bookmark.url);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  });
-  return counts;
-}
-
-export function getDuplicateUrlKeys(bookmarks: BookmarkNode[]) {
-  return new Set(
-    [...getDuplicateUrlCounts(bookmarks).entries()]
-      .filter(([, count]) => count > 1)
-      .map(([url]) => url)
-  );
-}
-
-function createDuplicateGroup(
-  kind: DuplicateBookmarkMatchKind,
-  key: string,
-  items: BookmarkNode[],
-  reason: string
-): DuplicateBookmarkGroup {
-  const recommendedKeep = pickRecommendedKeep(items) ?? items[0];
-  return {
-    id: `${kind}:${key}`,
-    kind,
-    key,
-    domain: getUrlDomain(items[0]?.url ? normalizeBookmarkUrl(items[0].url) : ""),
-    items,
-    recommendedKeepId: recommendedKeep?.id ?? "",
-    suggestedDeleteIds: items.filter((bookmark) => bookmark.id !== recommendedKeep?.id).map((bookmark) => bookmark.id),
-    reason,
-  };
-}
-
-function getExactDuplicateGroups(bookmarks: BookmarkNode[]) {
+export function getDuplicateBookmarkGroups(
+  bookmarks: BookmarkNode[],
+  ignored: DuplicateBookmarkIgnore[],
+  protectedIds: ReadonlySet<string> = new Set()
+): DuplicateBookmarkGroup[] {
+  const ignoredIds = getIgnoredDuplicateBookmarkIds(bookmarks, ignored);
   const byUrl = new Map<string, BookmarkNode[]>();
   bookmarks.forEach((bookmark) => {
-    if (!bookmark.url) return;
+    if (!bookmark.url || ignoredIds.has(bookmark.id)) return;
     const key = normalizeBookmarkUrl(bookmark.url);
     const group = byUrl.get(key) ?? [];
     group.push(bookmark);
@@ -222,110 +117,24 @@ function getExactDuplicateGroups(bookmarks: BookmarkNode[]) {
   });
 
   return [...byUrl.entries()]
-    .filter(([, items]) => items.length > 1)
-    .map(([key, items]) => createDuplicateGroup("exact", key, items, "URL 完全一致或仅跟踪参数不同"));
-}
-
-function getNormalizedPathDuplicateGroups(bookmarks: BookmarkNode[]) {
-  const byPath = new Map<string, BookmarkNode[]>();
-  bookmarks.forEach((bookmark) => {
-    if (!bookmark.url) return;
-    const key = normalizeUrlPathKey(bookmark.url);
-    const group = byPath.get(key) ?? [];
-    group.push(bookmark);
-    byPath.set(key, group);
-  });
-
-  return [...byPath.entries()]
-    .filter(([, items]) => {
-      const exactKeys = new Set(items.map((bookmark) => bookmark.url ? normalizeBookmarkUrl(bookmark.url) : ""));
-      return items.length > 1 && exactKeys.size > 1;
-    })
-    .map(([key, items]) => createDuplicateGroup("normalized-path", key, items, "域名和路径一致，忽略 query、hash 和末尾斜杠"));
-}
-
-function getSimilarTitleDuplicateGroups(bookmarks: BookmarkNode[]) {
-  const byDomain = new Map<string, BookmarkNode[]>();
-  bookmarks.forEach((bookmark) => {
-    if (!bookmark.url) return;
-    const domain = getUrlDomain(bookmark.url);
-    if (!domain) return;
-    const group = byDomain.get(domain) ?? [];
-    group.push(bookmark);
-    byDomain.set(domain, group);
-  });
-
-  const groups: DuplicateBookmarkGroup[] = [];
-  byDomain.forEach((items, domain) => {
-    if (items.length > SIMILAR_TITLE_DOMAIN_LIMIT) return;
-
-    const parent = new Map<string, string>();
-    const find = (id: string): string => {
-      const current = parent.get(id) ?? id;
-      if (current === id) return id;
-      const root = find(current);
-      parent.set(id, root);
-      return root;
-    };
-    const union = (left: string, right: string) => {
-      const leftRoot = find(left);
-      const rightRoot = find(right);
-      if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
-    };
-
-    items.forEach((item) => parent.set(item.id, item.id));
-    for (let leftIndex = 0; leftIndex < items.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < items.length; rightIndex += 1) {
-        const left = items[leftIndex];
-        const right = items[rightIndex];
-        if (left.url && right.url && normalizeUrlPathKey(left.url) === normalizeUrlPathKey(right.url)) continue;
-        if (titleSimilarity(left.title, right.title) >= 0.82) union(left.id, right.id);
-      }
-    }
-
-    const clusters = new Map<string, BookmarkNode[]>();
-    items.forEach((item) => {
-      const root = find(item.id);
-      const cluster = clusters.get(root) ?? [];
-      cluster.push(item);
-      clusters.set(root, cluster);
+    .filter(([, items]) => items.length > 1 && items.some(({ id }) => !protectedIds.has(id)))
+    .map(([key, items]) => {
+      const kept = items.find(({ id }) => protectedIds.has(id)) ?? pickRecommendedKeep(items);
+      return {
+        key,
+        items,
+        recommendedKeepId: kept.id,
+        suggestedDeleteIds: items.filter(({ id }) => id !== kept.id && !protectedIds.has(id)).map(({ id }) => id),
+      };
     });
-
-    clusters.forEach((cluster, root) => {
-      if (cluster.length > 1) {
-        groups.push(createDuplicateGroup("similar-title", `${domain}:${root}`, cluster, "同一域名下标题高度相似"));
-      }
-    });
-  });
-
-  return groups;
 }
 
-export function getDuplicateBookmarkGroups(bookmarks: BookmarkNode[]): DuplicateBookmarkGroup[] {
-  const exactGroups = getExactDuplicateGroups(bookmarks);
-  const exactIds = new Set(exactGroups.flatMap((group) => group.items.map((bookmark) => bookmark.id)));
-
-  const normalizedGroups = getNormalizedPathDuplicateGroups(
-    bookmarks.filter((bookmark) => !exactIds.has(bookmark.id))
-  );
-  const normalizedIds = new Set(normalizedGroups.flatMap((group) => group.items.map((bookmark) => bookmark.id)));
-
-  const similarGroups = getSimilarTitleDuplicateGroups(
-    bookmarks.filter((bookmark) => !exactIds.has(bookmark.id) && !normalizedIds.has(bookmark.id))
-  );
-
-  return [...exactGroups, ...normalizedGroups, ...similarGroups];
-}
-
-export function countDuplicateGroups(bookmarks: BookmarkNode[]) {
-  return getDuplicateBookmarkGroups(bookmarks).length;
-}
-
-export function filterDuplicateBookmarks(bookmarks: BookmarkNode[]) {
-  const duplicateIds = new Set(
-    getDuplicateBookmarkGroups(bookmarks).flatMap((group) => group.items.map((bookmark) => bookmark.id))
-  );
-  return bookmarks.filter((bookmark) => duplicateIds.has(bookmark.id));
+export function countDuplicateGroups(
+  bookmarks: BookmarkNode[],
+  ignored: DuplicateBookmarkIgnore[],
+  protectedIds?: ReadonlySet<string>
+) {
+  return getDuplicateBookmarkGroups(bookmarks, ignored, protectedIds).length;
 }
 
 function isHttpBookmark(bookmark: BookmarkNode) {
