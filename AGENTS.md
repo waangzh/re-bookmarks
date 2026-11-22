@@ -5,7 +5,7 @@
 | 改动 | 先查阅 |
 | --- | --- |
 | 新增功能、确定模块归属、调整跨层调用或浏览器构建 | [架构与扩展入口](architecture.md) |
-| 页面、交互或 Store | [前端规范索引](.trellis/spec/frontend/index.md) |
+| 页面、视觉样式、交互或 Store | [设计系统规范](DESIGN.md)、[前端规范索引](.trellis/spec/frontend/index.md) |
 | 跨页面状态 | [运行边界](architecture.md)、[前端规范索引](.trellis/spec/frontend/index.md) |
 | 整理、推荐、书签写入、AI、权限和后台任务 | [架构与关键流程](architecture.md)、[扩展安全规范索引](.trellis/spec/extension/index.md) |
 
@@ -53,7 +53,7 @@ Reviewer 沿受影响的调用链查找实现者遗漏的入口、边界条件�
 - AI 入参需要 URL 脱敏时复用 `sanitizeUrl`。
 - AI 返回必须经过 JSON 解析和字段校验；非法 JSON、缺失 `id`、置信度异常时应降级到失败原因或“待整理”。
 - 文件夹路径必须经过 `normalizeFolderPath` / `normalizeCategoryPath`，并尊重嵌套层级和分类数量设置。
-- UI 延续现有 class 命名、lucide-react 图标和 Tailwind/CSS 混合写法，复用现有 UI 组件。长标题、URL 和按钮文案要处理溢出。不要引入新的 UI 框架。
+- UI 遵循 [DESIGN.md](DESIGN.md)（色彩与圆角令牌、列表卡片、五态微交互与图标语义映射），延续现有 class 命名、lucide-react 图标和 Tailwind/CSS 混合写法，复用现有 UI 组件。长标题、URL 和按钮文案要处理溢出。不要引入新的 UI 框架。
 - 保留现有源码编码。批量转码或重写文案需用户明确要求，新文档使用 UTF-8。
 
 ## 隐私与安全边界
