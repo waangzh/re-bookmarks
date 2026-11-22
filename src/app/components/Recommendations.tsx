@@ -19,18 +19,28 @@ function getFaviconUrl(url?: string) {
   return url ? getBookmarkFaviconUrl(url) : "";
 }
 
-function ExpandableReason({ reason }: { reason: string }) {
+function ExpandableReason({ reason, signalLabel }: { reason?: string; signalLabel?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const shouldCollapse = reason.length > 72;
+  const shouldCollapse = (reason?.length ?? 0) > 72;
+  const content = (
+    <>
+      {signalLabel && (
+        <strong className="recommendation-signal" title="依据仅作相对参考，不代表分类正确率">
+          {signalLabel}{reason && "："}
+        </strong>
+      )}
+      {reason}
+    </>
+  );
 
   if (!shouldCollapse) {
-    return <p className="extension-list__note">{reason}</p>;
+    return <p className="extension-list__note">{content}</p>;
   }
 
   return (
     <div className="extension-expand-text">
       <p className={`extension-list__note ${expanded ? "" : "extension-list__note--clamped"}`}>
-        {reason}
+        {content}
       </p>
       <button
         type="button"
@@ -348,9 +358,8 @@ export function Recommendations() {
                   ]}
                 />
               </div>
+              <RecommendationActionHelp />
             </div>
-
-            <RecommendationActionHelp />
 
             <div className="extension-stack">
               {sortedRecommendations.map((rec) => {
@@ -359,6 +368,7 @@ export function Recommendations() {
                 const isNewFolder = kind === "create_folder";
                 const needsManualReview = kind === "manual_review";
                 const hasError = kind === "error";
+                const signalLabel = isActionable && editingRecommendationId !== rec.id ? getRecommendationSignalLabel(rec) : undefined;
 
                 return (
                   <section key={rec.id} className={["extension-section", hasError ? "recommendation-section--error" : ""].filter(Boolean).join(" ")}>
@@ -408,7 +418,6 @@ export function Recommendations() {
                       <div className={["extension-folder-target", isNewFolder ? "extension-folder-target--new" : ""].filter(Boolean).join(" ")}>
                         {isNewFolder ? <FolderPlus className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
                         <span>{isNewFolder ? "建议新建：" : "建议归档："}{rec.suggestedFolderPath.join(" / ")}</span>
-                        <b title="依据仅作相对参考，不代表分类正确率">{getRecommendationSignalLabel(rec)}</b>
                       </div>
                     ) : (
                       <div className={["recommendation-state", hasError ? "recommendation-state--error" : ""].filter(Boolean).join(" ")}>
@@ -417,7 +426,7 @@ export function Recommendations() {
                       </div>
                     )}
 
-                    {rec.reason && <ExpandableReason reason={rec.reason} />}
+                    {(rec.reason || signalLabel) && <ExpandableReason reason={rec.reason} signalLabel={signalLabel} />}
 
                     <div className={editingRecommendationId === rec.id ? "extension-button-row" : "extension-button-row extension-button-row--three"}>
                       {editingRecommendationId === rec.id ? (

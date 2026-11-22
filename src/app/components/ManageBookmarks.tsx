@@ -1667,6 +1667,7 @@ export function ManageBookmarks() {
     const isNewFolder = kind === "create_folder";
     const hasError = kind === "error";
     const signalLabel = getRecommendationSignalLabel(recommendation);
+    const showSignal = isActionable && !isEditingRecommendation && signalLabel !== "需要确认";
 
     return (
       <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
@@ -1711,9 +1712,8 @@ export function ManageBookmarks() {
               </label>
             ) : isActionable ? (
               <div className={["bookmark-unsorted-target", isNewFolder ? "bookmark-unsorted-target--new" : ""].filter(Boolean).join(" ")}>
-                <Folder className="w-4 h-4" />
+                <Folder className="w-4 h-4" aria-hidden="true" />
                 <span>{isNewFolder ? "归档至新文件夹：" : "归档至："}{recommendation.suggestedFolderPath.join(" / ")}</span>
-                {signalLabel !== "需要确认" && <b title="依据仅作相对参考，不代表分类正确率">{signalLabel}</b>}
               </div>
             ) : (
               <div className={["bookmark-unsorted-target", hasError ? "bookmark-unsorted-target--error" : "bookmark-unsorted-target--manual"].join(" ")}>
@@ -1721,7 +1721,16 @@ export function ManageBookmarks() {
                 <span>{hasError ? "分类失败，书签保持原位" : "需要手动判断，书签保持原位"}</span>
               </div>
             )}
-            {recommendation.reason && <p className="bookmark-unsorted-card__meta">{recommendation.reason}</p>}
+            {(showSignal || recommendation.reason) && (
+              <p className="bookmark-unsorted-card__meta">
+                {showSignal && (
+                  <strong className="recommendation-signal" title="依据仅作相对参考，不代表分类正确率">
+                    {signalLabel}{recommendation.reason && "："}
+                  </strong>
+                )}
+                {recommendation.reason}
+              </p>
+            )}
             {!isEditingRecommendation && isActionable && (
               <button
                 type="button"
@@ -1855,8 +1864,8 @@ export function ManageBookmarks() {
                   {bulkRecommendationAction === "ignore" ? "跳过中" : "批量跳过"}
                 </button>
               </div>
+              <RecommendationActionHelp />
             </div>
-            <RecommendationActionHelp />
             <div className="bookmark-unsorted-list">
               {filteredPendingRecommendations.map(renderRecommendationCard)}
             </div>

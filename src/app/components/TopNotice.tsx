@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, CircleAlert, Info, TriangleAlert, X } from "lucide-react";
 
@@ -26,12 +26,20 @@ function NoticeCard({ message, tone = "info", action, onDismiss }: TopNoticeProp
   const [dismissed, setDismissed] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const elapsed = useRef(0);
+  const paused = hovered || focused;
+  const duration = tone === "success" && !action ? 5000 : 8000;
 
   useEffect(() => {
-    if (dismissed || hovered || focused || action || tone !== "success") return;
-    const timeout = window.setTimeout(() => setDismissed(true), 5000);
-    return () => window.clearTimeout(timeout);
-  }, [action, dismissed, focused, hovered, tone]);
+    if (dismissed || paused) return;
+
+    const startedAt = performance.now();
+    const timeout = window.setTimeout(() => setDismissed(true), Math.max(0, duration - elapsed.current));
+    return () => {
+      window.clearTimeout(timeout);
+      elapsed.current += performance.now() - startedAt;
+    };
+  }, [dismissed, duration, paused]);
 
   if (dismissed) return null;
   const Icon = noticeIcons[tone];

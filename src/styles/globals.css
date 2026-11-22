@@ -2336,7 +2336,7 @@ textarea {
 
 .extension-folder-target {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
   margin-top: 12px;
@@ -2346,6 +2346,12 @@ textarea {
   color: var(--remarks-blue);
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.5;
+}
+
+.extension-folder-target > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .extension-folder-target span {
@@ -2353,13 +2359,9 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.extension-folder-target b {
-  flex: 0 0 auto;
-  margin-left: auto;
-  border-radius: 999px;
-  background: var(--remarks-surface);
-  padding: 2px 6px;
-  font-size: 12px;
+.recommendation-signal {
+  color: var(--remarks-ink-secondary);
+  font-weight: 600;
 }
 
 .extension-folder-target--new {
@@ -3559,10 +3561,14 @@ select.extension-control option,
   max-width: 170px;
 }
 
+.bookmark-unsorted-section__head--suggestions > .recommendation-action-details,
+.bookmark-unsorted-section__head--suggestions .bookmark-unsorted-section__tools {
+  grid-column: 1 / -1;
+}
+
 .bookmark-unsorted-section__head--suggestions .bookmark-unsorted-section__tools {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  grid-column: 1 / -1;
   max-width: none;
 }
 
@@ -3696,8 +3702,8 @@ select.extension-control option,
 
 .bookmark-unsorted-target {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
   gap: 6px;
   border-radius: 8px;
   background: var(--remarks-soft);
@@ -3705,21 +3711,15 @@ select.extension-control option,
   color: var(--remarks-blue);
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.5;
+}
+
+.bookmark-unsorted-target > svg {
+  margin-top: 2px;
 }
 
 .bookmark-unsorted-target span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bookmark-unsorted-target b {
-  border-radius: 999px;
-  background: var(--remarks-surface);
-  padding: 2px 6px;
-  font-size: 12px;
-  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .bookmark-unsorted-target--new {
@@ -3728,13 +3728,11 @@ select.extension-control option,
 }
 
 .bookmark-unsorted-target--manual {
-  grid-template-columns: 16px minmax(0, 1fr);
   background: var(--remarks-amber-soft);
   color: var(--remarks-amber);
 }
 
 .bookmark-unsorted-target--error {
-  grid-template-columns: 16px minmax(0, 1fr);
   background: var(--remarks-red-soft);
   color: var(--remarks-red);
 }
