@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { HashRouter, Routes, Route, useLocation } from "react-router";
 import { SidebarHome } from "./components/SidebarHome";
+import { PopupHome } from "./components/PopupHome";
 import { Options } from "./components/Options";
 import { Preview } from "./components/Preview";
 import { Report } from "./components/Report";
@@ -41,7 +42,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
       ? <Options />
       : defaultView === "sidebar"
         ? <SidebarHome />
-        : <SidebarHome compact />
+        : <PopupHome />
     : <Onboarding defaultView={defaultView} />;
 
   return (
@@ -60,7 +61,7 @@ function AppRoutes({ defaultView = "popup" }: AppProps) {
           element={home}
         />
         <Route path="/options" element={<Options />} />
-        <Route path="/home" element={<SidebarHome compact={isPopupWindow} />} />
+        <Route path="/home" element={isPopupWindow ? <PopupHome /> : <SidebarHome />} />
         <Route path="/preview" element={<Preview />} />
         <Route path="/report" element={<Report />} />
         <Route path="/recommendations" element={<Recommendations />} />

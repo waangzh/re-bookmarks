@@ -7,6 +7,7 @@
   "host_permissions": ["<all_urls>"],
   "optional_permissions": ["history"],
   "action": {
+    "default_popup": "dist/popup/index.html",
     "default_title": "打开 ReMarks",
     "default_icon": {
       "16": "dist/icons/icon16.png",

@@ -78,6 +78,7 @@ type CurrentPageState = {
   saved: boolean;
   savedPaths: string[];
   related: BookmarkNode[];
+  windowId?: number;
 };
 
 function getDomain(url?: string) {
@@ -142,6 +143,7 @@ export async function getCurrentPage(bookmarks: BookmarkNode[]): Promise<Current
         saved: savedBookmarks.length > 0,
         savedPaths: [...new Set(savedBookmarks.map((bookmark) => bookmark.path.join(" / ") || "根目录"))],
         related,
+        windowId: tab.windowId,
       });
     });
   });
@@ -504,6 +506,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           <span><strong>ReMarks</strong></span>
         </Link>
       </header>
+
       {showAllTasks && <div className="home-task-intro">
         <div className="remarks-page-intro__row">
           <button

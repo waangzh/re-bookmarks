@@ -1099,6 +1099,10 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
 
 const pendingRecommendationTasks = new Map<string, Promise<PendingRecommendation | null>>();
 
+export function getPendingRecommendationAnalysisBookmarkIds(): string[] {
+  return [...pendingRecommendationTasks.keys()];
+}
+
 export function createPendingRecommendation(bookmark: chrome.bookmarks.BookmarkTreeNode) {
   const runningTask = pendingRecommendationTasks.get(bookmark.id);
   if (runningTask) return runningTask;

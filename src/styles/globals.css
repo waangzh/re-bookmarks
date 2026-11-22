@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./redesign.css";
+@import "./preview-review.css";
 
 :root {
   --font-size: 16px;
@@ -126,16 +127,24 @@ html:hover::-webkit-scrollbar-track {
   background: var(--remarks-surface-muted);
 }
 
-html:has(.bookmark-popup-window),
-body:has(.bookmark-popup-window),
-#root:has(.bookmark-popup-window) {
+html:has(.bookmark-popup-window) {
   width: 360px;
+  min-width: 360px;
   height: auto;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
+}
+
+body:has(.bookmark-popup-window),
+#root:has(.bookmark-popup-window) {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow-x: hidden;
 }
 
 html:has(.bookmark-popup-window):hover,
@@ -218,7 +227,8 @@ textarea {
 }
 
 .bookmark-popup-window {
-  width: 360px;
+  width: 100%;
+  max-width: 360px;
   height: auto;
   min-height: 0;
   overflow: visible;
