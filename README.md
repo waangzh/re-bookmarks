@@ -4,7 +4,7 @@
 
 **适用于 Chrome、Edge 与 Firefox 的 AI 辅助书签整理扩展**
 
-先生成可审核的分类建议，再由你确认移动；每次批量改动前都会创建本地备份。忘记网站名字时，也可以直接按“它大概是做什么的”来搜索书签。
+点击工具栏图标即可收藏当前网页、处理刚收藏书签的归档建议，或按网页用途搜索书签。批量整理可在侧栏审核，确认后先创建本地备份，再移动书签。
 
 [![Release](https://img.shields.io/github/v/release/waangzh/re-bookmarks?color=2563eb)](https://github.com/waangzh/re-bookmarks/releases/latest)
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4?logo=googlechrome&logoColor=white)
@@ -37,11 +37,11 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 ## 🖼️ 界面预览
 
-截图展示产品功能，部分界面可能与当前版本不同；图中的书签标题、网址、目录、数量、模型名称与执行记录均为示例数据。
+弹窗、侧栏首页和「更多工具」截图来自当前 Chromium 构建，使用示例书签。操作演示和其他功能截图来自较早版本，界面可能有所不同。
 
-| 首页：下一步建议与常用操作 | 展开「更多工具」快速跳转 |
+| 工具栏弹窗与快捷归档 | 侧栏首页与待办 |
 | --- | --- |
-| <img src="pic/nn1.png" alt="首页展示搜索、下一步建议、当前网页、常用操作与常访问书签" width="300"> | <img src="pic/nn2.png" alt="首页底部展开更多工具，可进入整理报告、备份、导入与分类偏好" width="300"> |
+| <img src="pic/readme-popup.png" alt="工具栏弹窗显示刚收藏的书签、建议归档目录、归档按钮和搜索入口" width="300"> | <img src="pic/nn1.png" alt="侧栏首页显示待归档书签、重复链接任务和常用操作" width="300"> |
 
 | 更多工具页 | 选择书签与本次模型 |
 | --- | --- |
@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 | 常访问书签 | 失效链接检测 |
 | --- | --- |
-| <img src="pic/readme-frequent.png" alt="常访问书签按本地访问次数排序，显示最近访问时间与所在目录" width="300"> | <img src="pic/readme-link-check.png" alt="失效链接检测结果页示意图" width="300"> |
+| <img src="pic/readme-frequent.png" alt="常访问书签列表显示访问次数、最近访问时间与所在目录" width="300"> | <img src="pic/readme-link-check.png" alt="失效链接检测结果页示意图" width="300"> |
 
 </details>
 
@@ -72,9 +72,15 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 首次打开时，ReMarks 会在本地统计书签和文件夹。连接 AI 并授权发送数据后，可以抽取最多 20 个书签试分类，检查和修正其中展示的建议；应用前仍会创建备份。没有 API Key 时，也可直接使用本地搜索和重复检查。
 
+### 工具栏弹窗与快捷归档
+
+- 点击 ReMarks 工具栏图标打开弹窗。置顶卡片可收藏当前网页或查看它所在的目录。有待处理建议时，优先显示当前网页的建议，也能处理其他刚收藏书签的最新建议。
+- 在卡片上可直接选「归档」，也可先「改目录」、跳过建议或保护书签。跳过会保留原位。建议新建目录时需要再次确认，移动前会创建本地备份。
+- 弹窗提供书签搜索、整理、管理和设置入口。搜索支持标题、URL、目录和功能印象，可用 `Ctrl / ⌘ K` 聚焦，关键词下拉支持键盘选择和编辑保存。
+
 ### 首页任务中心与工具导航
 
-首页提供下一步建议、当前网页收藏状态和常用工具入口。搜索支持标题、URL、目录和功能印象，可用 `Ctrl / ⌘ K` 唤起；关键词下拉支持键盘选择和编辑保存。授权历史后可在首页查看常访问书签，否则显示最近收藏。
+从弹窗右上角点「侧边栏」，即可在支持的浏览器中打开完整首页，查看「下一步建议」、任务中心和「更多工具」。授权历史后，侧栏首页显示常访问书签，否则显示最近收藏。弹窗、侧栏和设置页的明暗主题跟随系统。
 
 ### AI 辅助整理
 
@@ -89,7 +95,7 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 ### 预览、确认与报告
 
 - 预览展示移动计划、分类原因和模型信号；后者只用于相对排序，并非经过校准的正确率。
-- 新增一级目录需先确认结构，待决定的建议可逐条或批量处理；依据不足及疑似清理的条目默认保留原位。也可拖动书签调整目标。
+- 新增一级目录需先确认结构，待决定的建议可逐条或批量处理，也可在操作提示中撤销刚才的审核决定。依据不足及疑似清理的条目默认保留原位，也可拖动书签调整目标。
 - 确认前不会移动书签；执行前创建备份，逐条移动并记录失败项。最近 5 次整理报告可供查看，最新一次整理支持撤销和重新应用。
 
 ### 书签白名单保护
@@ -105,7 +111,7 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 - 重复检测只匹配相同的完整链接，保留查询参数、页面定位和路径差异。「忽略所选」仅影响重复检测，可在同页恢复。
 - 失效检测会显示状态码、复测时间和跳转目标。可以手动勾选书签、统一确认并在备份后批量删除。「勾选建议清理项」会选择未跳转且经 GET 返回 410 或间隔至少 10 分钟两次返回 404 的链接。「忽略所选」仅影响失效检测，可在同页恢复。
 - 支持搜索、新增、编辑、删除、拖拽移动书签，以及批量清理重复或失效项。
-- 可选读取最近 90 天浏览历史，仅在本地统计已收藏 URL 的访问频次。
+- 开启「常访问书签」并授权后，ReMarks 会在本地查找最近 90 天内访问过的书签，按访问频次和最近访问时间综合排序。匹配时优先比较完整 URL，也可在结果唯一时忽略常见追踪参数。
 
 ### 功能印象搜索
 
@@ -113,7 +119,7 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 输入「看视频的网站」或「图片压缩」等描述，即可在本地搜索功能印象、目录、标题和网址，无需调用 AI。没有整理过的书签也可通过内置站点词典和域名特征匹配。
 
-![按“看视频的网站”搜索书签并显示功能印象匹配结果](pic/search.png)
+<img src="pic/search.png" alt="在弹窗输入「看视频的网站」，找到哔哩哔哩和 YouTube 两个示例书签" width="360">
 
 本地搜索没找到时，可点击“帮我找找”或按 `Alt + Enter`，让 AI 联想搜索意图，再对本地召回的候选进行精排。整理和日常操作会积累本地印象索引；也可在管理页分批补全未索引的书签，已完成的批次会保留。索引补全不会修改书签。
 
@@ -131,7 +137,7 @@ https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
 
 ### 从 Release 安装
 
-> README 以 `master` 当前源码为准；Release 压缩包对应其版本标签中的代码与发布说明。
+> README 以 `master` 当前源码为准。Release 压缩包内的入口和功能以对应版本的发布说明为准。
 
 ### Chrome / Edge
 
@@ -170,6 +176,8 @@ Chromium 产物在 `dist/`；Firefox 开发产物在 `dist-firefox/`。Firefox �
 <a id="usage"></a>
 
 ## 📖 使用流程
+
+安装后点击工具栏上的 ReMarks 图标完成首次引导。日常收藏和单条归档可在弹窗处理。需要批量整理时，可打开侧栏后按以下流程操作。
 
 <img src="pic/usage_flow.png" alt="ReMarks 完整使用流程：首次使用扫描与试分类、准备整理、分阶段审核整理方案、执行与反馈四个阶段" width="100%">
 
@@ -217,7 +225,16 @@ npm run build:firefox
 npm run build:all
 ```
 
-监听构建只覆盖 Chromium；Firefox 调试需重新执行 `npm run build:firefox`，并在浏览器扩展管理页重新加载。项目没有独立的 lint、typecheck 或单元测试脚本；代码变更至少应通过 `npm run build:all`，涉及界面时还应手动检查 360px popup、侧边栏和设置页。
+监听构建只覆盖 Chromium。Firefox 调试需重新执行 `npm run build:firefox`，并在浏览器扩展管理页重新加载。
+
+TypeScript 类型检查与构建分开执行。回归测试按文件运行，例如验证弹窗归档和常访问书签：
+
+```bash
+npx --no-install tsc --noEmit
+node --test tests/popup-quick-card.test.mjs tests/history.test.mjs
+```
+
+界面变更需检查 360px 弹窗、侧边栏和设置页。样式与交互约定见 [设计规范](DESIGN.md)，其他验证要求见 [开发指南](AGENTS.md)。
 
 ### 技术栈
 
@@ -240,11 +257,12 @@ src/
     types.ts       跨模块业务类型
     App.tsx        popup、side panel 与 options 共用路由
   background/      Chromium service worker 与 Firefox background scripts 共用逻辑
-  popup/           360px 紧凑页面入口
+  popup/           工具栏弹窗主入口，支持当前网页快捷归档
   sidebar/         Chromium side panel 与 Firefox 原生侧栏入口
   options/         设置页入口
   styles/          Tailwind 入口与全局样式
 scripts/           Manifest 后处理与图标生成脚本
+tests/             按功能组织的回归测试
 public/icons/      扩展图标
 manifest.json      Chromium 开发态扩展清单
 manifests/firefox.json  Firefox 开发态扩展清单
