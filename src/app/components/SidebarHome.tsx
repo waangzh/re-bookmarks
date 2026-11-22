@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { TopNotice, TopNotices } from "./TopNotice";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Archive,
@@ -15,7 +16,7 @@ import {
   Globe2,
   Grid2X2,
   History,
-  Link2,
+  FolderInput,
   Link2Off,
   LoaderCircle,
   Plus,
@@ -151,6 +152,37 @@ const DEFAULT_SIDEBAR_RECENT_LIMIT = 5;
 
 export function getHomeRecentLimit(compact: boolean): number {
   return compact ? DEFAULT_POPUP_RECENT_LIMIT : DEFAULT_SIDEBAR_RECENT_LIMIT;
+}
+
+type HomeTaskTone = "amber" | "red" | "blue";
+
+/**
+ * 统一首页“下一步建议”、“其他待办”与任务中心“全部待办”的任务图标与语义色调，
+ * 并与“更多工具”中对应功能的图标保持一致。
+ */
+export function getHomeTaskVisual(kind: string): { icon: typeof Sparkles; tone: HomeTaskTone; spin?: boolean } {
+  switch (kind) {
+    case "running":
+      return { icon: LoaderCircle, tone: "blue", spin: true };
+    case "failed":
+      return { icon: AlertTriangle, tone: "red" };
+    case "preview":
+      return { icon: Sparkles, tone: "blue" };
+    case "report":
+      return { icon: FileText, tone: "red" };
+    case "archive":
+      return { icon: FolderInput, tone: "amber" };
+    case "duplicate":
+      return { icon: Copy, tone: "amber" };
+    case "links":
+      return { icon: Link2Off, tone: "amber" };
+    case "healthy":
+      return { icon: CheckCircle2, tone: "blue" };
+    case "local":
+      return { icon: Folder, tone: "blue" };
+    default:
+      return { icon: Sparkles, tone: "blue" };
+  }
 }
 
 export function SidebarHome({ showAllTasks = false, compact = false }: { showAllTasks?: boolean; compact?: boolean }) {
@@ -452,7 +484,9 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     () => frequentBookmarks.slice(0, recentLimit),
     [frequentBookmarks, recentLimit]
   );
-  const TaskIcon = primary.kind === "links" || primary.kind === "duplicate" ? Link2 : primary.kind === "healthy" ? CheckCircle2 : Sparkles;
+  const primaryTaskVisual = getHomeTaskVisual(primary.kind);
+  const TaskIcon = primaryTaskVisual.icon;
+  const visibleTasks = showAllTasks ? model.tasks : model.tasks.slice(1);
   const toolEntries = [
     { to: "/manage?task=duplicate", label: "重复检测", icon: Copy },
     { to: "/manage?task=invalid", label: "失效检测", icon: Link2Off },
@@ -533,7 +567,7 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
           action={<button type="button" onClick={() => window.location.reload()}>重新加载</button>} />
       </TopNotices>
       {!showAllTasks && <section className={`home-featured-task${busy ? " is-loading" : ""}`} aria-busy={busy} aria-labelledby="home-task-title">
-        <div className="home-featured-task__heading"><span><TaskIcon aria-hidden="true" /> 下一步建议</span></div>
+        <div className="home-featured-task__heading"><span><TaskIcon className={primaryTaskVisual.spin ? "home-action-spinner" : undefined} aria-hidden="true" /> 下一步建议</span></div>
         {busy ? (
           <>
             <h1 id="home-task-title" className="sr-only">正在读取你的任务…</h1>
@@ -577,7 +611,23 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
               ))}
             </div>
           </>
-        ) : (showAllTasks ? model.tasks : model.tasks.slice(1)).map((task) => <Link key={task.to} to={task.to} className="home-queue-row"><span className="home-queue-row__icon">{task.kind === "links" || task.kind === "duplicate" ? <Link2 aria-hidden="true" /> : <Folder aria-hidden="true" />}</span><span>{task.label}</span><ChevronRight aria-hidden="true" /></Link>)}
+        ) : visibleTasks.length > 0 && (
+          <nav className="home-queue-list" aria-label={showAllTasks ? "全部待办" : "其他待办"}>
+            {visibleTasks.map((task) => {
+              const visual = getHomeTaskVisual(task.kind);
+              const RowIcon = visual.icon;
+              return (
+                <Link key={task.to} to={task.to} className="home-queue-row">
+                  <span className={`home-queue-row__icon home-queue-row__icon--${visual.tone}`} aria-hidden="true">
+                    <RowIcon className={visual.spin ? "home-action-spinner" : undefined} aria-hidden="true" />
+                  </span>
+                  <span className="home-queue-row__label">{task.label}</span>
+                  <ChevronRight className="home-row-chevron" aria-hidden="true" />
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         {!busy && !model.tasks.length && <p className="sidebar-muted-copy">{bookmarks.length ? "目前没有待办，可以继续浏览书签。" : "还没有书签，可收藏网页或导入已有书签。"}</p>}
       </section>}
       {!showAllTasks && model.tasks.length <= 1 && <Link to="/tasks" className="home-task-center-link">查看任务中心 <ChevronRight aria-hidden="true" /></Link>}
@@ -609,8 +659,18 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       <section className="home-regular">
         <div className="home-section-heading"><h2>常用操作</h2></div>
         <nav className="home-quick-list" aria-label="常用操作">
-          {(primary.kind === "healthy" || primary.to !== action.to) && <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick"><span className="home-quick__mark">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span><strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong><ChevronRight aria-hidden="true" /></Link>}
-          <Link to="/manage" className="home-quick"><span className="home-quick__mark"><Folder aria-hidden="true" /></span><strong>管理书签</strong><ChevronRight aria-hidden="true" /></Link>
+          {(primary.kind === "healthy" || primary.to !== action.to) && (
+            <Link to={primary.kind === "healthy" ? "/history" : action.to} className="home-quick">
+              <span className="home-quick__mark" aria-hidden="true">{primary.kind === "healthy" ? <History aria-hidden="true" /> : <Sparkles aria-hidden="true" />}</span>
+              <strong>{primary.kind === "healthy" ? "常访问书签" : action.label}</strong>
+              <ChevronRight className="home-row-chevron" aria-hidden="true" />
+            </Link>
+          )}
+          <Link to="/manage" className="home-quick">
+            <span className="home-quick__mark" aria-hidden="true"><Folder aria-hidden="true" /></span>
+            <strong>管理书签</strong>
+            <ChevronRight className="home-row-chevron" aria-hidden="true" />
+          </Link>
         </nav>
       </section>
       {currentPage && currentPage.related.length > 0 && <details className="home-related"><summary>同网站的 {currentPage.related.length} 个书签</summary>{currentPage.related.map((bookmark) => <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-recent-row"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span>{bookmark.title}</span><ChevronRight aria-hidden="true" /></a>)}</details>}

@@ -393,6 +393,120 @@ test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近�
   assert.equal(nodes(popupTree, (item) => item.props.className === "home-recent-row").length, 2);
 });
 
+test("SidebarHome 首页其他待办、下一步建议与任务中心全部待办的图标保持一致", () => {
+  const state = [];
+  let cursor = 0;
+  const lucide = require("lucide-react");
+  const sampleTasks = [
+    { kind: "archive", label: "2 个书签待归档", to: "/manage?task=unsorted", title: "2 个书签，等待归档", description: "描述", cta: "查看这 2 个书签" },
+    { kind: "links", label: "34 个链接需要复查", to: "/manage?task=invalid", title: "有 34 条链接值得复查", description: "描述", cta: "复查这 34 条链接" },
+    { kind: "duplicate", label: "3 组重复链接", to: "/manage?task=duplicate", title: "有 3 组重复链接", description: "描述", cta: "核对重复书签" },
+  ];
+
+  const exports = transpileComponent("src/app/components/SidebarHome.tsx", {
+    react: {
+      useEffect() {},
+      useMemo: (fn) => fn(),
+      useRef: (value) => ({ current: value }),
+      useState(initial) {
+        const index = cursor++;
+        if (state.length <= index) state[index] = typeof initial === "function" ? initial() : initial;
+        return [state[index], (next) => {
+          state[index] = typeof next === "function" ? next(state[index]) : next;
+        }];
+      },
+    },
+    "react/jsx-runtime": require("react/jsx-runtime"),
+    "react-router": { Link: () => null, useNavigate: () => () => {} },
+    "lucide-react": lucide,
+    "./TopNotice": { TopNotice: () => null, TopNotices: () => null },
+    "../services/history": { getFrequentBookmarks: async () => [], hasHistoryPermission: async () => false },
+    "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
+    "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
+    "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+    "../services/impressionSearch": { getImpressionMatchIcon: () => "", isImpressionMatch: () => false, searchBookmarksByImpression: () => [] },
+    "../hooks/useDeepImpressionSearch": {
+      useDeepImpressionSearch: () => ({
+        state: { query: "", stage: "idle", expandedTerms: [] },
+        run() {},
+        cancel() {},
+        hasResult: false,
+        running: false,
+      }),
+    },
+    "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
+    "../hooks/useDuplicateBookmarkIgnores": {
+      useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }),
+      useLinkHealthBookmarkIgnores: () => ({ entries: [], error: "" }),
+    },
+    "../services/bookmarkTasks": { countDuplicateGroups: () => 0, getLinkHealthProblemResults: () => [] },
+    "../services/currentPage": { saveCurrentPage: async () => ({ created: true }) },
+    "../services/homeTasks": {
+      getHomeTasks: () => ({ pendingCount: 2, tasks: sampleTasks }),
+      getOrganizeAction: () => ({ label: "开始智能整理", to: "/preview" }),
+    },
+    "../services/storage": {
+      getIgnoredManualTaskBookmarkIds: async () => [],
+      getLinkHealthReport: async () => null,
+      getPreviewPlan: async () => null,
+    },
+    "../services/previewTask": { getPreviewTask: async () => null },
+    "../services/rules": { sanitizeUrl: (url) => url },
+    "../store/useAppStore": {
+      useAppStore: () => ({
+        settings: DEFAULT_SETTINGS,
+        bookmarks: [{ id: "bm-1", title: "书签 1", url: "https://example.test/", parentId: "1", path: [], type: "url", dateAdded: 1000 }],
+        pendingRecommendations: [],
+        lastReport: null,
+        loadAll() {},
+        loading: false,
+        error: "",
+      }),
+    },
+    "../services/whitelist": {
+      filterAvailableBookmarks: (items) => items,
+      getCurrentWhitelist: async () => ({ entries: [], index: null }),
+      whitelistFingerprint: () => "",
+    },
+  });
+
+  // 预设已就绪态（ready + ignoredManualTaskLoaded）
+  const render = (props) => { cursor = 0; return exports.SidebarHome(props); };
+  render({ showAllTasks: false });
+  state[8] = true; // ready
+  state[4] = true; // ignoredManualTaskLoaded? Let's locate by visual helper + rendered tree after setting boolean flags
+  for (let i = 0; i < state.length; i += 1) {
+    if (state[i] === false) state[i] = true;
+  }
+
+  assert.equal(exports.getHomeTaskVisual("archive").icon, lucide.FolderInput);
+  assert.equal(exports.getHomeTaskVisual("links").icon, lucide.Link2Off);
+  assert.equal(exports.getHomeTaskVisual("duplicate").icon, lucide.Copy);
+  assert.equal(exports.getHomeTaskVisual("report").icon, lucide.FileText);
+  assert.equal(exports.getHomeTaskVisual("failed").icon, lucide.AlertTriangle);
+
+  const homeTree = render({ showAllTasks: false });
+  const tasksTree = render({ showAllTasks: true });
+
+  const featuredHeadingIcon = nodes(homeTree, (item) => item.props.className === "home-featured-task__heading")[0];
+  const homeQueueRows = nodes(homeTree, (item) => item.props.className === "home-queue-row");
+  const allQueueRows = nodes(tasksTree, (item) => item.props.className === "home-queue-row");
+
+  assert.ok(nodes(featuredHeadingIcon, (item) => item.type === lucide.FolderInput).length === 1);
+  assert.equal(homeQueueRows.length, 2);
+  assert.equal(allQueueRows.length, 3);
+  assert.equal(nodes(homeTree, (item) => item.props.className === "home-queue-list").length, 1);
+  assert.equal(nodes(tasksTree, (item) => item.props.className === "home-queue-list").length, 1);
+
+  // 任务中心第 1 项与首页“下一步建议”图标一致（FolderInput）
+  assert.equal(nodes(allQueueRows[0], (item) => item.type === lucide.FolderInput).length, 1);
+  // 任务中心后续项与首页“其他待办”图标完全一致（Link2Off / Copy）
+  assert.equal(nodes(homeQueueRows[0], (item) => item.type === lucide.Link2Off).length, 1);
+  assert.equal(nodes(allQueueRows[1], (item) => item.type === lucide.Link2Off).length, 1);
+  assert.equal(nodes(homeQueueRows[1], (item) => item.type === lucide.Copy).length, 1);
+  assert.equal(nodes(allQueueRows[2], (item) => item.type === lucide.Copy).length, 1);
+});
+
 test("ReviewWorkbench 展示可撤销悬浮 Toast 且披露面板支持平滑关闭时序", () => {
   const { buildPreviewRiskAnalysis, derivePreviewReview } = transpileComponent("src/app/services/previewReview.ts", {
     "./preferenceSafety": { getPreferenceConflict: () => false },
