@@ -33,7 +33,7 @@ import { getSemanticIndexMap } from "../services/semanticIndex";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
-import { useDuplicateBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
+import { useDuplicateBookmarkIgnores, useLinkHealthBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
 import { ensureRequiredHostPermission } from "../services/hostPermissions";
 import { countDuplicateGroups, getLinkHealthProblemResults } from "../services/bookmarkTasks";
 import { saveCurrentPage } from "../services/currentPage";
@@ -156,6 +156,7 @@ export function getHomeRecentLimit(compact: boolean): number {
 export function SidebarHome({ showAllTasks = false, compact = false }: { showAllTasks?: boolean; compact?: boolean }) {
   const { settings, bookmarks, pendingRecommendations, lastReport, loadAll, loading, error } = useAppStore();
   const { entries: duplicateIgnores } = useDuplicateBookmarkIgnores();
+  const { entries: linkHealthIgnores } = useLinkHealthBookmarkIgnores();
   const [previewState, setPreviewState] = useState<PreviewState>("none");
   const [previewIdentity, setPreviewIdentity] = useState("");
   const [previewTask, setPreviewTask] = useState<PreviewTaskCache | null>(null);
@@ -337,8 +338,9 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
     failedCount: lastReport?.failedItems.length ?? 0,
     duplicateGroups: duplicateIgnores && whitelistIndex
       ? countDuplicateGroups(bookmarks, duplicateIgnores, whitelistIndex.protectedBookmarkIds) : 0,
-    linkProblems: linkHealthReport ? getLinkHealthProblemResults(linkHealthReport, actionableBookmarks).length : 0,
-  }), [actionableBookmarks, bookmarks, duplicateIgnores, whitelistIndex, pendingRecommendations, ignoredManualTaskBookmarkIds, previewTask, previewState, lastReport, linkHealthReport]);
+    linkProblems: linkHealthReport && linkHealthIgnores
+      ? getLinkHealthProblemResults(linkHealthReport, actionableBookmarks, linkHealthIgnores).length : 0,
+  }), [actionableBookmarks, bookmarks, duplicateIgnores, whitelistIndex, pendingRecommendations, ignoredManualTaskBookmarkIds, previewTask, previewState, lastReport, linkHealthReport, linkHealthIgnores]);
   const action = getOrganizeAction(settings, previewTask, previewState === "ready");
   const busy = loading || !ready || !ignoredManualTaskLoaded;
   const primary = model.tasks[0] ?? (bookmarks.length === 0 ? {

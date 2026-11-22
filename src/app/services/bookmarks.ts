@@ -367,11 +367,14 @@ export async function sortFoldersAndAncestorsChildrenFoldersFirst(folderIds: str
   return changedCount;
 }
 
-export async function removeBookmark(id: string) {
+export async function removeBookmark(id: string, expectedUrl?: string) {
   if (!hasChromeBookmarks()) return;
   const { tree, index } = await getCurrentWhitelist();
   const reason = protectedNodeReason(id, tree, index);
   if (reason) throw new Error(reason + "，请先从白名单解除保护");
+  if (expectedUrl !== undefined && (await getBookmark(id))?.url !== expectedUrl) {
+    throw new Error("书签网址已变化，请重新检测");
+  }
 
   return new Promise<void>((resolve, reject) => {
     chrome.bookmarks.remove(id, () => {

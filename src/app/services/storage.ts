@@ -2,7 +2,7 @@ import type {
   BookmarkBackup,
   BookmarkWhitelistEntry,
   BookmarkLinkHealthReport,
-  DuplicateBookmarkIgnore,
+  BookmarkUrlIdentity,
   FolderHabitProfile,
   ModelCatalogCache,
   OrganizeReport,
@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   previewTask: "remarks.previewTask",
   folderHabitProfile: "remarks.folderHabitProfile",
   linkHealthReport: "remarks.linkHealthReport",
+  linkHealthBookmarkIgnores: "remarks.linkHealthBookmarkIgnores",
   ignoredManualTaskBookmarkIds: "remarks.ignoredManualTaskBookmarkIds",
   duplicateBookmarkIgnores: "remarks.duplicateBookmarkIgnores",
   bookmarkWhitelist: "remarks.bookmarkWhitelist",
@@ -203,29 +204,32 @@ export function saveIgnoredManualTaskBookmarkIds(bookmarkIds: string[]): Promise
   return setStorageValue(STORAGE_KEYS.ignoredManualTaskBookmarkIds, bookmarkIds);
 }
 
-export async function getDuplicateBookmarkIgnores(): Promise<DuplicateBookmarkIgnore[]> {
+export type BookmarkCheckIgnoreKey = "duplicateBookmarkIgnores" | "linkHealthBookmarkIgnores";
+
+export async function getBookmarkCheckIgnores(kind: BookmarkCheckIgnoreKey): Promise<BookmarkUrlIdentity[]> {
   if (!hasChromeStorage()) return [];
-  const key = STORAGE_KEYS.duplicateBookmarkIgnores;
+  const key = STORAGE_KEYS[kind];
+  const label = kind === "duplicateBookmarkIgnores" ? "重复检测" : "失效检测";
   return new Promise((resolve, reject) => chrome.storage.local.get(key, (result) => {
     if (chrome.runtime.lastError) {
-      reject(new Error("读取重复检测忽略记录失败，请重试"));
+      reject(new Error(`读取${label}忽略记录失败，请重试`));
       return;
     }
     const entries = result[key] ?? [];
     if (!Array.isArray(entries) || entries.some((entry) =>
       !entry || typeof entry.id !== "string" || typeof entry.url !== "string"
     )) {
-      reject(new Error("重复检测忽略记录格式无效"));
+      reject(new Error(`${label}忽略记录格式无效`));
       return;
     }
     resolve(entries);
   }));
 }
 
-export function updateDuplicateBookmarkIgnores(bookmarks: DuplicateBookmarkIgnore[], ignore: boolean) {
-  const key = STORAGE_KEYS.duplicateBookmarkIgnores;
+export function updateBookmarkCheckIgnores(kind: BookmarkCheckIgnoreKey, bookmarks: BookmarkUrlIdentity[], ignore: boolean) {
+  const key = STORAGE_KEYS[kind];
   return withStorageMutation(key, async () => {
-    const entries = await getDuplicateBookmarkIgnores();
+    const entries = await getBookmarkCheckIgnores(kind);
     const urls = new Map(entries.map(({ id, url }) => [id, url]));
     for (const { id, url } of bookmarks) {
       if (ignore) urls.set(id, url);
@@ -235,22 +239,40 @@ export function updateDuplicateBookmarkIgnores(bookmarks: DuplicateBookmarkIgnor
   });
 }
 
-export function getLinkHealthReport(): Promise<BookmarkLinkHealthReport | null> {
-  return getStorageValue<BookmarkLinkHealthReport | null>(STORAGE_KEYS.linkHealthReport, null);
+export function getDuplicateBookmarkIgnores() {
+  return getBookmarkCheckIgnores("duplicateBookmarkIgnores");
+}
+
+export function updateDuplicateBookmarkIgnores(bookmarks: BookmarkUrlIdentity[], ignore: boolean) {
+  return updateBookmarkCheckIgnores("duplicateBookmarkIgnores", bookmarks, ignore);
+}
+
+export async function getLinkHealthReport(): Promise<BookmarkLinkHealthReport | null> {
+  if (!hasChromeStorage()) return null;
+  const key = STORAGE_KEYS.linkHealthReport;
+  return new Promise((resolve, reject) => chrome.storage.local.get(key, (result) => {
+    if (chrome.runtime.lastError) {
+      reject(new Error("读取链接检测报告失败，请重试"));
+      return;
+    }
+    resolve(result[key] ?? null);
+  }));
 }
 
 export function saveLinkHealthReport(report: BookmarkLinkHealthReport): Promise<void> {
   return setStorageValue(STORAGE_KEYS.linkHealthReport, report);
 }
 
-function isLinkHealthProblemStatus(status: BookmarkLinkHealthReport["results"][number]["status"]) {
-  return status === "broken" ||
-    status === "suspicious" ||
-    status === "temporary_failed" ||
-    status === "invalid";
+export function updateLinkHealthReport(update: (report: BookmarkLinkHealthReport | null) => BookmarkLinkHealthReport | null) {
+  return withStorageMutation(STORAGE_KEYS.linkHealthReport, async () => {
+    const report = await getLinkHealthReport();
+    const next = update(report);
+    if (next && next !== report) await saveLinkHealthReport(next);
+    return next;
+  });
 }
 
-function recomputeLinkHealthReportCounts(report: BookmarkLinkHealthReport): BookmarkLinkHealthReport {
+export function withLinkHealthResultCounts(report: BookmarkLinkHealthReport): BookmarkLinkHealthReport {
   return {
     ...report,
     updatedAt: Date.now(),
@@ -259,20 +281,16 @@ function recomputeLinkHealthReportCounts(report: BookmarkLinkHealthReport): Book
     brokenCount: report.results.filter((result) => result.status === "broken" || result.status === "invalid").length,
     suspiciousCount: report.results.filter((result) => result.status === "suspicious").length,
     temporaryFailedCount: report.results.filter((result) => result.status === "temporary_failed").length,
-    invalidCount: report.results.filter((result) => isLinkHealthProblemStatus(result.status)).length,
+    invalidCount: report.results.filter((result) => result.status !== "ok" && result.status !== "skipped").length,
   };
 }
 
 export async function removeBookmarkFromLinkHealthReport(bookmarkId: string): Promise<BookmarkLinkHealthReport | null> {
-  const report = await getLinkHealthReport();
-  if (!report) return null;
-
-  const results = report.results.filter((result) => result.bookmarkId !== bookmarkId);
-  if (results.length === report.results.length) return report;
-
-  const nextReport = recomputeLinkHealthReportCounts({ ...report, results });
-  await saveLinkHealthReport(nextReport);
-  return nextReport;
+  return updateLinkHealthReport((report) => {
+    if (!report || report.status === "running") return report;
+    const results = report.results.filter((result) => result.bookmarkId !== bookmarkId);
+    return results.length === report.results.length ? report : withLinkHealthResultCounts({ ...report, results });
+  });
 }
 
 export function getLastBackup(): Promise<BookmarkBackup | null> {

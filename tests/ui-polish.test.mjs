@@ -343,7 +343,10 @@ test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近�
       }),
     },
     "../services/hostPermissions": { ensureRequiredHostPermission: async () => {} },
-    "../hooks/useDuplicateBookmarkIgnores": { useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }) },
+    "../hooks/useDuplicateBookmarkIgnores": {
+      useDuplicateBookmarkIgnores: () => ({ entries: [], error: "" }),
+      useLinkHealthBookmarkIgnores: () => ({ entries: [], error: "" }),
+    },
     "../services/bookmarkTasks": { countDuplicateGroups: () => 0, getLinkHealthProblemResults: () => [] },
     "../services/currentPage": { saveCurrentPage: async () => ({ created: true }) },
     "../services/homeTasks": {
@@ -596,6 +599,19 @@ test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVert
   const folderItems = nodes(treeFolderProtected, (item) => item.type === MenuItem);
   assert.deepEqual(folderItems.map((item) => text(item)), ["由文件夹白名单保护", "编辑", "删除"]);
   assert.deepEqual(folderItems.map((item) => item.props.disabled), [true, true, true]);
+
+  const rechecks = [];
+  const linkHealthMenu = menuExports.BookmarkRowActionMenu({
+    bookmarkTitle: "链接复查",
+    busy: false,
+    onEdit() {},
+    onRecheck: () => rechecks.push("recheck"),
+    onDelete() {},
+  });
+  const linkHealthItems = nodes(linkHealthMenu, (item) => item.type === MenuItem);
+  assert.deepEqual(linkHealthItems.map((item) => text(item)), ["编辑", "复测", "删除"]);
+  linkHealthItems[1].props.onSelect();
+  assert.deepEqual(rechecks, ["recheck"]);
 });
 
 test("全局 CSS 已清理历史冗余样式，颜色全量抽象为语义变量并支持系统 Dark Mode", () => {

@@ -4097,21 +4097,23 @@ label.bookmark-duplicates__row-label {
 }
 
 .bookmark-health-group__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  padding: 10px 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding-inline-end: 7px;
   background: var(--remarks-surface-subtle);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 150ms ease;
 }
 
-.bookmark-health-group__head:hover {
-  background: var(--remarks-surface-muted);
+.bookmark-health-group__toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 0 6px 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .bookmark-health-group__chevron {
@@ -4131,15 +4133,7 @@ label.bookmark-duplicates__row-label {
   line-height: 1.25;
 }
 
-.bookmark-health-group__head p {
-  margin: 3px 0 0;
-  color: var(--remarks-muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
 .bookmark-health-group__count {
-  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--remarks-surface);
   padding: 3px 8px;
@@ -4149,12 +4143,20 @@ label.bookmark-duplicates__row-label {
   line-height: 1.2;
 }
 
-.bookmark-health-group--broken .bookmark-health-group__head {
-  border-left-color: var(--remarks-red-border);
-  background: var(--remarks-red-soft);
+.bookmark-health-group__select {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  cursor: pointer;
 }
 
-.bookmark-health-group--broken .bookmark-health-group__head:hover {
+.bookmark-health-group__select .extension-checkbox {
+  margin: 0;
+}
+
+.bookmark-health-group--broken .bookmark-health-group__head {
+  border-left-color: var(--remarks-red-border);
   background: var(--remarks-red-soft);
 }
 
@@ -4163,21 +4165,9 @@ label.bookmark-duplicates__row-label {
   background: var(--remarks-amber-soft);
 }
 
-.bookmark-health-group--suspicious .bookmark-health-group__head:hover {
-  background: var(--remarks-amber-soft);
-}
-
 .bookmark-health-group--temporary .bookmark-health-group__head {
   border-left-color: var(--remarks-soft-border);
   background: var(--remarks-soft);
-}
-
-.bookmark-health-group--temporary .bookmark-health-group__head:hover {
-  background: var(--remarks-soft);
-}
-
-.bookmark-health-group.is-collapsed .bookmark-health-group__head {
-  border-bottom: 0;
 }
 
 .bookmark-health-group__list {

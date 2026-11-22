@@ -42,24 +42,27 @@ import {
   updateBookmark,
 } from "../services/bookmarks";
 import {
+  deleteLinkHealthBookmarks,
   getDuplicateBookmarkGroups,
-  getIgnoredDuplicateBookmarkIds,
-  getLinkHealthProblemCount as countLinkHealthProblems,
+  getIgnoredBookmarkUrlIds,
+  getLinkHealthProblemResults,
   getUnsortedTaskCount,
   getVisibleUnsortedBookmarks,
-  isProblemLinkHealthResult,
+  isSuggestedLinkHealthCleanup,
   isUnsortedBookmark,
+  NOT_FOUND_RECHECK_MINUTES,
+  recheckLinkHealthBookmark,
   startLinkHealthScan,
 } from "../services/bookmarkTasks";
 import type { DuplicateBookmarkGroup } from "../services/bookmarkTasks";
-import { createDuplicateDeleteBackup, createInvalidDeleteBackup } from "../services/backups";
+import { createDuplicateDeleteBackup } from "../services/backups";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { recordHabitFeedback } from "../services/habits";
 import { appendFolderImpression, getSemanticIndexCoverage, getSemanticIndexMap } from "../services/semanticIndex";
 import { backfillImpressions, getImpressionBackfillBatchSize, getMissingImpressionBookmarks, type ImpressionBackfillFailure, type ImpressionBackfillProgress } from "../services/impressionBackfill";
 import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
-import { useDuplicateBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
+import { useDuplicateBookmarkIgnores, useLinkHealthBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
 import {
   STORAGE_KEYS,
   getDuplicateBookmarkIgnores,
@@ -68,6 +71,7 @@ import {
   removeBookmarkFromLinkHealthReport,
   saveIgnoredManualTaskBookmarkIds,
   updateDuplicateBookmarkIgnores,
+  updateBookmarkCheckIgnores,
 } from "../services/storage";
 import { useAppStore } from "../store/useAppStore";
 import { ensureRequiredHostPermission, hasRequiredHostPermission } from "../services/hostPermissions";
@@ -81,7 +85,7 @@ import {
 } from "../services/whitelist";
 
 type TaskMode = "unsorted" | "duplicate" | "invalid";
-type LinkHealthGroupKey = "broken" | "suspicious" | "temporary_failed";
+type LinkHealthGroupKey = "broken" | "restricted" | "suspicious" | "temporary_failed";
 
 type BookmarkFolderNode = {
   id?: string;
@@ -219,31 +223,22 @@ function formatScanTime(timestamp: number) {
   });
 }
 
-function countLinkHealthStatus(report: BookmarkLinkHealthReport, status: BookmarkLinkHealthResult["status"]) {
-  return report.results.filter((result) => result.status === status).length;
-}
-
-function formatLinkHealthSummary(report: BookmarkLinkHealthReport) {
-  const brokenCount = report.brokenCount ?? countLinkHealthStatus(report, "broken") + countLinkHealthStatus(report, "invalid");
-  const suspiciousCount = report.suspiciousCount ?? countLinkHealthStatus(report, "suspicious");
-  const temporaryFailedCount = report.temporaryFailedCount ?? countLinkHealthStatus(report, "temporary_failed");
-  return `明确失效 ${brokenCount} 个，可疑 ${suspiciousCount} 个，暂时无法确认 ${temporaryFailedCount} 个`;
-}
-
 function getLinkHealthGroupKey(result: BookmarkLinkHealthResult): LinkHealthGroupKey | null {
-  if (result.status === "broken" || result.status === "invalid") return "broken";
-  if (result.status === "suspicious") return "suspicious";
-  if (result.status === "temporary_failed") return "temporary_failed";
+  if (result.status === "broken" || result.status === "restricted" || result.status === "suspicious") return result.status;
+  if (result.status === "temporary_failed" || result.status === "rate_limited") return "temporary_failed";
   return null;
 }
 
 function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
   if (group === "broken") {
     return {
-      title: "明确失效",
-      description: "返回 404、410、451 等明确不可用状态，优先人工复查。",
+      title: "页面未找到或已移除",
+      description: `建议间隔至少 ${NOT_FOUND_RECHECK_MINUTES} 分钟复测 404 链接。`,
       className: "bookmark-health-group--broken",
     };
+  }
+  if (group === "restricted") {
+    return { title: "访问受限", description: "可在浏览器中打开，核对登录或网络条件。", className: "bookmark-health-group--suspicious" };
   }
   if (group === "suspicious") {
     return {
@@ -254,7 +249,7 @@ function getLinkHealthGroupMeta(group: LinkHealthGroupKey) {
   }
   return {
     title: "暂时无法确认",
-    description: "请求超时、网络失败或服务端临时错误，建议稍后重试。",
+    description: "站点限流、请求超时或网络和服务器异常，可稍后复测。",
     className: "bookmark-health-group--temporary",
   };
 }
@@ -264,6 +259,7 @@ export function ManageBookmarks() {
   const [searchParams] = useSearchParams();
   const taskMode = useMemo(() => getTaskMode(searchParams), [searchParams]);
   const { entries: duplicateIgnores, error: duplicateIgnoresError } = useDuplicateBookmarkIgnores(taskMode === "duplicate");
+  const { entries: linkHealthIgnores, error: linkHealthIgnoresError } = useLinkHealthBookmarkIgnores(taskMode === "invalid");
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
   const [searchQuery, setSearchQuery] = useState(() => {
     const value = searchParams.get("search") ?? "";
@@ -364,7 +360,10 @@ export function ManageBookmarks() {
   }, [taskMode, loadManagedBookmarks]);
 
   useEffect(() => {
+    let active = true;
+    let changed = false;
     void getLinkHealthReport().then((report) => {
+      if (!active || changed) return;
       setLinkHealthReport(report);
       if (report?.status === "running") {
         const checked = report.results.length;
@@ -372,16 +371,40 @@ export function ManageBookmarks() {
         setScanningLinks(true);
         setMessage("上次链接检测未完成，可继续检测。已保留已完成的检测结果。");
       }
+    }).catch((error: unknown) => {
+      if (active && !changed) setMessage(error instanceof Error ? error.message : "读取链接检测报告失败");
     });
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      const change = changes[STORAGE_KEYS.linkHealthReport];
+      if (area !== "local" || !change) return;
+      changed = true;
+      setLinkHealthReport((current) => current?.status === "running" ? current : change.newValue ?? null);
+    };
+    const events = typeof chrome === "undefined" ? undefined : chrome.storage?.onChanged;
+    events?.addListener(onChanged);
+    return () => {
+      active = false;
+      events?.removeListener(onChanged);
+    };
   }, []);
 
   useEffect(() => {
     if (linkHealthReport?.status !== "running") return;
 
     let canceled = false;
+    let readFailed = false;
     const poll = async () => {
       while (!canceled) {
-        const report = await getLinkHealthReport();
+        const report = await getLinkHealthReport().then((current) => {
+          readFailed = false;
+          return current;
+        }).catch((error: unknown) => {
+          if (!canceled && !readFailed) {
+            setMessage(error instanceof Error ? error.message : "读取链接检测报告失败");
+            readFailed = true;
+          }
+          return null;
+        });
         if (canceled) return;
         if (report) {
           setLinkHealthReport(report);
@@ -390,7 +413,7 @@ export function ManageBookmarks() {
           if (report.status === "completed") {
             setScanningLinks(false);
             setLinkScanActive(false);
-            setMessage(`检测完成：${formatLinkHealthSummary(report)}，跳过 ${report.skippedCount} 个非网页链接。`);
+            setMessage(`链接检测完成，已检测 ${report.checkedCount} 个网页链接。`);
             return;
           }
           if (report.status === "failed") {
@@ -450,13 +473,18 @@ export function ManageBookmarks() {
     if (taskMode) setSearchQuery("");
   }, [taskMode]);
 
-  const invalidBookmarkIds = useMemo(() => {
-    return new Set(
-      linkHealthReport?.results
-        .filter(isProblemLinkHealthResult)
-        .map((result) => result.bookmarkId) ?? []
-    );
-  }, [linkHealthReport]);
+  const linkHealthResultById = useMemo(() => {
+    if (taskMode !== "invalid" || !linkHealthReport || !linkHealthIgnores) return new Map<string, BookmarkLinkHealthResult>();
+    const available = bookmarks.filter(({ id }) => !whitelistIndex.protectedBookmarkIds.has(id));
+    return new Map(getLinkHealthProblemResults(linkHealthReport, available, linkHealthIgnores)
+      .map((result) => [result.bookmarkId, result]));
+  }, [bookmarks, linkHealthIgnores, linkHealthReport, taskMode, whitelistIndex]);
+
+  const ignoredLinkHealthBookmarks = useMemo(() => {
+    if (taskMode !== "invalid" || !linkHealthIgnores?.length) return [];
+    const ids = getIgnoredBookmarkUrlIds(bookmarks, linkHealthIgnores);
+    return bookmarks.filter(({ id }) => ids.has(id));
+  }, [bookmarks, linkHealthIgnores, taskMode]);
 
   const duplicateGroups = useMemo(() => {
     if (taskMode !== "duplicate" || !duplicateIgnores) return [];
@@ -465,16 +493,16 @@ export function ManageBookmarks() {
 
   const ignoredDuplicateBookmarks = useMemo(() => {
     if (taskMode !== "duplicate" || !duplicateIgnores?.length) return [];
-    const ignoredIds = getIgnoredDuplicateBookmarkIds(bookmarks, duplicateIgnores);
+    const ignoredIds = getIgnoredBookmarkUrlIds(bookmarks, duplicateIgnores);
     return bookmarks.filter((bookmark) => ignoredIds.has(bookmark.id));
   }, [bookmarks, duplicateIgnores, taskMode]);
 
   const taskBookmarks = useMemo(() => {
     if (taskMode === "unsorted") return bookmarks.filter((bookmark) => isUnsortedBookmark(bookmark) && !whitelistIndex.protectedBookmarkIds.has(bookmark.id));
     if (taskMode === "duplicate") return duplicateGroups.flatMap((group) => group.items);
-    if (taskMode === "invalid") return bookmarks.filter((bookmark) => invalidBookmarkIds.has(bookmark.id) && !whitelistIndex.protectedBookmarkIds.has(bookmark.id));
+    if (taskMode === "invalid") return bookmarks.filter(({ id }) => linkHealthResultById.has(id));
     return bookmarks;
-  }, [bookmarks, duplicateGroups, invalidBookmarkIds, taskMode, whitelistIndex]);
+  }, [bookmarks, duplicateGroups, linkHealthResultById, taskMode, whitelistIndex]);
 
   const visibleTaskBookmarks = useMemo(() => {
     if (taskMode !== "unsorted") return taskBookmarks;
@@ -626,17 +654,10 @@ export function ManageBookmarks() {
     ? "当前建议需逐条确认"
     : `归档当前列表中可批量处理的 ${actionablePendingRecommendations.length} 条建议，其余建议需逐条确认`;
 
-  const linkHealthResultById = useMemo(() => {
-    const lookup = new Map<string, BookmarkLinkHealthResult>();
-    linkHealthReport?.results.forEach((result) => {
-      if (isProblemLinkHealthResult(result)) lookup.set(result.bookmarkId, result);
-    });
-    return lookup;
-  }, [linkHealthReport]);
-
   const groupedInvalidBookmarks = useMemo(() => {
     const groups: Record<LinkHealthGroupKey, BookmarkNode[]> = {
       broken: [],
+      restricted: [],
       suspicious: [],
       temporary_failed: [],
     };
@@ -659,8 +680,13 @@ export function ManageBookmarks() {
     return visibleInvalidBookmarkIds.filter((id) => selectedInvalidBookmarkIds.has(id)).length;
   }, [selectedInvalidBookmarkIds, visibleInvalidBookmarkIds]);
 
-  const areAllVisibleInvalidBookmarksSelected = visibleInvalidBookmarkIds.length > 0 &&
-    selectedInvalidCount === visibleInvalidBookmarkIds.length;
+  const suggestedLinkHealthIds = useMemo(() => visibleInvalidBookmarkIds.filter((id) => {
+    const result = linkHealthResultById.get(id);
+    return result && isSuggestedLinkHealthCleanup(result);
+  }), [linkHealthResultById, visibleInvalidBookmarkIds]);
+  const areAllSuggestedLinkHealthSelected = suggestedLinkHealthIds.length > 0 &&
+    suggestedLinkHealthIds.every((id) => selectedInvalidBookmarkIds.has(id));
+  const linkHealthActionsDisabled = busy || scanningLinks || linkHealthReport?.status === "running";
   const selectedManualTaskCount = useMemo(() => {
     return visibleManualTaskBookmarkIds.filter((id) => selectedManualTaskBookmarkIds.has(id)).length;
   }, [selectedManualTaskBookmarkIds, visibleManualTaskBookmarkIds]);
@@ -683,10 +709,10 @@ export function ManageBookmarks() {
     if (taskMode === "unsorted") return `${unsortedTaskTotal} 项待处理`;
     if (taskMode === "invalid") {
       if (!linkHealthReport) return "手动检测书签链接状态";
-      return `上次检测 ${linkHealthReport.checkedCount} 个，需要复查 ${countLinkHealthProblems(linkHealthReport, bookmarks)} 个`;
+      return `已检测 ${linkHealthReport.checkedCount} 个，需要复查 ${linkHealthResultById.size} 个`;
     }
     return `${bookmarks.length} 个本地书签`;
-  }, [bookmarks.length, duplicateGroups.length, duplicateIgnores, linkHealthReport, taskBookmarks.length, taskMode, unsortedTaskTotal]);
+  }, [bookmarks.length, duplicateGroups.length, duplicateIgnores, linkHealthReport, linkHealthResultById.size, taskBookmarks.length, taskMode, unsortedTaskTotal]);
 
   const folderTree = useMemo(() => buildBookmarkFolderTree(filteredBookmarks, folders), [filteredBookmarks, folders]);
   const folderLookup = useMemo(() => collectFolderLookup(folderTree), [folderTree]);
@@ -959,13 +985,13 @@ export function ManageBookmarks() {
     });
   };
 
-  const toggleAllVisibleInvalidBookmarks = () => {
+  const toggleLinkHealthSelection = (ids: string[]) => {
     setSelectedInvalidBookmarkIds((prev) => {
       const next = new Set(prev);
-      if (areAllVisibleInvalidBookmarksSelected) {
-        visibleInvalidBookmarkIds.forEach((id) => next.delete(id));
+      if (ids.every((id) => prev.has(id))) {
+        ids.forEach((id) => next.delete(id));
       } else {
-        visibleInvalidBookmarkIds.forEach((id) => next.add(id));
+        ids.forEach((id) => next.add(id));
       }
       return next;
     });
@@ -1090,43 +1116,25 @@ export function ManageBookmarks() {
     }
   };
 
-  const handleDeleteSelectedInvalidBookmarks = async () => {
-    const selectedIds = new Set(
-      visibleInvalidBookmarkIds.filter((id) => selectedInvalidBookmarkIds.has(id))
-    );
-    const selectedBookmarks = bookmarks.filter((bookmark) => selectedIds.has(bookmark.id));
+  const handleDeleteLinkHealthBookmarks = async (single?: BookmarkLinkHealthResult) => {
+    if (!linkHealthReport || linkHealthActionsDisabled) return;
+    const selected = single ? [single] : visibleInvalidBookmarkIds.flatMap((id) => {
+      const result = linkHealthResultById.get(id);
+      return selectedInvalidBookmarkIds.has(id) && result ? [result] : [];
+    });
+    if (!selected.length) return;
 
-    if (!selectedBookmarks.length) {
-      setMessage("请先勾选要删除的失效书签");
-      return;
-    }
-
-    const confirmed = confirm(
-      `确认删除选中的 ${selectedBookmarks.length} 个失效检测书签吗？\n\n这些结果可能包含“可疑”或“暂时无法确认”的链接。删除前会自动保存完整书签备份，可在“书签备份”中恢复。`
-    );
+    const target = single
+      ? `「${single.bookmarkTitle}」${single.httpStatus ? `（HTTP ${single.httpStatus}）` : ""}`
+      : `选中的 ${selected.length} 个书签`;
+    const confirmed = confirm(`确认删除${target}吗？\n\n检测结果仅供核对。删除前会创建完整书签备份。`);
     if (!confirmed) return;
 
     setBusy(true);
     setMessage("");
     try {
-      await createInvalidDeleteBackup();
-
-      const deletedIds = new Set<string>();
-      const failedItems: string[] = [];
-      let nextReport = linkHealthReport;
-
-      for (const bookmark of selectedBookmarks) {
-        try {
-          await removeBookmark(bookmark.id);
-          deletedIds.add(bookmark.id);
-          nextReport = await removeBookmarkFromLinkHealthReport(bookmark.id);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "删除失败";
-          failedItems.push(`${bookmark.title}：${reason}`);
-        }
-      }
-
-      await loadManagedBookmarks();
+      const { deletedIds, failedItems } = await deleteLinkHealthBookmarks(linkHealthReport.id, selected);
+      const [nextReport] = await Promise.all([getLinkHealthReport(), loadManagedBookmarks()]);
       setLinkHealthReport(nextReport);
       setSelectedInvalidBookmarkIds((prev) => {
         const next = new Set(prev);
@@ -1134,12 +1142,44 @@ export function ManageBookmarks() {
         return next;
       });
       if (failedItems.length > 0) {
-        setMessage(`已删除 ${deletedIds.size} 个失效书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`);
+        setMessage(`已删除 ${deletedIds.size} 个书签，${failedItems.length} 个失败：${failedItems.slice(0, 2).join("；")}`);
       } else {
-        setMessage(`已删除 ${deletedIds.size} 个失效书签，并已创建删除前备份`, "success");
+        setMessage(`已删除 ${deletedIds.size} 个书签，并已创建备份`, "success");
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "批量删除失效书签失败");
+      setMessage(error instanceof Error ? error.message : "删除书签失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLinkHealthIgnore = async (items: BookmarkNode[], ignore: boolean) => {
+    const entries = items.flatMap(({ id, url }) => url ? [{ id, url }] : []);
+    if (!entries.length || linkHealthActionsDisabled) return;
+    setBusy(true);
+    try {
+      await updateBookmarkCheckIgnores("linkHealthBookmarkIgnores", entries, ignore);
+      setSelectedInvalidBookmarkIds(new Set());
+      setMessage(ignore ? `已在失效检测中忽略 ${entries.length} 个书签` : "已恢复失效检测", "success");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更新失效检测忽略记录失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLinkHealthRecheck = async (result: BookmarkLinkHealthResult) => {
+    if (!linkHealthReport || linkHealthActionsDisabled) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await ensureRequiredHostPermission();
+      const report = await recheckLinkHealthBookmark(linkHealthReport.id, result);
+      setLinkHealthReport(report);
+      const checked = report?.results.find(({ bookmarkId }) => bookmarkId === result.bookmarkId);
+      setMessage(checked?.status === "ok" ? "复测成功，已移出复查列表" : "已更新复测结果", "success");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "复测失败");
     } finally {
       setBusy(false);
     }
@@ -2082,19 +2122,19 @@ export function ManageBookmarks() {
     );
   };
 
-  const renderIgnoredDuplicates = () => ignoredDuplicateBookmarks.length > 0 && (
+  const renderIgnoredBookmarks = (items: BookmarkNode[], restore: (bookmark: BookmarkNode) => void, disabled: boolean) => items.length > 0 && (
     <section className="bookmark-health-panel bookmark-duplicates__ignored">
       <details className="bookmark-duplicates__links">
-        <summary>已忽略的书签（{ignoredDuplicateBookmarks.length}）</summary>
+        <summary>已忽略的书签（{items.length}）</summary>
         <ul>
-          {ignoredDuplicateBookmarks.map((bookmark) => (
+          {items.map((bookmark) => (
             <li key={bookmark.id}>
               <strong>{bookmark.title}</strong>
               <span>{bookmark.path.join(" / ") || "根目录"}</span>
               <span>{bookmark.url}</span>
-              <button type="button" className="extension-page__wide-secondary" disabled={busy}
+              <button type="button" className="extension-page__wide-secondary" disabled={disabled}
                 aria-label={`恢复检测：${bookmark.title}`}
-                onClick={() => void handleDuplicateIgnore([bookmark], false)}>
+                onClick={() => restore(bookmark)}>
                 恢复检测
               </button>
             </li>
@@ -2107,58 +2147,52 @@ export function ManageBookmarks() {
   const renderInvalidBookmarkRow = (bookmark: BookmarkNode) => {
     if (editingId === bookmark.id) return renderBookmarkRow(bookmark, 0);
 
+    const result = linkHealthResultById.get(bookmark.id);
+    if (!result) return null;
     const isSelected = selectedInvalidBookmarkIds.has(bookmark.id);
-    const reason = linkHealthResultById.get(bookmark.id)?.reason;
+    const evidence = [
+      `${result.httpStatus ? `HTTP ${result.httpStatus}` : "请求未完成"}，${formatScanTime(result.checkedAt)}`,
+      result.reason,
+      result.finalUrl ? `跳转地址：${result.finalUrl}` : undefined,
+    ].filter(Boolean).join("\n");
 
     return (
-      <div
-        key={bookmark.id}
-        className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable ${isSelected ? "is-selected" : ""}`}
-        onClick={(event) => {
-          const target = event.target instanceof Element ? event.target : null;
-          if (target?.closest("a,button,input,select,textarea")) return;
-          toggleInvalidBookmarkSelection(bookmark.id);
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => toggleInvalidBookmarkSelection(bookmark.id)}
-          className="extension-checkbox bookmark-tree-row__checkbox"
-          aria-label="选择失效书签"
-        />
-        <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
-        <span className="bookmark-tree-row__title" title={reason ? `${bookmark.title}\n${reason}` : bookmark.title}>
-          {bookmark.title}
-        </span>
-        {bookmark.url && (
-          <a
-            href={bookmark.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="extension-link-icon"
-            aria-label="打开书签"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        )}
-        <div className="extension-row-actions">
-          <button onClick={() => handleEditStart(bookmark)} className="extension-icon-action extension-icon-action--blue" aria-label="编辑">
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => void handleDelete(bookmark.id)} disabled={busy || whitelistIndex.protectedBookmarkIds.has(bookmark.id)}
-              title={whitelistIndex.protectedBookmarkIds.has(bookmark.id) ? "请先解除白名单保护" : "删除"}
-              className="extension-icon-action extension-icon-action--red" aria-label="删除">
-            <Trash2 className="w-4 h-4" />
-          </button>
+      <div key={bookmark.id} className="bookmark-health-item" title={`${bookmark.title}\n${evidence}`}>
+        <div
+          className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable ${isSelected ? "is-selected" : ""}`}
+          onClick={(event) => {
+            if (linkHealthActionsDisabled) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target || !event.currentTarget.contains(target) || target.closest("a,button,input,select,textarea")) return;
+            toggleInvalidBookmarkSelection(bookmark.id);
+          }}
+        >
+          <input type="checkbox" checked={isSelected} disabled={linkHealthActionsDisabled}
+            onChange={() => toggleInvalidBookmarkSelection(bookmark.id)}
+            className="extension-checkbox bookmark-tree-row__checkbox" aria-label={`选择书签：${bookmark.title}`}
+            aria-description={evidence} />
+          <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
+          <span className="bookmark-tree-row__title">{bookmark.title}</span>
+          {bookmark.url && (
+            <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon"
+              aria-label={`打开书签：${bookmark.title}`}>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          <BookmarkRowActionMenu
+            bookmarkTitle={bookmark.title}
+            busy={linkHealthActionsDisabled}
+            onEdit={() => handleEditStart(bookmark)}
+            onRecheck={() => void handleLinkHealthRecheck(result)}
+            onDelete={() => void handleDeleteLinkHealthBookmarks(result)}
+          />
         </div>
       </div>
     );
   };
 
   const renderLinkHealthGroups = () => {
-    const groupOrder: LinkHealthGroupKey[] = ["broken", "suspicious", "temporary_failed"];
+    const groupOrder: LinkHealthGroupKey[] = ["broken", "restricted", "suspicious", "temporary_failed"];
     const visibleGroups = groupOrder.filter((group) => groupedInvalidBookmarks[group].length > 0);
 
     if (!visibleGroups.length) return null;
@@ -2174,22 +2208,26 @@ export function ManageBookmarks() {
             <p>已选 {selectedInvalidCount} / {filteredBookmarks.length}</p>
           </div>
           <div className="bookmark-tree-panel__actions">
+            {suggestedLinkHealthIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => toggleLinkHealthSelection(suggestedLinkHealthIds)}
+                disabled={linkHealthActionsDisabled}
+                className="extension-page__wide-secondary"
+              >
+                {areAllSuggestedLinkHealthSelected ? "取消勾选建议项" : "勾选建议清理项"}
+              </button>
+            )}
+            <button type="button" onClick={() => void handleLinkHealthIgnore(
+                filteredBookmarks.filter(({ id }) => selectedInvalidBookmarkIds.has(id)), true)}
+              disabled={linkHealthActionsDisabled || selectedInvalidCount === 0} className="extension-page__wide-secondary"
+              title="仅在失效检测中忽略所选书签">
+              忽略所选
+            </button>
             <button
               type="button"
-              onClick={toggleAllVisibleInvalidBookmarks}
-              disabled={busy || visibleInvalidBookmarkIds.length === 0}
-              className="extension-page__wide-secondary"
-            >
-              {areAllVisibleInvalidBookmarksSelected ? "取消全选" : "全选当前结果"}
-            </button>
-            <button type="button" onClick={() => void protectSelectedBookmarks([...selectedInvalidBookmarkIds])}
-              disabled={busy || selectedInvalidCount === 0} className="extension-page__wide-secondary">
-              <ShieldCheck className="w-4 h-4" />保护所选
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDeleteSelectedInvalidBookmarks()}
-              disabled={busy || selectedInvalidCount === 0}
+              onClick={() => void handleDeleteLinkHealthBookmarks()}
+              disabled={linkHealthActionsDisabled || selectedInvalidCount === 0}
               className="extension-page__wide-primary bookmark-tree-panel__delete-button"
             >
               <Trash2 className="w-4 h-4" />
@@ -2202,24 +2240,37 @@ export function ManageBookmarks() {
             const meta = getLinkHealthGroupMeta(group);
             const groupBookmarks = groupedInvalidBookmarks[group];
             const isCollapsed = collapsedLinkHealthGroups.has(group);
+            const groupIds = groupBookmarks.map(({ id }) => id);
+            const selectedInGroup = groupIds.filter((id) => selectedInvalidBookmarkIds.has(id)).length;
+            const isGroupSelected = selectedInGroup === groupIds.length;
 
             return (
               <section key={group} className={`bookmark-health-group ${meta.className} ${isCollapsed ? "is-collapsed" : ""}`}>
-                <button
-                  type="button"
-                  className="bookmark-health-group__head"
-                  aria-expanded={!isCollapsed}
-                  onClick={() => toggleLinkHealthGroup(group)}
-                >
-                  <span className="bookmark-health-group__chevron">
-                    {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </span>
-                  <div>
-                    <h4>{meta.title}</h4>
-                    <p>{meta.description}</p>
-                  </div>
+                <div className="bookmark-health-group__head" title={meta.description}>
+                  <h4>
+                    <button type="button" className="bookmark-health-group__toggle"
+                      aria-expanded={!isCollapsed}
+                      aria-description={meta.description}
+                      onClick={() => toggleLinkHealthGroup(group)}>
+                      <span className="bookmark-health-group__chevron" aria-hidden="true">
+                        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </span>
+                      <span>{meta.title}</span>
+                    </button>
+                  </h4>
                   <span className="bookmark-health-group__count">{groupBookmarks.length}</span>
-                </button>
+                  <label className="bookmark-health-group__select">
+                    <input
+                      type="checkbox"
+                      className="extension-checkbox"
+                      aria-label={`全选「${meta.title}」`}
+                      checked={isGroupSelected}
+                      disabled={linkHealthActionsDisabled}
+                      ref={(input) => { if (input) input.indeterminate = selectedInGroup > 0 && !isGroupSelected; }}
+                      onChange={() => toggleLinkHealthSelection(groupIds)}
+                    />
+                  </label>
+                </div>
                 {!isCollapsed && (
                   <div className="bookmark-health-group__list">
                     {groupBookmarks.map(renderInvalidBookmarkRow)}
@@ -2462,7 +2513,7 @@ export function ManageBookmarks() {
             <div className="bookmark-task-panel__main">
               <strong>手动检测链接</strong>
               <p>
-                仅检测 http/https 书签，401、403、429 视为可到达。
+                检测 HTTP 和 HTTPS 书签的响应状态。受限和临时异常可逐条复测。
               </p>
               {linkHealthReport && (
                 <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}</span>
@@ -2471,7 +2522,7 @@ export function ManageBookmarks() {
             <button
               type="button"
               onClick={() => void handleLinkScan()}
-              disabled={linkScanActive || bookmarks.length === 0}
+              disabled={busy || !linkHealthIgnores || linkScanActive || bookmarks.length === 0}
               className="extension-page__wide-primary bookmark-task-panel__button"
             >
               <RefreshCw className={`w-4 h-4 ${linkScanActive ? "bookmark-task-panel__spin" : ""}`} />
@@ -2598,13 +2649,16 @@ export function ManageBookmarks() {
 
         {searchQuery && <button type="button" className="extension-text-button" onClick={() => setSearchQuery("")}>清除搜索</button>}
         {taskMode === "invalid" ? (
-          renderLinkHealthGroups()
+          <>
+            {renderLinkHealthGroups()}
+            {renderIgnoredBookmarks(ignoredLinkHealthBookmarks, (bookmark) => void handleLinkHealthIgnore([bookmark], false), linkHealthActionsDisabled)}
+          </>
         ) : taskMode === "unsorted" ? (
           renderUnsortedTasks()
         ) : taskMode === "duplicate" ? (
           <>
             {renderDuplicateTasks()}
-            {renderIgnoredDuplicates()}
+            {renderIgnoredBookmarks(ignoredDuplicateBookmarks, (bookmark) => void handleDuplicateIgnore([bookmark], false), busy)}
           </>
         ) : (
           <section className="bookmark-tree-panel">
@@ -2651,7 +2705,9 @@ export function ManageBookmarks() {
           <div className="extension-empty extension-empty--compact">
             {taskMode === "duplicate" && !duplicateIgnores
               ? duplicateIgnoresError || "正在读取重复检测记录…"
-              : emptyMessage}
+              : taskMode === "invalid" && !linkHealthIgnores
+                ? linkHealthIgnoresError || "正在读取失效检测记录…"
+                : emptyMessage}
           </div>
         )}
         {draggedBookmark && (

@@ -22,7 +22,7 @@ export type ModelCatalogCache = {
 
 export type FixedDomainRule = { id: string; domain: string; folderId: string; folderPath: string[]; createdAt: number };
 
-export type DuplicateBookmarkIgnore = { id: string; url: string };
+export type BookmarkUrlIdentity = { id: string; url: string };
 
 export type BookmarkWhitelistEntry = {
   type: "bookmark" | "folder";
@@ -291,10 +291,11 @@ export type BookmarkLinkHealthResult = {
   bookmarkTitle: string;
   bookmarkUrl: string;
   checkedAt: number;
-  status: "ok" | "broken" | "suspicious" | "temporary_failed" | "invalid" | "skipped";
+  status: "ok" | "broken" | "restricted" | "rate_limited" | "suspicious" | "temporary_failed" | "invalid" | "skipped";
   httpStatus?: number;
   finalUrl?: string;
   checkedMethod?: "HEAD" | "GET";
+  notFoundConfirmedAt?: number;
   reason?: string;
 };
 
@@ -304,6 +305,7 @@ export type BookmarkLinkHealthReport = {
   updatedAt?: number;
   status?: "running" | "completed" | "failed";
   totalCount?: number;
+  bookmarkIds?: string[];
   checkedCount: number;
   skippedCount: number;
   brokenCount?: number;

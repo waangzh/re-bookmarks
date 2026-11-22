@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { getDuplicateBookmarkIgnores, STORAGE_KEYS } from "../services/storage";
-import type { DuplicateBookmarkIgnore } from "../types";
+import { getBookmarkCheckIgnores, STORAGE_KEYS, type BookmarkCheckIgnoreKey } from "../services/storage";
+import type { BookmarkUrlIdentity } from "../types";
 
-export function useDuplicateBookmarkIgnores(enabled = true) {
-  const [state, setState] = useState<{ entries: DuplicateBookmarkIgnore[] | null; error: string }>({
+function useBookmarkCheckIgnores(kind: BookmarkCheckIgnoreKey, enabled: boolean) {
+  const [state, setState] = useState<{ entries: BookmarkUrlIdentity[] | null; error: string }>({
     entries: null,
     error: "",
   });
@@ -15,16 +15,16 @@ export function useDuplicateBookmarkIgnores(enabled = true) {
     const refresh = async () => {
       const request = ++revision;
       try {
-        const entries = await getDuplicateBookmarkIgnores();
+        const entries = await getBookmarkCheckIgnores(kind);
         if (active && revision === request) setState({ entries, error: "" });
       } catch (error) {
         if (active && revision === request) {
-          setState({ entries: null, error: error instanceof Error ? error.message : "读取重复检测忽略记录失败" });
+          setState({ entries: null, error: error instanceof Error ? error.message : "读取检测忽略记录失败" });
         }
       }
     };
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === "local" && changes[STORAGE_KEYS.duplicateBookmarkIgnores]) void refresh();
+      if (area === "local" && changes[STORAGE_KEYS[kind]]) void refresh();
     };
     const events = typeof chrome === "undefined" ? undefined : chrome.storage?.onChanged;
     events?.addListener(onChanged);
@@ -33,7 +33,15 @@ export function useDuplicateBookmarkIgnores(enabled = true) {
       active = false;
       events?.removeListener(onChanged);
     };
-  }, [enabled]);
+  }, [enabled, kind]);
 
   return state;
+}
+
+export function useDuplicateBookmarkIgnores(enabled = true) {
+  return useBookmarkCheckIgnores("duplicateBookmarkIgnores", enabled);
+}
+
+export function useLinkHealthBookmarkIgnores(enabled = true) {
+  return useBookmarkCheckIgnores("linkHealthBookmarkIgnores", enabled);
 }

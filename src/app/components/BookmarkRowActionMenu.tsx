@@ -1,25 +1,26 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Edit2, MoreVertical, Shield, ShieldCheck, Trash2 } from "lucide-react";
+import { Edit2, MoreVertical, RefreshCw, Shield, ShieldCheck, Trash2 } from "lucide-react";
 
 export type BookmarkRowActionMenuProps = {
   bookmarkTitle: string;
-  isProtected: boolean;
-  hasDirectWhitelistEntry: boolean;
+  isProtected?: boolean;
+  hasDirectWhitelistEntry?: boolean;
   protectionReason?: string;
   busy: boolean;
-  onToggleProtection: () => void;
+  onToggleProtection?: () => void;
+  onRecheck?: () => void;
   onEdit: () => void;
   onDelete: () => void;
 };
 
-/** 将树行右侧的保护、编辑、删除收纳到竖向三点菜单，为中文标题留出空间并明确操作语义。 */
 export function BookmarkRowActionMenu({
   bookmarkTitle,
-  isProtected,
-  hasDirectWhitelistEntry,
+  isProtected = false,
+  hasDirectWhitelistEntry = false,
   protectionReason,
   busy,
   onToggleProtection,
+  onRecheck,
   onEdit,
   onDelete,
 }: BookmarkRowActionMenuProps) {
@@ -54,15 +55,17 @@ export function BookmarkRowActionMenu({
             sideOffset={4}
             collisionPadding={8}
           >
-            <DropdownMenu.Item
-              className="bookmark-row-menu__item bookmark-row-menu__item--protect"
-              disabled={protectionDisabled}
-              title={protectionReason ?? protectionLabel}
-              onSelect={onToggleProtection}
-            >
-              {isProtected ? <ShieldCheck aria-hidden="true" /> : <Shield aria-hidden="true" />}
-              <span>{protectionLabel}</span>
-            </DropdownMenu.Item>
+            {onToggleProtection && (
+              <DropdownMenu.Item
+                className="bookmark-row-menu__item bookmark-row-menu__item--protect"
+                disabled={protectionDisabled}
+                title={protectionReason ?? protectionLabel}
+                onSelect={onToggleProtection}
+              >
+                {isProtected ? <ShieldCheck aria-hidden="true" /> : <Shield aria-hidden="true" />}
+                <span>{protectionLabel}</span>
+              </DropdownMenu.Item>
+            )}
 
             <DropdownMenu.Item
               className="bookmark-row-menu__item"
@@ -73,6 +76,13 @@ export function BookmarkRowActionMenu({
               <Edit2 aria-hidden="true" />
               <span>编辑</span>
             </DropdownMenu.Item>
+
+            {onRecheck && (
+              <DropdownMenu.Item className="bookmark-row-menu__item" disabled={busy} onSelect={onRecheck}>
+                <RefreshCw aria-hidden="true" />
+                <span>复测</span>
+              </DropdownMenu.Item>
+            )}
 
             <DropdownMenu.Separator className="bookmark-row-menu__separator" />
 
