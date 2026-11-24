@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   ArrowRight,
@@ -30,6 +30,7 @@ import { useDuplicateBookmarkIgnores, useLinkHealthBookmarkIgnores } from "../ho
 import { useAppStore } from "../store/useAppStore";
 import { PopupQuickCard } from "./PopupQuickCard";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
+import { ScrollEdges } from "./ScrollEdges";
 import { getCurrentPage, getHomeTaskVisual } from "./SidebarHome";
 import { resolvePopupQuickTarget, type PopupCurrentPage } from "../services/popupQuickCard";
 import { TopNotice, TopNotices } from "./TopNotice";
@@ -280,8 +281,19 @@ export function PopupHome() {
     (!deepSearchState.error || Boolean(deepSearchState.results?.length)) &&
     (!searching || Boolean(deepSearchState.results?.length));
   const searchMatches = deepSearchActive ? deepSearchState.results ?? [] : localSearchMatches;
+  const hasSearchMatches = searchMatches.length > 0;
   const searchError =
     searchNotice?.query === queryText ? searchNotice.message : searchIsCurrent ? deepSearchState.error : "";
+
+  useLayoutEffect(() => {
+    if (!hasSearchMatches || document.activeElement !== searchRef.current) return;
+    const panel = searchRef.current?.closest(".home-search-panel");
+    const footer = panel?.querySelector(".home-search-more");
+    if (!panel || !footer) return;
+    const clipped = footer.getBoundingClientRect().bottom + 12 - window.innerHeight;
+    const available = panel.getBoundingClientRect().top - 12;
+    if (clipped > 0 && available > 0) window.scrollBy(0, Math.min(clipped, available));
+  }, [hasSearchMatches]);
 
   const changeQuery = (value: string) => {
     setQuery(value);
@@ -473,9 +485,9 @@ export function PopupHome() {
         </SearchKeywordDropdown>
         {queryText && (
           <section className="home-search-results" aria-label="搜索结果" aria-live="polite">
-            {searchMatches.length ? (
-              <>
-                {searchMatches.slice(0, 4).map((result) => {
+            <ScrollEdges className="home-search-results__list" resetKey={queryText} viewportBottomGap={56}>
+              <div className="scroll-edges__viewport">
+                {hasSearchMatches ? searchMatches.slice(0, 4).map((result) => {
                   const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
                   if (!bookmark) return null;
                   const path = bookmark.path.join(" / ") || getDomain(bookmark.url);
@@ -513,13 +525,15 @@ export function PopupHome() {
                       <ArrowRight aria-hidden="true" />
                     </a>
                   );
-                })}
-                <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">
-                  查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" />
-                </Link>
-              </>
-            ) : (
-              <p>{loading ? "正在读取书签…" : searching ? "本地未找到匹配的书签" : "没有找到匹配的书签"}</p>
+                }) : (
+                  <p>{loading ? "正在读取书签…" : searching ? "本地未找到匹配的书签" : "没有找到匹配的书签"}</p>
+                )}
+              </div>
+            </ScrollEdges>
+            {hasSearchMatches && (
+              <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">
+                查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" />
+              </Link>
             )}
           </section>
         )}

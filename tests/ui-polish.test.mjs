@@ -108,6 +108,7 @@ function mountOptions(initialSettings, { failSave = false, clearPreviewPlan = as
     "lucide-react": require("lucide-react"),
     "./PageHeading": { PageHeading: () => null },
     "./Select": { Select: () => null },
+    "./ModelOptionsList": { ModelOptionsList: () => null },
     "./Switch": { Switch: MockSwitch },
     "./AIProtocolFields": { AIProtocolFields: () => null },
     "../services/aiProvider": {
@@ -332,6 +333,7 @@ test("SidebarHome 加载时渲染骨架屏，且 Sidebar 模式下放宽最近�
     "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
     "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
     "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+    "./ScrollEdges": { ScrollEdges: () => null },
     "../services/impressionSearch": { getImpressionMatchIcon: () => "", isImpressionMatch: () => false, searchBookmarksByImpression: () => [] },
     "../hooks/useDeepImpressionSearch": {
       useDeepImpressionSearch: () => ({
@@ -424,6 +426,7 @@ test("SidebarHome 首页其他待办、下一步建议与任务中心全部待�
     "../services/bookmarks": { getBookmarkFaviconUrl: () => "" },
     "../services/semanticIndex": { getSemanticIndexMap: async () => ({}) },
     "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+    "./ScrollEdges": { ScrollEdges: () => null },
     "../services/impressionSearch": { getImpressionMatchIcon: () => "", isImpressionMatch: () => false, searchBookmarksByImpression: () => [] },
     "../hooks/useDeepImpressionSearch": {
       useDeepImpressionSearch: () => ({
@@ -653,6 +656,7 @@ test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVert
 
   const MenuItem = () => null;
   const menuExports = transpileComponent("src/app/components/BookmarkRowActionMenu.tsx", {
+    "./ScrollEdges": { ScrollEdges: () => null },
     "@radix-ui/react-dropdown-menu": {
       Root: ({ children }) => ({ type: "Root", props: { children } }),
       Trigger: ({ children }) => ({ type: "Trigger", props: { children } }),

@@ -2639,6 +2639,59 @@ textarea {
   transform: rotate(180deg);
 }
 
+.scroll-edges {
+  --scroll-edges-size: 18px;
+  --scroll-edges-color: color-mix(in srgb, var(--scroll-edges-surface, var(--remarks-surface)) 86%, var(--remarks-line-strong));
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.scroll-edges__viewport {
+  min-height: 0;
+  margin: 0;
+  padding: var(--scroll-edges-padding, 4px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-padding-block: var(--scroll-edges-size);
+  scrollbar-width: thin;
+  scrollbar-color: var(--remarks-scrollbar-thumb) transparent;
+  list-style: none;
+}
+
+.scroll-edges::before,
+.scroll-edges::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0 8px;
+  height: var(--scroll-edges-size);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.scroll-edges::before {
+  inset-block-start: 0;
+  background: linear-gradient(to bottom, var(--scroll-edges-color), transparent);
+}
+
+.scroll-edges::after {
+  inset-block-end: 0;
+  background: linear-gradient(to top, var(--scroll-edges-color), transparent);
+}
+
+.scroll-edges[data-scroll-start]::before,
+.scroll-edges[data-scroll-end]::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-edges::before,
+  .scroll-edges::after { transition: none; }
+}
+
 .ui-select__menu {
   position: absolute;
   z-index: 30;
@@ -2647,17 +2700,10 @@ textarea {
   display: grid;
   width: 100%;
   max-height: 260px;
-  overscroll-behavior: contain;
-  margin: 0;
-  padding: 5px;
-  overflow-y: auto;
-  list-style: none;
   border: 1px solid var(--remarks-line-strong);
   border-radius: 10px;
   background: var(--remarks-surface);
   box-shadow: var(--remarks-shadow-popover);
-  scrollbar-width: thin;
-  scrollbar-color: var(--remarks-scrollbar-thumb) transparent;
 }
 
 /* 靠近视口底部时向上展开 */
@@ -3121,16 +3167,15 @@ select.extension-control option,
   display: grid;
   width: 100%;
   max-height: 208px;
-  margin: 0;
-  padding: 5px;
-  overflow-y: auto;
-  list-style: none;
   border: 1px solid var(--remarks-line-strong);
-  border-radius: 10px;
+  border-radius: var(--remarks-radius-panel);
   background: var(--remarks-surface);
   box-shadow: var(--remarks-shadow-popover);
-  scrollbar-width: thin;
-  scrollbar-color: var(--remarks-scrollbar-thumb) transparent;
+}
+
+.organize-model-picker__menu.is-above {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .organize-model-picker__option {

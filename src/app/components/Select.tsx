@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
+import { ScrollEdges } from "./ScrollEdges";
 
 export type SelectOption = {
   value: string;
@@ -151,29 +152,27 @@ export function Select({
       </button>
 
       {open && (
-        <ul
-          id={listId}
+        <ScrollEdges
           className={`ui-select__menu${placement === "above" ? " is-above" : ""}`}
-          role="listbox"
-          ref={listRef}
-          aria-label={ariaLabel}
           style={{ maxHeight: `${menuMaxHeight}px` }}
         >
-          {options.length ? options.map((option, index) => (
-            <li
-              key={option.value}
-              role="option"
-              aria-selected={option.value === value}
-              className={`ui-select__option${option.value === value ? " is-selected" : ""}${index === highlighted ? " is-highlighted" : ""}`}
-              onMouseEnter={() => setHighlighted(index)}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => choose(option.value)}
-            >
-              <span>{option.label}</span>
-              <Check aria-hidden="true" />
-            </li>
-          )) : <li className="ui-select__empty">暂无可选项</li>}
-        </ul>
+          <ul id={listId} className="scroll-edges__viewport" role="listbox" ref={listRef} aria-label={ariaLabel}>
+            {options.length ? options.map((option, index) => (
+              <li
+                key={option.value}
+                role="option"
+                aria-selected={option.value === value}
+                className={`ui-select__option${option.value === value ? " is-selected" : ""}${index === highlighted ? " is-highlighted" : ""}`}
+                onMouseEnter={() => setHighlighted(index)}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => choose(option.value)}
+              >
+                <span>{option.label}</span>
+                <Check aria-hidden="true" />
+              </li>
+            )) : <li className="ui-select__empty">暂无可选项</li>}
+          </ul>
+        </ScrollEdges>
       )}
     </div>
   );

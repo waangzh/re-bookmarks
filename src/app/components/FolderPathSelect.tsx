@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Folder, FolderPlus } from "lucide-react";
 import type { BookmarkNode } from "../types";
 import { parseFolderPath } from "../services/bookmarks";
+import { ScrollEdges } from "./ScrollEdges";
 
 type FolderPathSelectProps = {
   value: string;
@@ -86,26 +87,27 @@ export function FolderPathSelect({ value, folders, maxNestingLevel, onChange, di
         <ChevronDown className="ui-select__chevron" aria-hidden="true" />
       </button>
     </div>
-    {expanded && <ul id={`${id}-list`} role="listbox" aria-label="目标目录候选" ref={listRef}
-      className="ui-select__menu ui-folder-select__menu">
-      {choices.map((folder, index) => {
-        const selected = JSON.stringify(folder.path) === pathKey;
-        const label = folder.path.join(" / ");
-        return <li id={`${id}-option-${index}`} key={folder.id} role="option" aria-selected={selected}
-          className={`ui-select__option ui-folder-select__option${highlighted === index ? " is-highlighted" : ""}${selected ? " is-selected" : ""}`}
-          onPointerDown={(event) => event.preventDefault()} onClick={() => choose(index)} onMouseMove={() => setHighlighted(index)}>
-          <Folder className="ui-folder-select__icon" aria-hidden="true" />
-          <span title={label}>{label}</span><Check aria-hidden="true" />
-        </li>;
-      })}
-      {canUseNewPath && <li id={`${id}-option-${choices.length}`} role="option" aria-selected={false}
-        className={`ui-select__option ui-folder-select__option ui-folder-select__new${highlighted === choices.length ? " is-highlighted" : ""}`}
-        onPointerDown={(event) => event.preventDefault()} onClick={() => choose(choices.length)} onMouseMove={() => setHighlighted(choices.length)}>
-        <FolderPlus className="ui-folder-select__icon" aria-hidden="true" />
-        <span>使用新路径：{pathLabel}</span>
-      </li>}
-      {!choices.length && !canUseNewPath && <li className="ui-select__empty" role="presentation">暂无可选目录，可输入新路径</li>}
-    </ul>}
+    {expanded && <ScrollEdges className="ui-select__menu ui-folder-select__menu">
+      <ul id={`${id}-list`} role="listbox" aria-label="目标目录候选" ref={listRef} className="scroll-edges__viewport">
+        {choices.map((folder, index) => {
+          const selected = JSON.stringify(folder.path) === pathKey;
+          const label = folder.path.join(" / ");
+          return <li id={`${id}-option-${index}`} key={folder.id} role="option" aria-selected={selected}
+            className={`ui-select__option ui-folder-select__option${highlighted === index ? " is-highlighted" : ""}${selected ? " is-selected" : ""}`}
+            onPointerDown={(event) => event.preventDefault()} onClick={() => choose(index)} onMouseMove={() => setHighlighted(index)}>
+            <Folder className="ui-folder-select__icon" aria-hidden="true" />
+            <span title={label}>{label}</span><Check aria-hidden="true" />
+          </li>;
+        })}
+        {canUseNewPath && <li id={`${id}-option-${choices.length}`} role="option" aria-selected={false}
+          className={`ui-select__option ui-folder-select__option ui-folder-select__new${highlighted === choices.length ? " is-highlighted" : ""}`}
+          onPointerDown={(event) => event.preventDefault()} onClick={() => choose(choices.length)} onMouseMove={() => setHighlighted(choices.length)}>
+          <FolderPlus className="ui-folder-select__icon" aria-hidden="true" />
+          <span>使用新路径：{pathLabel}</span>
+        </li>}
+        {!choices.length && !canUseNewPath && <li className="ui-select__empty" role="presentation">暂无可选目录，可输入新路径</li>}
+      </ul>
+    </ScrollEdges>}
     <p id={`${id}-note`} className="preview-dialog__note">新路径会在最终执行整理时创建。</p>
   </div>;
 }

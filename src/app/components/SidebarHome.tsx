@@ -32,6 +32,7 @@ import { getFrequentBookmarks, hasHistoryPermission } from "../services/history"
 import { getBookmarkFaviconUrl } from "../services/bookmarks";
 import { getSemanticIndexMap } from "../services/semanticIndex";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
+import { ScrollEdges } from "./ScrollEdges";
 import { getImpressionMatchIcon, isImpressionMatch, searchBookmarksByImpression } from "../services/impressionSearch";
 import { useDeepImpressionSearch } from "../hooks/useDeepImpressionSearch";
 import { useDuplicateBookmarkIgnores, useLinkHealthBookmarkIgnores } from "../hooks/useDuplicateBookmarkIgnores";
@@ -544,15 +545,19 @@ export function SidebarHome({ showAllTasks = false, compact = false }: { showAll
       )}
       </SearchKeywordDropdown>
       {queryText && <section className="home-search-results" aria-label="搜索结果" aria-live="polite">
-        {searchMatches.length ? <>
-          {searchMatches.slice(0, 5).map((result) => {
-            const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
-            if (!bookmark) return null;
-            const path = bookmark.path.join(" / ") || getDomain(bookmark.url);
-            return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong title={bookmark.title}>{bookmark.title || "未命名书签"}</strong><small title={path}>{path}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">{getImpressionMatchIcon(result)} {result.matchHint}{result.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
-          })}
+        <ScrollEdges className="home-search-results__list" resetKey={queryText}>
+          <div className="scroll-edges__viewport">
+            {searchMatches.length ? searchMatches.slice(0, 5).map((result) => {
+              const bookmark = bookmarks.find((item) => item.id === result.bookmark.id);
+              if (!bookmark) return null;
+              const path = bookmark.path.join(" / ") || getDomain(bookmark.url);
+              return <a key={bookmark.id} href={bookmark.url} target="_blank" rel="noreferrer" className="home-search-result"><MiniFavicon title={bookmark.title} url={bookmark.url} /><span><strong title={bookmark.title}>{bookmark.title || "未命名书签"}</strong><small title={path}>{path}</small>{result.matchHint && isImpressionMatch(result) && <em className="home-search-result__match">{getImpressionMatchIcon(result)} {result.matchHint}{result.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}</em>}{!result.matchHint && result.displayTags.length > 0 && <span className="home-search-result__tags">{result.displayTags.slice(0, 3).map((tag) => <b key={tag}>{tag}</b>)}</span>}</span><ArrowRight aria-hidden="true" /></a>;
+            }) : <p>{loading ? "正在读取书签…" : searching ? "本地未找到匹配的书签" : "没有找到匹配的书签"}</p>}
+          </div>
+        </ScrollEdges>
+        {searchMatches.length > 0 && (
           <Link to={`/manage?search=${encodeURIComponent(queryText)}`} className="home-search-more">查看全部 {searchMatches.length} 条结果 <ArrowRight aria-hidden="true" /></Link>
-        </> : <p>{loading ? "正在读取书签…" : searching ? "本地未找到匹配的书签" : "没有找到匹配的书签"}</p>}
+        )}
       </section>}
       {queryText && (searchError || (searchIsCurrent && deepSearchState.stage !== "idle")) && (
         <div className={`home-deep-status${searchError ? " home-deep-status--error" : ""}`} role="status">

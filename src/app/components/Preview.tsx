@@ -45,6 +45,7 @@ import { appendFolderImpression } from "../services/semanticIndex";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PreviewDialog } from "./PreviewDialog";
 import { FolderPathSelect } from "./FolderPathSelect";
+import { ModelOptionsList } from "./ModelOptionsList";
 import { filterAvailableBookmarks, getCurrentWhitelist, whitelistFingerprint } from "../services/whitelist";
 
 import { getPlanChangeReason, getPlanSummary, parsePreviewReview } from "../services/previewSafety";
@@ -1452,7 +1453,7 @@ export function Preview() {
                 </button>
 
                 {modelMenuOpen && (
-                  <ul id="remarks-available-models" className="organize-model-picker__menu" role="listbox">
+                  <ModelOptionsList id="remarks-available-models" highlightedIndex={highlightedModelIndex}>
                     {displayedModels.length ? displayedModels.map((model, index) => {
                       const isSelected = model.id === selectedModel;
                       const isHighlighted = index === highlightedModelIndex;
@@ -1478,7 +1479,7 @@ export function Preview() {
                         未找到匹配模型，可直接使用当前输入值
                       </li>
                     )}
-                  </ul>
+                  </ModelOptionsList>
                 )}
               </div>
 

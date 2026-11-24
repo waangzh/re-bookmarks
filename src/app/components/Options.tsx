@@ -2,6 +2,7 @@ import { PageHeading } from "./PageHeading";
 import { Select } from "./Select";
 import { Switch } from "./Switch";
 import { AIProtocolFields } from "./AIProtocolFields";
+import { ModelOptionsList } from "./ModelOptionsList";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -151,11 +152,6 @@ export function Options() {
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [modelMenuOpen]);
 
-  useEffect(() => {
-    if (modelMenuOpen) {
-      document.getElementById(`settings-model-option-${highlightedModel}`)?.scrollIntoView({ block: "nearest" });
-    }
-  }, [modelMenuOpen, highlightedModel]);
 
   const openModelMenu = () => {
     setModelFiltering(false);
@@ -476,7 +472,7 @@ export function Options() {
                   <ChevronDown aria-hidden="true" />
                 </button>
                 {modelMenuOpen && (
-                  <ul id="settings-model-options" className="organize-model-picker__menu" role="listbox" aria-label="检测到的模型">
+                  <ModelOptionsList id="settings-model-options" highlightedIndex={highlightedModel}>
                     {displayedModels.length ? displayedModels.map((model, index) => (
                       <li
                         id={`settings-model-option-${index}`}
@@ -492,7 +488,7 @@ export function Options() {
                         <Check aria-hidden="true" />
                       </li>
                     )) : <li className="organize-model-picker__empty">未找到匹配模型，可直接使用当前输入值</li>}
-                  </ul>
+                  </ModelOptionsList>
                 )}
               </div>
             </div>

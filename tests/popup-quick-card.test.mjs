@@ -488,6 +488,7 @@ test("PopupHome 无归档建议时在当前网页下方展示待办卡并直达�
       {
         react: {
           useEffect() {},
+          useLayoutEffect() {},
           useMemo: (fn) => fn(),
           useRef: (value) => ({ current: value }),
           useState(initial) {
@@ -564,6 +565,7 @@ test("PopupHome 无归档建议时在当前网页下方展示待办卡并直达�
         },
         "./PopupQuickCard": { PopupQuickCard: MockQuickCard },
         "./SearchKeywordDropdown": { SearchKeywordDropdown: () => null },
+        "./ScrollEdges": { ScrollEdges: () => null },
         "./SidebarHome": {
           getCurrentPage: async () => null,
           getHomeTaskVisual: () => ({ icon: MockTodoIcon, tone: "amber" }),
