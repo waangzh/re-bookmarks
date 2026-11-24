@@ -680,9 +680,10 @@ test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVert
     onDelete: () => calls.push("delete"),
   });
 
-  const trigger = nodes(treeUnprotected, (item) => item.type === "button")[0];
+  const menuShell = menuExports.BookmarkRowMenu(treeUnprotected.props);
+  const trigger = nodes(menuShell, (item) => item.type === "button")[0];
   assert.match(trigger.props["aria-label"], /更多操作：开发文档/);
-  const content = nodes(treeUnprotected, (item) => String(item.props.className ?? "").includes("bookmark-row-menu") && item.props.side === "bottom")[0];
+  const content = nodes(menuShell, (item) => String(item.props.className ?? "").includes("bookmark-row-menu") && item.props.side === "bottom")[0];
   assert.ok(content);
   const items = nodes(treeUnprotected, (item) => item.type === MenuItem);
   assert.equal(items.length, 3);
@@ -730,6 +731,18 @@ test("ManageBookmarks 仅为可拖拽书签行渲染 Hover 拖拽手柄 GripVert
   assert.deepEqual(linkHealthItems.map((item) => text(item)), ["编辑", "复测", "删除"]);
   linkHealthItems[1].props.onSelect();
   assert.deepEqual(rechecks, ["recheck"]);
+
+  const manualMenu = menuExports.BookmarkRowActionMenu({
+    bookmarkTitle: "待归档书签",
+    busy: false,
+    onArchive: () => calls.push("archive"),
+    onToggleProtection() {},
+    onDelete() {},
+  });
+  const manualItems = nodes(manualMenu, (item) => item.type === MenuItem);
+  assert.deepEqual(manualItems.map((item) => text(item)), ["选择归档位置", "保护此书签", "删除"]);
+  manualItems[0].props.onSelect();
+  assert.equal(calls.at(-1), "archive");
 });
 
 test("全局 CSS 已清理历史冗余样式，颜色全量抽象为语义变量并支持系统 Dark Mode", () => {

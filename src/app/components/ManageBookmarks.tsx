@@ -1,20 +1,22 @@
 import { PageHeading } from "./PageHeading";
 import { TopNotice, TopNotices } from "./TopNotice";
-import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
+import { RecommendationActionHelp } from "./RecommendationActionHelp";
 import { SearchKeywordDropdown } from "./SearchKeywordDropdown";
 import { BookmarkRowActionMenu } from "./BookmarkRowActionMenu";
+import { BookmarkTaskHeader } from "./BookmarkTaskHeader";
+import { RecommendationRowActionMenu } from "./RecommendationRowActionMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   Plus,
   Search,
-  Edit2,
   Trash2,
   ExternalLink,
   Copy,
   Unlink,
   Folder,
   FolderInput,
+  FolderPlus,
   Bookmark,
   ChevronDown,
   ChevronRight,
@@ -23,7 +25,6 @@ import {
   Check,
   RefreshCw,
   Sparkles,
-  ThumbsDown,
   Shield,
   ShieldCheck,
   BrainCircuit,
@@ -688,8 +689,8 @@ export function ManageBookmarks() {
   const areAllSuggestedLinkHealthSelected = suggestedLinkHealthIds.length > 0 &&
     suggestedLinkHealthIds.every((id) => selectedInvalidBookmarkIds.has(id));
   const linkHealthActionsDisabled = busy || scanningLinks || linkHealthReport?.status === "running";
-  const selectedManualTaskCount = useMemo(() => {
-    return visibleManualTaskBookmarkIds.filter((id) => selectedManualTaskBookmarkIds.has(id)).length;
+  const selectedVisibleManualTaskIds = useMemo(() => {
+    return visibleManualTaskBookmarkIds.filter((id) => selectedManualTaskBookmarkIds.has(id));
   }, [selectedManualTaskBookmarkIds, visibleManualTaskBookmarkIds]);
 
 
@@ -1634,23 +1635,31 @@ export function ManageBookmarks() {
     </div>
   );
 
-  const renderUnsortedBookmarkCard = (bookmark: BookmarkNode) => {
-    const isEditing = editingId === bookmark.id;
+  const renderUnsortedBookmarkRow = (bookmark: BookmarkNode) => {
     const isSelected = selectedManualTaskBookmarkIds.has(bookmark.id);
+    const disabled = busy || ignoringManualSelection;
+    const match = impressionResultById.get(bookmark.id);
+    const bookmarkPath = bookmark.path.join(" / ") || "根目录";
 
     return (
-      <article key={bookmark.id} className={`bookmark-unsorted-card ${isSelected ? "is-selected" : ""}`}>
-        {isEditing ? (
-          <div className="bookmark-tree-edit">
-            <input type="text" value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })} className="extension-control" />
-            <input type="url" value={editForm.url} onChange={(event) => setEditForm({ ...editForm, url: event.target.value })} className="extension-control" />
-            <input type="text" value={editForm.path} onChange={(event) => setEditForm({ ...editForm, path: event.target.value })} className="extension-control" placeholder="目标文件夹路径，例如：工作 / 文档" />
+      <div key={bookmark.id} className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable bookmark-task-row ${isSelected ? "is-selected" : ""}`}>
+        {editingId === bookmark.id ? (
+          <div className="bookmark-tree-edit bookmark-task-row__edit">
+            <label>标题
+              <input type="text" value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })} className="extension-control" disabled={disabled} />
+            </label>
+            <label>网址
+              <input type="url" value={editForm.url} onChange={(event) => setEditForm({ ...editForm, url: event.target.value })} className="extension-control" disabled={disabled} />
+            </label>
+            <label>目标文件夹路径
+              <input type="text" autoFocus value={editForm.path} onChange={(event) => setEditForm({ ...editForm, path: event.target.value })} className="extension-control" placeholder="例如：工作 / 文档" disabled={disabled} />
+            </label>
             <div className="extension-button-row">
-              <button onClick={handleEditSave} disabled={busy} className="extension-page__wide-primary">
+              <button type="button" onClick={handleEditSave} disabled={disabled} className="extension-page__wide-primary">
                 <Check className="w-4 h-4" />
                 保存归档
               </button>
-              <button onClick={() => setEditingId(null)} className="extension-page__wide-secondary">
+              <button type="button" onClick={() => setEditingId(null)} disabled={disabled} className="extension-page__wide-secondary">
                 <X className="w-4 h-4" />
                 取消
               </button>
@@ -1658,60 +1667,43 @@ export function ManageBookmarks() {
           </div>
         ) : (
           <>
-            <div className="bookmark-unsorted-card__main bookmark-unsorted-card__main--selectable">
+            <label className="bookmark-task-row__label">
               <input
                 type="checkbox"
                 checked={isSelected}
+                disabled={disabled}
                 onChange={() => toggleManualTaskBookmarkSelection(bookmark.id)}
-                className="extension-checkbox bookmark-unsorted-card__checkbox"
-                aria-label={`选择忽略：${bookmark.title}`}
+                className="extension-checkbox bookmark-tree-row__checkbox"
+                aria-label={`选择书签：${bookmark.title}`}
               />
-              <BookmarkFavicon
-                title={bookmark.title}
-                url={bookmark.url}
-                className="bookmark-unsorted-card__favicon"
-                fallbackClassName="bookmark-unsorted-card__icon"
-              />
-              <div className="bookmark-unsorted-card__content">
-                <div className="bookmark-unsorted-card__title-row">
-                  <h4 title={bookmark.title}>{bookmark.title}</h4>
-                  {bookmark.url && (
-                    <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-                {bookmark.url && <p className="bookmark-unsorted-card__url">{bookmark.url}</p>}
-                <p className="bookmark-unsorted-card__meta">当前位置：{bookmark.path.join(" / ") || "根目录"}</p>
-                {(() => {
-                  const match = impressionResultById.get(bookmark.id);
-                  if (!match?.matchHint || !isImpressionMatch(match)) return null;
-                  return (
-                    <p className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">
-                      {getImpressionMatchIcon(match)} {match.matchHint}
-                      {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
-                    </p>
-                  );
-                })()}
-              </div>
-            </div>
-            <div className="bookmark-unsorted-card__actions">
-              <button type="button" onClick={() => void toggleWhitelist("bookmark", bookmark.id)} disabled={busy}
-                className="extension-page__wide-secondary">
-                <ShieldCheck className="w-4 h-4" />保护此书签
-              </button>
-              <button type="button" onClick={() => handleEditStart(bookmark)} className="extension-page__wide-primary">
-                <Folder className="w-4 h-4" />
-                选择归档位置
-              </button>
-              <button type="button" onClick={() => void handleDelete(bookmark.id)} disabled={busy} className="extension-page__wide-secondary">
-                <Trash2 className="w-4 h-4" />
-                删除
-              </button>
-            </div>
+              <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
+              <span className="bookmark-task-row__identity">
+                <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+                <span className="bookmark-task-row__path" title={bookmarkPath}>{bookmarkPath}</span>
+                {match?.matchHint && isImpressionMatch(match) && (
+                  <span className="bookmark-unsorted-card__meta bookmark-unsorted-card__match">
+                    {getImpressionMatchIcon(match)} {match.matchHint}
+                    {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
+                  </span>
+                )}
+              </span>
+            </label>
+            {bookmark.url && (
+              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon"
+                aria-label={`打开书签：${bookmark.title}`} title={bookmark.url}>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+            <BookmarkRowActionMenu
+              bookmarkTitle={bookmark.title}
+              busy={disabled}
+              onArchive={() => handleEditStart(bookmark)}
+              onToggleProtection={() => void toggleWhitelist("bookmark", bookmark.id)}
+              onDelete={() => void handleDelete(bookmark.id)}
+            />
           </>
         )}
-      </article>
+      </div>
     );
   };
 
@@ -1724,25 +1716,20 @@ export function ManageBookmarks() {
     const hasError = kind === "error";
     const signalLabel = getRecommendationSignalLabel(recommendation);
     const showSignal = isActionable && !isEditingRecommendation && signalLabel !== "需要确认";
+    const actionDisabled = busy || Boolean(busyRecommendationId || bulkRecommendationAction || editingRecommendationId);
+    const primaryLabel = isActionable ? (isNewFolder ? "创建目录并归档" : "归档书签") : "重新分类";
+    const PrimaryIcon = isBusy || !isActionable ? RefreshCw : isNewFolder ? FolderPlus : Check;
 
     return (
-      <article key={recommendation.id} className="bookmark-unsorted-card bookmark-unsorted-card--recommendation">
-        <div className="bookmark-unsorted-card__main">
+      <article key={recommendation.id} className={`bookmark-task-recommendation${isEditingRecommendation ? " is-editing" : ""}`}>
           <BookmarkFavicon
             title={recommendation.bookmarkTitle}
             url={recommendation.bookmarkUrl}
             className="bookmark-unsorted-card__favicon"
             fallbackClassName="bookmark-unsorted-card__icon"
           />
-          <div className="bookmark-unsorted-card__content">
-            <div className="bookmark-unsorted-card__title-row">
-              <h4 title={recommendation.bookmarkTitle}>{recommendation.bookmarkTitle}</h4>
-              {recommendation.bookmarkUrl && (
-                <a href={recommendation.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
+          <h4 title={recommendation.bookmarkTitle}>{recommendation.bookmarkTitle}</h4>
+          <div className="bookmark-task-recommendation__details">
             {recommendation.bookmarkUrl && <p className="bookmark-unsorted-card__url">{recommendation.bookmarkUrl}</p>}
             {(() => {
               const match = impressionResultById.get(recommendation.bookmarkId);
@@ -1759,6 +1746,7 @@ export function ManageBookmarks() {
                 <span>目标文件夹</span>
                 <input
                   type="text"
+                  autoFocus
                   value={recommendationPathDraft}
                   onChange={(event) => setRecommendationPathDraft(event.target.value)}
                   className="extension-control"
@@ -1787,31 +1775,18 @@ export function ManageBookmarks() {
                 {recommendation.reason}
               </p>
             )}
-            {!isEditingRecommendation && isActionable && (
-              <button
-                type="button"
-                onClick={() => void handleRejectRecommendationCategory(recommendation)}
-                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                className="extension-text-button recommendation-negative-feedback bookmark-recommendation-feedback"
-              >
-                <ThumbsDown className="w-3 h-3" />
-                {isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
-              </button>
-            )}
           </div>
-        </div>
-        <div className="bookmark-unsorted-card__actions bookmark-unsorted-card__actions--icons">
+        <div className="bookmark-task-recommendation__actions">
           {isEditingRecommendation ? (
             <>
               <button
                 type="button"
                 onClick={() => void handleSaveRecommendationPath(recommendation)}
                 disabled={isBusy || Boolean(bulkRecommendationAction)}
-                className="extension-icon-action extension-icon-action--blue"
-                aria-label="保存推荐分类"
-                title="保存推荐分类"
+                className="extension-page__wide-primary"
               >
                 <Check className="w-4 h-4" />
+                保存分类
               </button>
               <button
                 type="button"
@@ -1820,63 +1795,38 @@ export function ManageBookmarks() {
                   setRecommendationPathDraft("");
                 }}
                 disabled={isBusy || Boolean(bulkRecommendationAction)}
-                className="extension-icon-action"
-                aria-label="取消编辑"
-                title="取消编辑"
+                className="extension-page__wide-secondary"
               >
                 <X className="w-4 h-4" />
+                取消
               </button>
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => handleEditRecommendationStart(recommendation)}
-                disabled={Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                className="extension-icon-action"
-                aria-label="编辑推荐分类"
-                title="编辑推荐分类"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              {isActionable ? (
-                <button
-                  type="button"
-                  onClick={() => void handleAcceptRecommendation(recommendation)}
-                  disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                  className="extension-icon-action extension-icon-action--blue"
-                  aria-label={isNewFolder ? "创建目录并归档" : "归档书签"}
-                  title={isNewFolder ? "创建目录并归档" : "归档书签"}
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleRetryRecommendation(recommendation)}
-                  disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                  className="extension-icon-action extension-icon-action--blue"
-                  aria-label="重新分类"
-                  title="重新分类"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+              {recommendation.bookmarkUrl && (
+                <a href={recommendation.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon"
+                  aria-label={`打开书签：${recommendation.bookmarkTitle}`} title={recommendation.bookmarkUrl}>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
               )}
-              <button type="button" onClick={() => void toggleWhitelist("bookmark", recommendation.bookmarkId)}
-                disabled={busy || isBusy || Boolean(bulkRecommendationAction)} className="extension-icon-action"
-                aria-label="保护此书签" title={protectBookmarkHelp}>
-                <ShieldCheck className="w-4 h-4" />
-              </button>
               <button
                 type="button"
-                onClick={() => void handleIgnoreRecommendation(recommendation)}
-                disabled={isBusy || Boolean(busyRecommendationId) || Boolean(bulkRecommendationAction) || Boolean(editingRecommendationId)}
-                className="extension-icon-action"
-                aria-label="跳过建议"
-                title={skipRecommendationHelp}
+                onClick={() => void (isActionable ? handleAcceptRecommendation(recommendation) : handleRetryRecommendation(recommendation))}
+                disabled={actionDisabled}
+                className="extension-icon-action extension-icon-action--blue"
+                aria-label={`${primaryLabel}：${recommendation.bookmarkTitle}`}
+                title={primaryLabel}
               >
-                <X className="w-4 h-4" />
+                <PrimaryIcon className={`w-4 h-4${isBusy ? " bookmark-task-panel__spin" : ""}`} aria-hidden="true" />
               </button>
+              <RecommendationRowActionMenu bookmarkTitle={recommendation.bookmarkTitle} busy={actionDisabled}
+                editLabel={isActionable ? "修改目录" : "指定目录"}
+                rejectLabel={isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
+                onEdit={() => handleEditRecommendationStart(recommendation)}
+                onProtect={() => void toggleWhitelist("bookmark", recommendation.bookmarkId)}
+                onSkip={() => void handleIgnoreRecommendation(recommendation)}
+                onReject={isActionable ? () => void handleRejectRecommendationCategory(recommendation) : undefined}
+              />
             </>
           )}
         </div>
@@ -1888,74 +1838,58 @@ export function ManageBookmarks() {
     const hasVisibleItems = filteredPendingRecommendations.length > 0 || filteredBookmarks.length > 0;
 
     return (
-      <div className="bookmark-unsorted-layout">
+      <>
         {filteredPendingRecommendations.length > 0 && (
-          <section className="bookmark-unsorted-section">
-            <div className="bookmark-unsorted-section__head bookmark-unsorted-section__head--suggestions">
-              <h3 className="bookmark-section-heading">
-                <Sparkles aria-hidden="true" />
-                分类建议
-              </h3>
-              <span>{filteredPendingRecommendations.length}</span>
-              <div className="bookmark-unsorted-section__tools">
-                <div className="bookmark-unsorted-batch-action" role="group" title={batchArchiveHint} aria-label={batchArchiveHint} tabIndex={actionablePendingRecommendations.length === 0 ? 0 : undefined}>
-                  <button
-                    type="button"
-                    onClick={() => void handleAcceptVisibleRecommendations()}
-                    disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || actionablePendingRecommendations.length === 0}
-                    className="extension-page__wide-primary"
-                  >
-                    <Check className="w-4 h-4" />
-                    {bulkRecommendationAction === "accept" ? "归档中" : `批量归档（${actionablePendingRecommendations.length}）`}
-                  </button>
-                </div>
+          <section className="bookmark-health-panel">
+            <BookmarkTaskHeader title="分类建议" icon={<Sparkles aria-hidden="true" />}
+              summary={`${filteredPendingRecommendations.length} 条建议`}>
+              <button
+                type="button"
+                onClick={() => void handleIgnoreVisibleRecommendations()}
+                disabled={busy || Boolean(bulkRecommendationAction || busyRecommendationId || editingRecommendationId)}
+                className="extension-page__wide-secondary"
+                title={`跳过当前列表中的 ${filteredPendingRecommendations.length} 条建议，分类偏好保持原样`}
+              >
+                {bulkRecommendationAction === "ignore" ? "跳过中" : "批量跳过"}
+              </button>
+              <div className="bookmark-unsorted-batch-action" role="group" title={batchArchiveHint} aria-label={batchArchiveHint} tabIndex={actionablePendingRecommendations.length === 0 ? 0 : undefined}>
                 <button
                   type="button"
-                  onClick={() => void handleIgnoreVisibleRecommendations()}
-                  disabled={Boolean(bulkRecommendationAction) || Boolean(busyRecommendationId) || Boolean(editingRecommendationId) || filteredPendingRecommendations.length === 0}
-                  className="extension-page__wide-secondary"
-                  title={`跳过当前列表中的 ${filteredPendingRecommendations.length} 条建议，分类偏好保持原样`}
+                  onClick={() => void handleAcceptVisibleRecommendations()}
+                  disabled={busy || Boolean(bulkRecommendationAction || busyRecommendationId || editingRecommendationId) || actionablePendingRecommendations.length === 0}
+                  className="extension-page__wide-primary"
                 >
-                  <X className="w-4 h-4" />
-                  {bulkRecommendationAction === "ignore" ? "跳过中" : "批量跳过"}
+                  <Check className="w-4 h-4" />
+                  {bulkRecommendationAction === "accept" ? "归档中" : `批量归档（${actionablePendingRecommendations.length}）`}
                 </button>
               </div>
+            </BookmarkTaskHeader>
+            <div className="bookmark-task-list">
               <RecommendationActionHelp />
-            </div>
-            <div className="bookmark-unsorted-list">
               {filteredPendingRecommendations.map(renderRecommendationCard)}
             </div>
           </section>
         )}
 
         {filteredBookmarks.length > 0 && (
-          <section className="bookmark-unsorted-section">
-            <div className="bookmark-unsorted-section__head">
-              <div className="bookmark-unsorted-section__copy">
-                <h3 className="bookmark-section-heading">
-                  <FolderInput aria-hidden="true" />
-                  待手动分类
-                </h3>
-              </div>
-              <div className="bookmark-unsorted-section__tools bookmark-unsorted-section__tools--manual">
-                <span>{filteredBookmarks.length}</span>
-                <button type="button" onClick={() => void protectSelectedBookmarks([...selectedManualTaskBookmarkIds])}
-                  disabled={busy || selectedManualTaskCount === 0} className="extension-page__wide-secondary">
-                  <ShieldCheck className="w-4 h-4" />保护所选
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleIgnoreSelectedManualTaskBookmarks()}
-                  disabled={ignoringManualSelection || selectedManualTaskCount === 0}
-                  className="extension-page__wide-secondary"
-                >
-                  <X className="w-4 h-4" />
-                  {ignoringManualSelection ? "忽略中" : "忽略"}
-                </button>
-              </div>
-            </div>
-            <div className="bookmark-unsorted-list">
-              {filteredBookmarks.map(renderUnsortedBookmarkCard)}
+          <section className="bookmark-health-panel">
+            <BookmarkTaskHeader title="待手动分类" icon={<FolderInput aria-hidden="true" />}
+              summary={`已选 ${selectedVisibleManualTaskIds.length} / ${filteredBookmarks.length}`}>
+              <button
+                type="button"
+                onClick={() => void handleIgnoreSelectedManualTaskBookmarks()}
+                disabled={busy || ignoringManualSelection || selectedVisibleManualTaskIds.length === 0}
+                className="extension-page__wide-secondary"
+              >
+                {ignoringManualSelection ? "忽略中" : "忽略所选"}
+              </button>
+              <button type="button" onClick={() => void protectSelectedBookmarks(selectedVisibleManualTaskIds)}
+                disabled={busy || ignoringManualSelection || selectedVisibleManualTaskIds.length === 0} className="extension-page__wide-primary">
+                <ShieldCheck className="w-4 h-4" />保护所选
+              </button>
+            </BookmarkTaskHeader>
+            <div className="bookmark-health-group__list">
+              {filteredBookmarks.map(renderUnsortedBookmarkRow)}
             </div>
           </section>
         )}
@@ -1965,7 +1899,7 @@ export function ManageBookmarks() {
             {emptyMessage}
           </div>
         )}
-      </div>
+      </>
     );
   };
 
@@ -1986,15 +1920,17 @@ export function ManageBookmarks() {
     return (
       <div
         key={bookmark.id}
-        className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable bookmark-duplicates__row ${isSelected ? "is-selected" : ""}`}
+        className={`bookmark-tree-row bookmark-tree-row--bookmark bookmark-tree-row--selectable bookmark-task-row ${isSelected ? "is-selected" : ""}`}
       >
-        <RowContent className="bookmark-duplicates__row-label">
+        <RowContent className="bookmark-task-row__label">
           {!isProtected && (
             <input
               type="checkbox"
               checked={isSelected}
+              disabled={busy}
               onChange={() => toggleDuplicateBookmarkSelection(bookmark.id)}
               className="extension-checkbox bookmark-tree-row__checkbox"
+              aria-label={`选择书签：${bookmark.title}`}
             />
           )}
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
@@ -2051,28 +1987,21 @@ export function ManageBookmarks() {
 
     return (
       <section className="bookmark-health-panel">
-        <div className="bookmark-tree-panel__head bookmark-duplicates__header">
-          <div className="bookmark-duplicates__summary">
-            <h3 className="bookmark-section-heading">
-              <Copy aria-hidden="true" />
-              重复检测结果
-            </h3>
-            <p>
-              {selectableCount
-                ? `已选 ${selectedDuplicateCount} / ${selectableCount}${protectedCount ? `，${protectedCount} 个已保护` : ""}`
-                : `${protectedCount} 个书签均已保护`}
-            </p>
-          </div>
+        <BookmarkTaskHeader title="重复检测结果" icon={<Copy aria-hidden="true" />}
+          summary={selectableCount
+            ? `已选 ${selectedDuplicateCount} / ${selectableCount}${protectedCount ? `，${protectedCount} 个已保护` : ""}`
+            : `${protectedCount} 个书签均已保护`}>
           {selectableCount > 0 && (
-            <div className="bookmark-tree-panel__actions">
+            <>
               {visibleDuplicateAutoSelectIds.length > 0 && (
                 <button
                   type="button"
                   onClick={toggleSuggestedDuplicateSelection}
                   disabled={busy}
                   className="extension-page__wide-secondary"
+                  title="仅勾选当前列表中建议删除的书签"
                 >
-                  {areAllVisibleDuplicatesSelected ? "取消建议项勾选" : "勾选建议删除项"}
+                  {areAllVisibleDuplicatesSelected ? "取消建议项" : "勾选建议项"}
                 </button>
               )}
               <button type="button" onClick={() => {
@@ -2089,36 +2018,35 @@ export function ManageBookmarks() {
                 disabled={busy || selectedDuplicateCount === 0}
                 className="extension-page__wide-primary bookmark-tree-panel__delete-button"
               >
+                <Trash2 className="w-4 h-4" />
                 {busy ? "删除中" : "删除所选"}
               </button>
-            </div>
+            </>
           )}
-        </div>
-        <div className="bookmark-unsorted-list">
+        </BookmarkTaskHeader>
+        <div className="bookmark-health-groups">
           {filteredDuplicateGroups.map((group) => (
-            <article key={group.key} className="bookmark-unsorted-card bookmark-duplicates__card">
-              <div className="bookmark-unsorted-card__content">
-                <div className="bookmark-unsorted-card__title-row">
-                  <h4>相同链接</h4>
-                  <span>{group.items.length} 个</span>
-                </div>
-                <p className="bookmark-unsorted-card__url">{group.key}</p>
-              </div>
-              <div className="bookmark-tree">
+            <details key={group.key} open className="bookmark-health-group bookmark-duplicates__group">
+              <summary className="bookmark-duplicates__group-summary" title={group.key}>
+                <ChevronRight className="bookmark-health-group__chevron" aria-hidden="true" />
+                <span className="bookmark-duplicates__group-url">{group.key}</span>
+                <span className="bookmark-health-group__count">{group.items.length}</span>
+              </summary>
+              <div className="bookmark-health-group__list">
                 {group.items.map((bookmark) => renderDuplicateBookmarkRow(bookmark, group))}
+                <details className="bookmark-duplicates__links">
+                  <summary>对比原始链接</summary>
+                  <ul>
+                    {group.items.map((bookmark) => (
+                      <li key={bookmark.id}>
+                        <strong>{bookmark.title}</strong>
+                        <span>{bookmark.url}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </div>
-              <details className="bookmark-duplicates__links">
-                <summary>对比原始链接</summary>
-                <ul>
-                  {group.items.map((bookmark) => (
-                    <li key={bookmark.id}>
-                      <strong>{bookmark.title}</strong>
-                      <span>{bookmark.url}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </article>
+            </details>
           ))}
         </div>
       </section>
@@ -2245,23 +2173,17 @@ export function ManageBookmarks() {
 
     return (
       <section className="bookmark-health-panel">
-        <div className="bookmark-tree-panel__head bookmark-health-results__head">
-          <div>
-            <h3 className="bookmark-section-heading">
-              <Unlink aria-hidden="true" />
-              任务结果
-            </h3>
-            <p>已选 {selectedInvalidCount} / {filteredBookmarks.length}</p>
-          </div>
-          <div className="bookmark-tree-panel__actions">
+        <BookmarkTaskHeader title="任务结果" icon={<Unlink aria-hidden="true" />}
+          summary={`已选 ${selectedInvalidCount} / ${filteredBookmarks.length}`}>
             {suggestedLinkHealthIds.length > 0 && (
               <button
                 type="button"
                 onClick={() => toggleLinkHealthSelection(suggestedLinkHealthIds)}
                 disabled={linkHealthActionsDisabled}
                 className="extension-page__wide-secondary"
+                title="仅勾选符合建议清理条件的链接"
               >
-                {areAllSuggestedLinkHealthSelected ? "取消勾选建议项" : "勾选建议清理项"}
+                {areAllSuggestedLinkHealthSelected ? "取消建议项" : "勾选建议项"}
               </button>
             )}
             <button type="button" onClick={() => void handleLinkHealthIgnore(
@@ -2279,8 +2201,7 @@ export function ManageBookmarks() {
               <Trash2 className="w-4 h-4" />
               {busy ? "删除中" : "删除所选"}
             </button>
-          </div>
-        </div>
+        </BookmarkTaskHeader>
         <div className="bookmark-health-groups">
           {visibleGroups.map((group) => {
             const meta = getLinkHealthGroupMeta(group);

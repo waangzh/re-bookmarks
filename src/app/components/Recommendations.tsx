@@ -1,9 +1,11 @@
 import { PageHeading } from "./PageHeading";
 import { TopNotice, TopNotices } from "./TopNotice";
-import { protectBookmarkHelp, RecommendationActionHelp, skipRecommendationHelp } from "./RecommendationActionHelp";
+import { RecommendationActionHelp } from "./RecommendationActionHelp";
+import { BookmarkTaskHeader } from "./BookmarkTaskHeader";
+import { RecommendationRowActionMenu } from "./RecommendationRowActionMenu";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, Edit2, RefreshCw, ThumbsDown, TriangleAlert, ShieldCheck } from "lucide-react";
+import { Check, X, ExternalLink, Folder, FolderPlus, Globe2, ChevronDown, ChevronRight, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import type { PendingRecommendation } from "../types";
 import { acceptRecommendation, acceptRecommendations, getRecommendationKind, getRecommendationSignalLabel, isActionableRecommendation, isBatchSafeRecommendation, removeRecommendation, retryRecommendation, updateRecommendationFolderPath } from "../services/recommendations";
 import { getBookmarkFaviconUrl, parseFolderPath } from "../services/bookmarks";
@@ -320,7 +322,7 @@ export function Recommendations() {
     <div className="extension-page">
       <div className="extension-page__inner">
         <div className="extension-page__header">
-          <PageHeading title="待处理推荐" subtitle={`${pendingRecommendations.length} 条建议待处理`} />
+          <PageHeading title="待处理推荐" />
         </div>
 
         <TopNotices>
@@ -338,30 +340,29 @@ export function Recommendations() {
             <Link to="/manage" className="extension-page__primary-button">浏览书签</Link>
           </div>
         ) : (
-          <>
-            <div className="recommendation-toolbar">
-              <div className="recommendation-toolbar__actions">
+          <section className="bookmark-health-panel">
+            <BookmarkTaskHeader title="分类建议" icon={<Sparkles aria-hidden="true" />} summary={`${sortedRecommendations.length} 条建议`}>
+                <button
+                  type="button"
+                  onClick={() => void handleIgnoreAll()}
+                  disabled={Boolean(busyId || bulkAction || editingRecommendationId)}
+                  className="extension-page__wide-secondary"
+                  title="仅移除建议，不记录分类偏好"
+                >
+                  {bulkAction === "ignore" ? "跳过中" : "全部跳过"}
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleAcceptAll()}
-                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || batchRecommendations.length === 0}
+                  disabled={Boolean(busyId || bulkAction || editingRecommendationId) || batchRecommendations.length === 0}
                   className="extension-page__wide-primary"
                   title="归档前自动备份，仅包含可批量归档的建议"
                 >
                   <Check className="w-4 h-4" />
-                  批量归档（{batchRecommendations.length}）
+                  {bulkAction === "accept" ? "归档中" : `批量归档（${batchRecommendations.length}）`}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleIgnoreAll()}
-                  disabled={Boolean(bulkAction) || Boolean(editingRecommendationId) || sortedRecommendations.length === 0}
-                  className="extension-page__wide-secondary"
-                  title="仅移除建议，不记录分类偏好"
-                >
-                  <X className="w-4 h-4" />
-                  全部跳过
-                </button>
-              </div>
+            </BookmarkTaskHeader>
+            <div className="bookmark-task-list">
               <div className="recommendation-sort">
                 <span>排序</span>
                 <Select
@@ -378,19 +379,21 @@ export function Recommendations() {
                 />
               </div>
               <RecommendationActionHelp />
-            </div>
-
-            <div className="extension-stack">
               {sortedRecommendations.map((rec) => {
                 const kind = getRecommendationKind(rec);
                 const isActionable = isActionableRecommendation(rec);
                 const isNewFolder = kind === "create_folder";
                 const needsManualReview = kind === "manual_review";
                 const hasError = kind === "error";
-                const signalLabel = isActionable && editingRecommendationId !== rec.id ? getRecommendationSignalLabel(rec) : undefined;
+                const isEditing = editingRecommendationId === rec.id;
+                const isConfirming = confirmCreateFolderId === rec.id;
+                const actionsDisabled = Boolean(busyId || bulkAction || editingRecommendationId);
+                const signalLabel = isActionable && !isEditing ? getRecommendationSignalLabel(rec) : undefined;
+                const primaryLabel = isNewFolder ? "创建目录并归档" : isActionable ? "归档书签" : "重新分类";
+                const PrimaryIcon = isActionable ? (isNewFolder ? FolderPlus : Check) : RefreshCw;
 
                 return (
-                  <section key={rec.id} className={["extension-section", hasError ? "recommendation-section--error" : ""].filter(Boolean).join(" ")}>
+                  <section key={rec.id} className={`extension-section recommendation-section${hasError ? " recommendation-section--error" : ""}`}>
                     <div className="extension-list__item extension-list__item--static">
                       <span className="extension-favicon" aria-hidden="true">
                         <Globe2 className="extension-favicon__fallback" />
@@ -406,26 +409,50 @@ export function Recommendations() {
                       </span>
                       <div className="extension-list__main">
                         <div className="extension-list__title-row">
-                          <h3>{rec.bookmarkTitle}</h3>
-                          {rec.bookmarkUrl && (
-                            <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
+                          <h3 title={rec.bookmarkTitle}>{rec.bookmarkTitle}</h3>
                         </div>
                         {rec.bookmarkUrl && <p className="extension-list__url">{rec.bookmarkUrl}</p>}
                         <p className="extension-list__meta">{formatTime(rec.createdAt)}，当前：{rec.currentFolderPath?.join(" / ") || "根目录"}</p>
+                        <span className={`recommendation-kind recommendation-kind--${kind}`}>
+                          {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : isBatchSafeRecommendation(rec) ? "可批量确认" : "需单独确认"}
+                        </span>
                       </div>
-                      <span className={["recommendation-kind", "recommendation-kind--" + kind].join(" ")}>
-                        {isNewFolder ? "建议新建" : needsManualReview ? "需要判断" : hasError ? "分类失败" : isBatchSafeRecommendation(rec) ? "可批量确认" : "需单独确认"}
-                      </span>
+                      {!isEditing && (
+                        <div className="recommendation-section__actions">
+                          {rec.bookmarkUrl && (
+                            <a href={rec.bookmarkUrl} target="_blank" rel="noopener noreferrer" className="extension-link-icon"
+                              aria-label={`打开书签：${rec.bookmarkTitle}`} title={rec.bookmarkUrl}>
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void (isActionable ? handleAccept(rec) : handleRetry(rec))}
+                            disabled={actionsDisabled || isConfirming}
+                            className="extension-icon-action extension-icon-action--blue"
+                            aria-label={`${primaryLabel}：${rec.bookmarkTitle}`}
+                            title={primaryLabel}
+                          >
+                            <PrimaryIcon className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                          <RecommendationRowActionMenu bookmarkTitle={rec.bookmarkTitle} busy={actionsDisabled}
+                            editLabel={isActionable ? "修改目录" : "指定目录"}
+                            rejectLabel={isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
+                            onEdit={() => handleEditStart(rec)}
+                            onProtect={() => void handleProtect(rec)}
+                            onSkip={() => void handleIgnore(rec)}
+                            onReject={isActionable ? () => void handleRejectCategory(rec) : undefined}
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {editingRecommendationId === rec.id ? (
+                    {isEditing ? (
                       <label className="bookmark-recommendation-edit bookmark-recommendation-edit--section">
                         <span>目标文件夹</span>
                         <input
                           type="text"
+                          autoFocus
                           value={recommendationPathDraft}
                           onChange={(event) => setRecommendationPathDraft(event.target.value)}
                           className="extension-control"
@@ -447,96 +474,44 @@ export function Recommendations() {
 
                     {(rec.reason || signalLabel) && <ExpandableReason reason={rec.reason} signalLabel={signalLabel} />}
 
-                    <div className={editingRecommendationId === rec.id ? "extension-button-row" : "extension-button-row extension-button-row--three"}>
-                      {editingRecommendationId === rec.id ? (
-                        <>
-                          <button
-                            onClick={() => void handleSavePath(rec)}
-                            disabled={busyId === rec.id || Boolean(bulkAction)}
-                            className="extension-page__wide-primary"
-                          >
-                            <Check className="w-4 h-4" />
-                            保存
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingRecommendationId(null);
-                              setRecommendationPathDraft("");
-                            }}
-                            disabled={busyId === rec.id || Boolean(bulkAction)}
-                            className="extension-page__wide-secondary"
-                          >
-                            <X className="w-4 h-4" />
-                            取消
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                            <button
-                              onClick={() => handleEditStart(rec)}
-                              disabled={Boolean(busyId) || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                              className="extension-page__wide-secondary"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                              {isActionable ? "修改目录" : "指定目录"}
-                            </button>
-                          {isActionable ? (
-                            <button
-                              onClick={() => void handleAccept(rec)}
-                              disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                              className="extension-page__wide-primary"
-                            >
-                              <Check className="w-4 h-4" />
-                              {isNewFolder ? (confirmCreateFolderId === rec.id ? "确认创建并归档" : "将创建目录") : "归档"}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => void handleRetry(rec)}
-                              disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                              className="extension-page__wide-primary"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              重试
-                            </button>
-                          )}
-                          <button
-                            onClick={() => void handleIgnore(rec)}
-                            disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                            className="extension-page__wide-secondary"
-                            title={skipRecommendationHelp}
-                          >
-                            <X className="w-4 h-4" />
-                            跳过建议
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    {editingRecommendationId !== rec.id && (
-                      <button type="button" onClick={() => void handleProtect(rec)}
-                        disabled={Boolean(busyId) || Boolean(bulkAction)}
-                        title={protectBookmarkHelp}
-                        className="extension-text-button recommendation-negative-feedback">
-                        <ShieldCheck className="w-3 h-3" />保护此书签
-                      </button>
-                    )}
-                    {editingRecommendationId !== rec.id && isActionable && (
-                      <div className="recommendation-feedback-row">
+                    {isEditing && (
+                      <div className="extension-button-row">
                         <button
                           type="button"
-                          onClick={() => void handleRejectCategory(rec)}
-                          disabled={busyId === rec.id || Boolean(bulkAction) || Boolean(editingRecommendationId)}
-                          className="extension-text-button recommendation-negative-feedback"
+                          onClick={() => void handleSavePath(rec)}
+                          disabled={busyId === rec.id || Boolean(bulkAction)}
+                          className="extension-page__wide-primary"
                         >
-                          <ThumbsDown className="w-3 h-3" />
-                          {isNewFolder ? "减少建议创建此目录" : "减少推荐到此目录"}
+                          <Check className="w-4 h-4" />
+                          保存分类
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingRecommendationId(null);
+                            setRecommendationPathDraft("");
+                          }}
+                          disabled={busyId === rec.id || Boolean(bulkAction)}
+                          className="extension-page__wide-secondary"
+                        >
+                          <X className="w-4 h-4" />
+                          取消
+                        </button>
+                      </div>
+                    )}
+                    {isConfirming && !isEditing && (
+                      <div className="extension-button-row">
+                        <button type="button" autoFocus className="extension-page__wide-secondary"
+                          onClick={() => setConfirmCreateFolderId(null)}>取消</button>
+                        <button type="button" disabled={actionsDisabled} className="extension-page__wide-primary"
+                          onClick={() => void handleAccept(rec)}>确认创建并归档</button>
                       </div>
                     )}
                   </section>
                 );
               })}
             </div>
-          </>
+          </section>
         )}
       </div>
     </div>
