@@ -293,6 +293,7 @@ export function ManageBookmarks() {
   const [scanProgress, setScanProgress] = useState({ checked: 0, total: 0 });
   const [scanningLinks, setScanningLinks] = useState(false);
   const [linkScanActive, setLinkScanActive] = useState(false);
+  const [linkScanNeedsPermission, setLinkScanNeedsPermission] = useState(false);
   const [selectedDuplicateBookmarkIds, setSelectedDuplicateBookmarkIds] = useState<Set<string>>(() => new Set());
   const [selectedInvalidBookmarkIds, setSelectedInvalidBookmarkIds] = useState<Set<string>>(() => new Set());
   const [selectedManualTaskBookmarkIds, setSelectedManualTaskBookmarkIds] = useState<Set<string>>(() => new Set());
@@ -371,7 +372,6 @@ export function ManageBookmarks() {
         const checked = report.results.length;
         setScanProgress({ checked, total: report.totalCount ?? checked });
         setScanningLinks(true);
-        setMessage("上次链接检测未完成，可继续检测。已保留已完成的检测结果。");
       }
     }).catch((error: unknown) => {
       if (active && !changed) setMessage(error instanceof Error ? error.message : "读取链接检测报告失败");
@@ -444,10 +444,11 @@ export function ManageBookmarks() {
     void hasRequiredHostPermission().then((granted) => {
       if (!granted) {
         setScanningLinks(false);
-        setMessage("网站访问权限已撤销，无法继续链接检测。请点击“开始检测”重新授权。");
+        setLinkScanNeedsPermission(true);
         return;
       }
 
+      setLinkScanNeedsPermission(false);
       setScanningLinks(true);
       setLinkScanActive(true);
       return startLinkHealthScan(bookmarks)
@@ -2280,6 +2281,7 @@ export function ManageBookmarks() {
     let keepScanning = false;
     try {
       await ensureRequiredHostPermission();
+      setLinkScanNeedsPermission(false);
       const report = await startLinkHealthScan(bookmarks);
       keepScanning = true;
       setLinkHealthReport(report);
@@ -2484,6 +2486,11 @@ export function ManageBookmarks() {
               </p>
               {linkHealthReport && (
                 <span>上次检测：{formatScanTime(linkHealthReport.createdAt)}</span>
+              )}
+              {linkHealthReport?.status === "running" && !linkScanActive && (
+                <p>{linkScanNeedsPermission
+                  ? "请重新授权网站访问权限后继续检测。"
+                  : "检测尚未完成，已保留现有检测结果。"}</p>
               )}
             </div>
             <button

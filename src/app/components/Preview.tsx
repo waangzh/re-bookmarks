@@ -320,6 +320,7 @@ export function Preview() {
   const [savingPreviewDrop, setSavingPreviewDrop] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [previousTaskError, setPreviousTaskError] = useState("");
   const [cacheMessage, setCacheMessage] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [processingBookmarkCount, setProcessingBookmarkCount] = useState(0);
@@ -492,7 +493,7 @@ export function Preview() {
     return () => { alive = false; chrome.bookmarks.onChanged.removeListener(refresh); chrome.bookmarks.onMoved.removeListener(refresh); chrome.bookmarks.onRemoved.removeListener(refresh); };
   }, [settings]);
 
-  const restoreCompletedTask = (task: PreviewTaskCache) => {
+  const applyCompletedTask = (task: PreviewTaskCache, { announceCompletion = false } = {}) => {
     if (!task.movePlan?.length) return false;
 
     setPlans(task.movePlan);
@@ -501,7 +502,7 @@ export function Preview() {
     if (task.model) setSelectedModel(task.model);
     setProcessingBookmarkCount(0);
     setTaskProgress(undefined);
-    setCacheMessage(`已恢复 ${new Date(task.updatedAt).toLocaleString()} 生成的整理方案`);
+    if (announceCompletion) setCacheMessage("整理方案已生成");
     setPhase("preview");
     setLoading(false);
     setActiveTaskId(null);
@@ -516,7 +517,6 @@ export function Preview() {
     setTaskProgress(task.progress);
     setOrganizeMode(task.organizeMode ?? "quick");
     if (task.model) setSelectedModel(task.model);
-    setCacheMessage(`正在生成 ${task.bookmarkCount} 个书签的整理方案，可收起后稍后返回`);
     setPhase("preview");
     setLoading(true);
   };
@@ -538,11 +538,11 @@ export function Preview() {
           void resumePreviewTask(task, selectableBookmarks);
           return;
         }
-        if (task?.status === "completed" && restoreCompletedTask(task)) {
+        if (task?.status === "completed" && applyCompletedTask(task)) {
           return;
         }
         if (task?.status === "failed" && task.error) {
-          setError(task.error);
+          setPreviousTaskError(task.error);
           return;
         }
 
@@ -556,7 +556,6 @@ export function Preview() {
           setOrganizeMode(cached.organizeMode ?? "quick");
           if (cached.model) setSelectedModel(cached.model);
           setProcessingBookmarkCount(0);
-          setCacheMessage(`已恢复 ${new Date(cached.createdAt).toLocaleString()} 生成的整理方案`);
           setPhase("preview");
           setLoading(false);
           return;
@@ -600,7 +599,7 @@ export function Preview() {
       setTaskProgress(task.progress);
 
       if (task.status === "completed") {
-        restoreCompletedTask(task);
+        applyCompletedTask(task, { announceCompletion: true });
         return;
       }
 
@@ -732,6 +731,7 @@ export function Preview() {
     setPhase("preview");
     setLoading(true);
     setError("");
+    setPreviousTaskError("");
     setTokenUsage(undefined);
     setTaskProgress(undefined);
 
@@ -739,7 +739,7 @@ export function Preview() {
       const bookmarksToClassify = allBookmarks.filter((b) => selectedIds.has(b.id));
       setProcessingBookmarkCount(bookmarksToClassify.length);
       const task = await startPreviewTask(bookmarksToClassify, organizeMode, model || undefined);
-      if (task?.status === "completed" && restoreCompletedTask(task)) return;
+      if (task?.status === "completed" && applyCompletedTask(task, { announceCompletion: true })) return;
       if (task?.status === "failed") {
         throw new Error(task.error ?? "生成分类失败");
       }
@@ -1341,17 +1341,14 @@ export function Preview() {
         <TopNotices>
           {!confirmOpen && !editingPlan && errorNotice}
           <TopNotice message={cacheMessage} onDismiss={() => setCacheMessage("")} />
-          <TopNotice tone="warning" message={phase === "selection" && !loading
-            ? isDeepSelectionTooLarge ? deepSelectionLimitMessage : isQuickSelectionLarge ? quickSelectionLargeMessage : ""
-            : ""} />
-          <TopNotice tone="warning" message={phase === "preview" && loading && isTaskProgressStalled
-            ? "后台任务超过 2 分钟没有进度更新，建议取消后重试或减少本次整理数量。"
-            : ""} />
         </TopNotices>
 
         {/* 选择阶段 */}
         {phase === "selection" && !loading && (
           <>
+            {previousTaskError && <div className="extension-notice extension-notice--blue">
+              <p>上次整理未完成。{previousTaskError}</p>
+            </div>}
             <div className="extension-selection-actions">
               <button onClick={toggleSelectAll} className="extension-text-button">
                 {selectedIds.size === allBookmarks.length ? "取消全选" : "全选"}
@@ -1382,6 +1379,9 @@ export function Preview() {
               </button>
             </div>
 
+            {(isDeepSelectionTooLarge || isQuickSelectionLarge) && <div className="extension-notice extension-notice--blue">
+              <p>{isDeepSelectionTooLarge ? deepSelectionLimitMessage : quickSelectionLargeMessage}</p>
+            </div>}
             {(!settings.provider.apiKey.trim() || !settings.provider.enabled) && <div className="extension-notice extension-notice--blue">
               <p>{settings.provider.apiKey.trim() ? "尚未授权向 AI 发送分类数据。" : "尚未连接 AI 服务。"} <Link to="/options">连接与授权</Link>，或 <Link to="/manage?task=unsorted">先使用本地归档</Link>。</p>
             </div>}
@@ -1534,6 +1534,9 @@ export function Preview() {
                 <div className="preview-task-progress" aria-label="整理方案生成进度">
                   <span style={{ width: `${progressPercent}%` }} />
                 </div>
+                <span>{isTaskProgressStalled
+                  ? "后台任务超过 2 分钟没有进度更新，建议取消后重试或减少本次整理数量。"
+                  : "可返回首页，稍后查看进度。"}</span>
                 <button onClick={handleRegenerate} className="extension-page__wide-secondary">
                   <RefreshCw className="w-4 h-4" />
                   取消并重新选择

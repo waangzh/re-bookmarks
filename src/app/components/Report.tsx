@@ -1,5 +1,4 @@
 import { PageHeading } from "./PageHeading";
-import { TopNotice, TopNotices } from "./TopNotice";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 import {
@@ -379,12 +378,6 @@ export function Report() {
         <div className="extension-page__header">
           <PageHeading title="整理报告" />
         </div>
-
-        <TopNotices>
-          <TopNotice key={selectedReport.id}
-            message={selectedReport.failedItems.length ? `${selectedReport.failedItems.length} 项未执行，详情见下方执行记录。` : ""}
-            tone={selectedReport.movedCount ? "warning" : "error"} />
-        </TopNotices>
 
         <section ref={resultRef} className={`extension-success${selectedReport.failedItems.length ? " report-result--incomplete" : ""}`}>
           {selectedReport.failedItems.length ? <AlertTriangle className="extension-success__icon" /> : <CheckCircle className="extension-success__icon" />}

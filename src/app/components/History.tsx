@@ -30,7 +30,6 @@ function HistoryFavicon({ title, url }: { title: string; url: string }) {
 export function History() {
   const { settings, loadSettings, saveSettings } = useAppStore();
   const [enabled, setEnabled] = useState(false);
-  const [permissionChecked, setPermissionChecked] = useState(false);
   const [bookmarks, setBookmarks] = useState<FrequentBookmark[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -44,7 +43,6 @@ export function History() {
     let alive = true;
     hasHistoryPermission().then((granted) => {
       if (!alive) return;
-      setPermissionChecked(true);
       if (settings.enableHistory && !granted) {
         setEnabled(false);
         setMessage("浏览历史权限已被拒绝或撤销，常访问书签已关闭。");
@@ -118,8 +116,7 @@ export function History() {
         </div>
 
         <TopNotices>
-          <TopNotice message={!enabled && permissionChecked ? message || "需要浏览历史权限" : ""}
-            tone={message ? "error" : "warning"} />
+          <TopNotice message={!enabled ? message : ""} tone="error" onDismiss={() => setMessage("")} />
         </TopNotices>
 
         {!enabled ? (
