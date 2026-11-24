@@ -81,6 +81,21 @@ export function Recommendations() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, [loadRecommendations]);
 
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.bookmarks) return;
+    const refresh = () => {
+      void loadRecommendations().catch((cause) => setError(cause instanceof Error ? cause.message : "刷新建议失败"));
+    };
+    chrome.bookmarks.onRemoved.addListener(refresh);
+    chrome.bookmarks.onMoved.addListener(refresh);
+    chrome.bookmarks.onChanged.addListener(refresh);
+    return () => {
+      chrome.bookmarks.onRemoved.removeListener(refresh);
+      chrome.bookmarks.onMoved.removeListener(refresh);
+      chrome.bookmarks.onChanged.removeListener(refresh);
+    };
+  }, [loadRecommendations]);
+
   const sortedRecommendations = useMemo(() => {
     return [...pendingRecommendations].sort((a, b) => {
       switch (sortKey) {
@@ -168,6 +183,7 @@ export function Recommendations() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "接受推荐失败");
+      await loadRecommendations().catch(() => undefined);
     } finally {
       setBusyId(null);
     }
@@ -253,16 +269,19 @@ export function Recommendations() {
     try {
       const report = await acceptRecommendations(batchRecommendations);
       await Promise.all([loadRecommendations(), loadBookmarks(), loadReports()]);
+      const skipped = batchRecommendations.length - report.movePlan.length;
+      const skippedNotice = skipped > 0 ? ` 已跳过 ${skipped} 条失效或已更新的建议。` : "";
       if (report.failedItems.length > 0) {
         const failedTitles = report.failedItems.slice(0, 3).map((item) => item.bookmarkTitle);
         setError(
-          `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败：${failedTitles.join("、")}${report.failedItems.length > 3 ? " 等" : ""}。详情已写入整理报告。`
+          `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败：${failedTitles.join("、")}${report.failedItems.length > 3 ? " 等" : ""}。详情已写入整理报告。${skippedNotice}`
         );
       } else {
-        setOperationNotice(`已归档 ${batchRecommendations.length} 条已有目录建议；新建目录项目需单独确认。`);
+        setOperationNotice(`已归档 ${report.movePlan.length} 条已有目录建议。${skippedNotice}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "一键接受失败");
+      await loadRecommendations().catch(() => undefined);
     } finally {
       setBulkAction(null);
     }

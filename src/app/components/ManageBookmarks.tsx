@@ -1281,6 +1281,7 @@ export function ManageBookmarks() {
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "接受推荐失败");
+      await loadRecommendations().catch(() => undefined);
     } finally {
       setBusyRecommendationId(null);
     }
@@ -1371,13 +1372,14 @@ export function ManageBookmarks() {
     try {
       const report = await acceptRecommendations(actionablePendingRecommendations);
       await Promise.all([loadManagedBookmarks(), loadReports()]);
-      setMessage(
-        report.failedItems.length > 0
-          ? `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败；详情已写入整理报告`
-          : `已归档 ${actionablePendingRecommendations.length} 条分类建议，操作前备份和整理报告已保存`
-      );
+      const result = report.failedItems.length > 0
+        ? `已移动 ${report.movedCount} 个，${report.failedItems.length} 个失败，详情已写入整理报告`
+        : `已归档 ${report.movePlan.length} 条分类建议，操作前备份和整理报告已保存`;
+      const skipped = actionablePendingRecommendations.length - report.movePlan.length;
+      setMessage(skipped > 0 ? `${result}。已跳过 ${skipped} 条失效或已更新的建议。` : result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "批量归档失败");
+      await loadRecommendations().catch(() => undefined);
     } finally {
       setBulkRecommendationAction(null);
     }

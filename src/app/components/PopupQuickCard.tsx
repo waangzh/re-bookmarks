@@ -251,6 +251,7 @@ export function PopupQuickCard({
         tone: "error",
         text: error instanceof Error ? error.message : "接受推荐失败",
       });
+      await Promise.resolve().then(onRefresh).catch(() => undefined);
     } finally {
       setBusyId(null);
     }

@@ -927,7 +927,7 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
   if (initialWhitelist.protectedBookmarkIds.has(bookmark.id)) return null;
 
   const currentFolderPath = currentBookmark.parentId
-    ? findFolderPathById(tree, currentBookmark.parentId) ?? []
+    ? findFolderPathById(tree, currentBookmark.parentId)?.filter(Boolean) ?? []
     : [];
   const existingFolderPaths = getAvailableFolderPaths(tree, initialWhitelist);
   const bookmarkNode = {
@@ -1007,7 +1007,7 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
   const latestTree = latestProtection.tree;
   if (latestProtection.index.protectedBookmarkIds.has(latestBookmark.id)) return null;
   const latestFolderPath = latestBookmark.parentId
-    ? findFolderPathById(latestTree, latestBookmark.parentId) ?? currentFolderPath
+    ? findFolderPathById(latestTree, latestBookmark.parentId)?.filter(Boolean) ?? currentFolderPath
     : currentFolderPath;
   const latestFolderPaths = getAvailableFolderPaths(latestTree, latestProtection.index);
   if (latestBookmark.title !== currentBookmark.title || latestBookmark.url !== currentBookmark.url || latestBookmark.parentId !== currentBookmark.parentId || !isSameFolderPath(currentFolderPath, latestFolderPath)) {
@@ -1079,18 +1079,24 @@ async function createPendingRecommendationInternal(bookmark: chrome.bookmarks.Bo
   recommendation.requiresIndividualReview = Boolean(conflict);
   if (conflict) recommendation.reason = appendReason(recommendation.reason, conflict);
 
-  await updatePendingRecommendations((recommendations) => [
-    recommendation,
-    ...recommendations.filter((item) => item.bookmarkId !== latestBookmark.id),
-  ]);
+  const matchesRecommendationSource = (candidate: typeof latestBookmark | null) =>
+    candidate?.url && candidate.url === latestBookmark.url && candidate.title === latestBookmark.title &&
+    candidate.parentId === latestBookmark.parentId;
+  const savedRecommendations = await updatePendingRecommendations(async (recommendations) => {
+    if (!matchesRecommendationSource(await getBookmark(latestBookmark.id))) return recommendations;
+    return [recommendation, ...recommendations.filter((item) => item.bookmarkId !== latestBookmark.id)];
+  });
+  if (!savedRecommendations.includes(recommendation)) return null;
 
   const savedBookmark = await getBookmark(latestBookmark.id);
   const savedProtection = await getCurrentWhitelist();
-  if (!savedBookmark?.url || savedProtection.index.protectedBookmarkIds.has(latestBookmark.id) ||
+  const savedFolderPath = savedBookmark?.parentId
+    ? findFolderPathById(savedProtection.tree, savedBookmark.parentId)
+    : [];
+  if (!matchesRecommendationSource(savedBookmark) || !savedFolderPath || !isSameFolderPath(latestFolderPath, savedFolderPath) ||
+      savedProtection.index.protectedBookmarkIds.has(latestBookmark.id) ||
       isProtectedTargetPath(suggestedFolderPath, savedProtection.tree, savedProtection.index)) {
-    await updatePendingRecommendations((recommendations) =>
-      recommendations.filter((item) => item.bookmarkId !== latestBookmark.id)
-    );
+    await updatePendingRecommendations((recommendations) => recommendations.filter((item) => item.id !== recommendation.id));
     return null;
   }
 

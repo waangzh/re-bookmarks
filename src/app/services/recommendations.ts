@@ -3,6 +3,7 @@ import {
   type BrowserBookmarkNode,
   getBookmark,
   getBookmarkRootFolderIds,
+  getUrlBookmarks,
   isBookmarkFolder,
   isRootFolder,
   normalizeFolderPath,
@@ -15,6 +16,7 @@ import { getPreferenceConflict, getPreferenceFingerprint } from "./preferenceSaf
 import { ensureRequiredHostPermission } from "./hostPermissions";
 import { getCurrentWhitelist, isProtectedTargetPath } from "./whitelist";
 import { appendFolderImpression } from "./semanticIndex";
+import { withStorageMutation } from "./storageMutation";
 
 function hasChromeAction() {
   return typeof chrome !== "undefined" && Boolean(chrome.action);
@@ -75,17 +77,34 @@ function collectFolderPathKeys(tree: BrowserBookmarkNode[]) {
   return keys;
 }
 
-async function bookmarkExists(bookmarkId: string) {
-  const bookmark = await getBookmark(bookmarkId);
-  return Boolean(bookmark?.url);
+function prunePendingRecommendations(completedIds?: Set<string>) {
+  return updatePendingRecommendations(async (recommendations) => {
+    if (!recommendations.length) return recommendations;
+    const { tree, index } = await getCurrentWhitelist();
+    const bookmarks = new Map(getUrlBookmarks(tree).map((bookmark) => [bookmark.id, bookmark]));
+    const activeByBookmark = new Map<string, PendingRecommendation>();
+    for (const recommendation of recommendations) {
+      const bookmark = bookmarks.get(recommendation.bookmarkId);
+      if (completedIds?.has(recommendation.id) || !bookmark || index.protectedBookmarkIds.has(bookmark.id) ||
+          bookmark.title !== recommendation.bookmarkTitle ||
+          (recommendation.bookmarkUrl !== undefined && bookmark.url !== recommendation.bookmarkUrl) ||
+          (recommendation.sourceParentId !== undefined && bookmark.parentId !== recommendation.sourceParentId) ||
+          (recommendation.currentFolderPath && JSON.stringify(bookmark.path) !== JSON.stringify(recommendation.currentFolderPath)) ||
+          isProtectedTargetPath(recommendation.suggestedFolderPath, tree, index)) continue;
+
+      const previous = activeByBookmark.get(bookmark.id);
+      if (!previous || recommendation.createdAt > previous.createdAt) activeByBookmark.set(bookmark.id, recommendation);
+    }
+    return activeByBookmark.size === recommendations.length ? recommendations : [...activeByBookmark.values()];
+  });
 }
 
 export async function getActivePendingRecommendations() {
-  const recommendations = await getPendingRecommendations();
-  if (!hasChromeBookmarks() || recommendations.length === 0) return recommendations;
-
-  const [protection, profile, rules] = await Promise.all([getCurrentWhitelist(), getStoredFolderHabitProfile(), getFixedDomainRules()]);
-  const withPreferences = (recommendation: PendingRecommendation): PendingRecommendation => {
+  if (!hasChromeBookmarks()) return getPendingRecommendations();
+  const recommendations = await prunePendingRecommendations();
+  if (!recommendations.length) return recommendations;
+  const [profile, rules] = await Promise.all([getStoredFolderHabitProfile(), getFixedDomainRules()]);
+  return recommendations.map((recommendation) => {
     const plan = { bookmarkUrl: recommendation.bookmarkUrl, toFolderPath: recommendation.suggestedFolderPath,
       expectedTargetId: recommendation.expectedTargetId, source: recommendation.source };
     const conflict = getPreferenceConflict(plan, profile, rules);
@@ -95,29 +114,7 @@ export async function getActivePendingRecommendations() {
       requiresIndividualReview: recommendation.requiresIndividualReview || Boolean(conflict) || changed,
       reason: conflict && !recommendation.reason?.includes(conflict) ? [recommendation.reason, conflict].filter(Boolean).join("；")
         : changed ? "相关明确偏好已变化，请逐条确认" : recommendation.reason };
-  };
-  const checks = await Promise.all(
-    recommendations.map(async (recommendation) => ({
-      recommendation: withPreferences(recommendation),
-      active: await bookmarkExists(recommendation.bookmarkId) &&
-        !protection.index.protectedBookmarkIds.has(recommendation.bookmarkId) &&
-        !isProtectedTargetPath(recommendation.suggestedFolderPath, protection.tree, protection.index),
-    }))
-  );
-  const activeRecommendations = checks
-    .filter((check) => check.active)
-    .map((check) => check.recommendation);
-
-  if (activeRecommendations.length !== recommendations.length) {
-    const removedRecommendationIds = new Set(
-      checks.filter((check) => !check.active).map((check) => check.recommendation.id)
-    );
-    return updatePendingRecommendations((latestRecommendations) =>
-      latestRecommendations.filter((recommendation) => !removedRecommendationIds.has(recommendation.id))
-    ).then((latest) => latest.map(withPreferences));
-  }
-
-  return activeRecommendations;
+  });
 }
 
 export async function updateRecommendationBadge() {
@@ -213,39 +210,40 @@ export async function retryRecommendation(recommendation: PendingRecommendation)
   return next;
 }
 
-async function removeCompletedRecommendations(ids: Set<string>) {
-  if (ids.size === 0) return getPendingRecommendations();
-
-  const next = await updatePendingRecommendations((recommendations) =>
-    recommendations.filter((recommendation) => !ids.has(recommendation.id))
-  );
-  await updateRecommendationBadge();
-  return next;
+function reviewSnapshot(recommendation: PendingRecommendation) {
+  return JSON.stringify([
+    recommendation.bookmarkId, recommendation.bookmarkTitle, recommendation.bookmarkUrl,
+    recommendation.sourceParentId, recommendation.currentFolderPath, recommendation.suggestedFolderPath,
+    recommendation.expectedTargetId, recommendation.source, getRecommendationKind(recommendation),
+  ]);
 }
 
-export async function acceptRecommendations(
+async function acceptCurrentRecommendations(
   recommendations: PendingRecommendation[],
-  options: { individual?: boolean } = {}
+  individual: boolean
 ): Promise<OrganizeReport> {
-  if (options.individual && recommendations.length !== 1) throw new Error("单独确认每次只能处理一条建议");
-  if (!options.individual && recommendations.some((recommendation) => !isBatchSafeRecommendation(recommendation))) {
+  if (individual && recommendations.length !== 1) throw new Error("单独确认每次只能处理一条建议");
+  if (!individual && recommendations.some((recommendation) => !isBatchSafeRecommendation(recommendation))) {
     throw new Error("批量归档只接受已存在目录且无风险冲突的建议；其余项目请逐条确认");
   }
-  const actionableRecommendations = recommendations.filter(isActionableRecommendation);
-  if (actionableRecommendations.length === 0) {
+  const approved = recommendations.filter(isActionableRecommendation);
+  if (approved.length === 0) {
     throw new Error("没有可执行的归档建议；需要判断或分类失败的项目会保持原位");
   }
+  const active = new Map((await getActivePendingRecommendations()).map((recommendation) => [recommendation.id, recommendation]));
+  const approvedById = new Map(approved.map((recommendation) => [recommendation.id, recommendation]));
+  const actionableRecommendations = [...approvedById.values()].filter((recommendation) => {
+    const current = active.get(recommendation.id);
+    return current && reviewSnapshot(current) === reviewSnapshot(recommendation) &&
+      (individual || isBatchSafeRecommendation(current));
+  });
+  if (!actionableRecommendations.length) throw new Error("建议已失效或已更新，请查看最新分类建议");
 
   const bookmarks = await Promise.all(
     actionableRecommendations.map((recommendation) => getBookmark(recommendation.bookmarkId))
   );
-  const missingRecommendationIds = new Set<string>();
   const plans: MovePlan[] = actionableRecommendations.map((recommendation, index) => {
     const bookmark = bookmarks[index];
-    if (hasChromeBookmarks() && !bookmark?.url) {
-      missingRecommendationIds.add(recommendation.id);
-    }
-
     return {
       bookmarkId: recommendation.bookmarkId,
       bookmarkTitle: recommendation.bookmarkTitle,
@@ -266,15 +264,19 @@ export async function acceptRecommendations(
   const failedBookmarkIds = new Set(report.failedItems.map((item) => item.bookmarkId));
   const completedRecommendationIds = new Set(
     actionableRecommendations
-      .filter(
-        (recommendation) =>
-          missingRecommendationIds.has(recommendation.id) ||
-          !failedBookmarkIds.has(recommendation.bookmarkId)
-      )
+      .filter((recommendation) => !failedBookmarkIds.has(recommendation.bookmarkId))
       .map((recommendation) => recommendation.id)
   );
-  await removeCompletedRecommendations(completedRecommendationIds);
+  await prunePendingRecommendations(completedRecommendationIds);
+  await updateRecommendationBadge();
   return report;
+}
+
+export function acceptRecommendations(
+  recommendations: PendingRecommendation[],
+  options: { individual?: boolean } = {}
+) {
+  return withStorageMutation("accept-recommendations", () => acceptCurrentRecommendations(recommendations, options.individual === true));
 }
 
 export function acceptRecommendation(recommendation: PendingRecommendation) {

@@ -160,12 +160,13 @@ export function savePendingRecommendations(recommendations: PendingRecommendatio
 }
 
 export function updatePendingRecommendations(
-  update: (recommendations: PendingRecommendation[]) => PendingRecommendation[]
+  update: (recommendations: PendingRecommendation[]) => PendingRecommendation[] | Promise<PendingRecommendation[]>
 ): Promise<PendingRecommendation[]> {
   return withStorageMutation("pending-recommendations", async () => {
-    const nextRecommendations = update(await getPendingRecommendations());
-    await savePendingRecommendations(nextRecommendations);
-    return nextRecommendations;
+    const current = await getPendingRecommendations();
+    const next = await update(current);
+    if (next !== current) await savePendingRecommendations(next);
+    return next;
   });
 }
 

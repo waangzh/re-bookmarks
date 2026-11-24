@@ -26,6 +26,9 @@ type AppState = {
   saveSettings: (settings: Settings) => Promise<void>;
 };
 
+let latestFullLoad = 0;
+let latestRecommendationLoad = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   bookmarks: [],
@@ -35,6 +38,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   loading: false,
   error: null,
   async loadAll() {
+    const fullLoad = ++latestFullLoad;
+    const recommendationLoad = ++latestRecommendationLoad;
     set({ loading: true, error: null });
     try {
       const [settings, bookmarks, pendingRecommendations, reportHistory] = await Promise.all([
@@ -43,16 +48,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         getActivePendingRecommendations(),
         getReportHistory(),
       ]);
+      if (fullLoad !== latestFullLoad) return;
       set({
         settings,
         bookmarks,
-        pendingRecommendations,
+        ...(recommendationLoad === latestRecommendationLoad ? { pendingRecommendations } : {}),
         reportHistory,
         lastReport: reportHistory[0] ?? null,
         loading: false,
       });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "加载失败", loading: false });
+      if (fullLoad === latestFullLoad) set({ error: error instanceof Error ? error.message : "加载失败", loading: false });
     }
   },
   async loadBookmarks() {
@@ -60,8 +66,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ bookmarks });
   },
   async loadRecommendations() {
+    const recommendationLoad = ++latestRecommendationLoad;
     const pendingRecommendations = await getActivePendingRecommendations();
-    set({ pendingRecommendations });
+    if (recommendationLoad === latestRecommendationLoad) set({ pendingRecommendations });
   },
   async loadSettings() {
     const settings = await getSettings();
