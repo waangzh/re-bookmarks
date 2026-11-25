@@ -25,11 +25,11 @@ function xml(text) { return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;'
 
 async function makeFrame(segment, index, total) {
   const icon = (await fs.readFile(path.join(root, 'public/icons/icon128.png'))).toString('base64');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="900">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900">
     <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f4f7ff"/><stop offset="1" stop-color="#eaf1fd"/></linearGradient></defs>
-    <rect width="1120" height="900" fill="url(#bg)"/>
-    <rect x="337" y="37" width="766" height="826" rx="12" fill="#dce5f5"/>
-    <rect x="340" y="40" width="760" height="820" fill="#f7faff"/>
+    <rect width="1440" height="900" fill="url(#bg)"/>
+    <rect x="337" y="37" width="1086" height="826" rx="12" fill="#dce5f5"/>
+    <rect x="340" y="40" width="1080" height="820" fill="#f7faff"/>
     <image href="data:image/png;base64,${icon}" x="34" y="47" width="44" height="44"/>
     <g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
       <text x="90" y="78" font-size="30" font-weight="700" fill="#142847">ReMarks</text>
@@ -54,7 +54,7 @@ async function makeFrame(segment, index, total) {
 
 async function main() {
   await fs.mkdir(workDir, { recursive: true });
-  const demo = await createDemo({ record: true });
+  const demo = await createDemo({ record: true, viewport: { width: 1080, height: 820 } });
   const { page } = demo;
   const segments = [];
   const evidence = { fixture: true, bookmarkCount: 9 };
@@ -120,15 +120,10 @@ async function main() {
       await click(page.getByRole('button', { name: '采用此目录', exact: true }).first(), 900);
       await click(page.getByRole('button', { name: '采用此目录', exact: true }).first(), 1400);
     });
-    await chapter('分类可以随时修正', ['把 Dribbble 调整到设计灵感', '这里只改方案，还没有移动'], 9, async () => {
+    await chapter('逐条核对分类依据', ['展开建议查看分类原因', '确认前不会移动书签'], 6, async () => {
       const card = page.locator('article.review-item').filter({ has: page.getByRole('heading', { name: 'Dribbble', exact: true }) });
-      await click(card.getByRole('button', { name: '修改目标目录', exact: true }), 650);
-      const input = page.getByPlaceholder('例如：开发 / 文档');
-      await click(input, 150);
-      await input.fill('');
-      await input.pressSequentially('设计灵感', { delay: 220 });
-      await pause(900);
-      await click(page.getByRole('button', { name: '确认修改', exact: true }), 1300);
+      await click(card.locator('summary').filter({ hasText: '查看依据' }), 1800);
+      await click(card.locator('summary').filter({ hasText: '查看依据' }), 350);
     });
     await chapter('审核后再批准移动', ['支持批量处理待决定建议', '执行前仍可检查完整移动清单'], 7, async () => {
       await click(page.getByRole('button', { name: '全选待决定', exact: true }), 850);

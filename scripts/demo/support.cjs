@@ -8,7 +8,7 @@ const bookmarks = [
   ['MDN Web Docs', 'https://developer.mozilla.org/zh-CN/', '开发文档', '提供 HTML、CSS 与 JavaScript 的开发参考', ['Web 文档', '前端开发', 'JavaScript']],
   ['TypeScript', 'https://www.typescriptlang.org/docs/', '开发文档', '提供 TypeScript 类型系统与语言使用指南', ['类型系统', '开发文档', 'TypeScript']],
   ['Figma', 'https://www.figma.com/', '设计灵感', '用于界面设计、原型制作与团队协作', ['界面设计', '交互原型', '设计工具']],
-  ['Dribbble', 'https://dribbble.com/', '实用工具', '汇集设计作品，可用于创作参考和寻找灵感', ['设计灵感', '作品展示', '界面参考']],
+  ['Dribbble', 'https://dribbble.com/', '设计灵感', '汇集设计作品，可用于创作参考和寻找灵感', ['设计灵感', '作品展示', '界面参考']],
   ['Unsplash', 'https://unsplash.com/', '设计灵感', '提供摄影图片素材，可用于设计与创作参考', ['图片素材', '摄影图片', '设计素材']],
   ['Squoosh', 'https://squoosh.app/', '实用工具', '在浏览器中压缩图片并转换图像格式', ['图片压缩', '图像优化', 'WebP 转换']],
   ['TinyPNG', 'https://tinypng.com/', '实用工具', '在线压缩 PNG 与 JPEG，减少图片体积', ['图片压缩', 'PNG 压缩', '图像优化']],
@@ -23,7 +23,7 @@ function loadPlaywright() {
   return require(require.resolve('playwright', { paths: searchPaths }));
 }
 
-async function createDemo({ record = false, executablePath, headless = true, playwright } = {}) {
+async function createDemo({ record = false, executablePath, headless = true, playwright, viewport = { width: 760, height: 820 } } = {}) {
   const workDir = path.join(root, 'output/playwright');
   await fs.mkdir(workDir, { recursive: true });
   const requests = [];
@@ -64,11 +64,11 @@ async function createDemo({ record = false, executablePath, headless = true, pla
     const { chromium } = playwright || loadPlaywright();
     context = await chromium.launchPersistentContext(profile, {
       channel: 'chromium', headless, executablePath,
-      viewport: { width: 760, height: 820 }, deviceScaleFactor: 1,
+      viewport, deviceScaleFactor: 1,
       locale: 'zh-CN', colorScheme: 'light',
       ignoreDefaultArgs: ['--disable-extensions'],
       args: [`--disable-extensions-except=${path.join(root, 'dist')}`, `--load-extension=${path.join(root, 'dist')}`, '--disable-background-networking'],
-      ...(record ? { recordVideo: { dir: path.join(workDir, 'raw'), size: { width: 760, height: 820 } } } : {}),
+      ...(record ? { recordVideo: { dir: path.join(workDir, 'raw'), size: viewport } } : {}),
     });
     console.log('Demo browser started');
     context.setDefaultTimeout(20000);

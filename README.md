@@ -33,11 +33,11 @@ ReMarks 在两者之间提供了一条可控路径：读取浏览器书签树，
 
 ## 🎬 操作演示
 
-https://github.com/user-attachments/assets/1722ba33-6097-45ba-999c-7ddd7dacd019
+https://github.com/user-attachments/assets/b29a469e-5b9d-4cd0-abed-4b2bf8713af7
 
 ## 🖼️ 界面预览
 
-弹窗、侧栏首页和「更多工具」截图来自当前 Chromium 构建，使用示例书签。操作演示和其他功能截图来自较早版本，界面可能有所不同。
+操作演示，以及弹窗、侧栏首页和「更多工具」截图，均来自当前 Chromium 构建，使用示例书签。其他功能截图来自较早版本，界面可能有所不同。
 
 | 工具栏弹窗与快捷归档 | 侧栏首页与待办 |
 | --- | --- |
