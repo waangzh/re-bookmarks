@@ -130,7 +130,7 @@ export function searchBookmarksByImpression(
       updateBestMatch(
         "ai_keyword",
         isExact ? 95 : hitAiKeywords.length * 55,
-        `匹配功能印象：${hitAiKeywords.join(" / ")}`
+        hitAiKeywords.join(" / ")
       );
     }
 
@@ -188,7 +188,7 @@ export function searchBookmarksByImpression(
   );
 }
 
-/** 命中 AI 标签、AI 简述或域名兜底时，UI 应显式渲染“匹配功能印象”提示条 */
+/** 判断搜索结果是否需要显示功能印象命中提示 */
 export function isImpressionMatch(result: ImpressionSearchResult) {
   return result.matchType === "ai_keyword" ||
     result.matchType === "ai_summary" ||

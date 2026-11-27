@@ -125,7 +125,7 @@ export type ImpressionSearchResult = {
   bookmark: SearchableBookmark;
   score: number;
   matchType: ImpressionMatchType;
-  /** 供 UI 展示的命中说明，例如“匹配功能印象：视频网站 / 在线追番” */
+  /** 供 UI 展示的命中说明，例如“视频网站 / 在线追番” */
   matchHint?: string;
   displayTags: string[];
   /** V2：本次搜索顺手把功能印象写回本地索引，UI 可提示“已记住该印象” */

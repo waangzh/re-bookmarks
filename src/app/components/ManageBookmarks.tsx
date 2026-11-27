@@ -263,10 +263,21 @@ export function ManageBookmarks() {
   const { entries: duplicateIgnores, error: duplicateIgnoresError } = useDuplicateBookmarkIgnores(taskMode === "duplicate");
   const { entries: linkHealthIgnores, error: linkHealthIgnoresError } = useLinkHealthBookmarkIgnores(taskMode === "invalid");
   const [folders, setFolders] = useState<BookmarkNode[]>([]);
-  const [searchQuery, setSearchQuery] = useState(() => {
+  const [folderSearch, setFolderSearch] = useState(() => {
     const value = searchParams.get("search") ?? "";
-    return value === "1" || value === "duplicate" || searchParams.get("task") ? "" : value;
+    return {
+      query: value === "1" || value === "duplicate" || searchParams.get("task") ? "" : value,
+      collapsedFolderKeys: new Set<string>(),
+    };
   });
+  const { query: searchQuery, collapsedFolderKeys: collapsedSearchFolderKeys } = folderSearch;
+  const hasSearchQuery = Boolean(searchQuery.trim());
+  const setSearchQuery = useCallback((query: string) => {
+    setFolderSearch((current) => query === current.query ? current : {
+      query,
+      collapsedFolderKeys: query.trim() === current.query.trim() ? current.collapsedFolderKeys : new Set<string>(),
+    });
+  }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title: "", url: "", path: "" });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -474,7 +485,7 @@ export function ManageBookmarks() {
 
   useEffect(() => {
     if (taskMode) setSearchQuery("");
-  }, [taskMode]);
+  }, [setSearchQuery, taskMode]);
 
   const linkHealthResultById = useMemo(() => {
     if (taskMode !== "invalid" || !linkHealthReport || !linkHealthIgnores) return new Map<string, BookmarkLinkHealthResult>();
@@ -780,18 +791,6 @@ export function ManageBookmarks() {
     });
   }, [folderTree]);
 
-  const visibleExpandedFolders = useMemo(() => {
-    if (!searchQuery && !taskMode) return expandedFolders;
-
-    const keys = new Set<string>();
-    const collect = (node: BookmarkFolderNode) => {
-      keys.add(node.key);
-      node.children.forEach(collect);
-    };
-    collect(folderTree);
-    return keys;
-  }, [expandedFolders, folderTree, searchQuery, taskMode]);
-
   useEffect(() => {
     const clearPendingTimer = () => {
       const session = dragSessionRef.current;
@@ -851,6 +850,12 @@ export function ManageBookmarks() {
               const next = new Set(prev);
               next.add(folder.key);
               return next;
+            });
+            setFolderSearch((current) => {
+              if (!current.collapsedFolderKeys.has(folder.key)) return current;
+              const collapsedFolderKeys = new Set(current.collapsedFolderKeys);
+              collapsedFolderKeys.delete(folder.key);
+              return { ...current, collapsedFolderKeys };
             });
             hoverExpandTimerRef.current = null;
           }, 1500);
@@ -928,6 +933,18 @@ export function ManageBookmarks() {
     setSelectedFolder(folder.key);
     if (folder.path.length) {
       setAddForm((prev) => ({ ...prev, path: folder.path.join(" / ") }));
+    }
+    if (hasSearchQuery) {
+      setFolderSearch((current) => {
+        const collapsedFolderKeys = new Set(current.collapsedFolderKeys);
+        if (collapsedFolderKeys.has(folder.key)) {
+          collapsedFolderKeys.delete(folder.key);
+        } else {
+          collapsedFolderKeys.add(folder.key);
+        }
+        return { ...current, collapsedFolderKeys };
+      });
+      return;
     }
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -1492,7 +1509,9 @@ export function ManageBookmarks() {
   };
 
   const renderFolderNode = (folder: BookmarkFolderNode, depth = 0) => {
-    const isExpanded = visibleExpandedFolders.has(folder.key);
+    const isExpanded = hasSearchQuery
+      ? !collapsedSearchFolderKeys.has(folder.key)
+      : expandedFolders.has(folder.key);
     const isSelected = selectedFolder === folder.key;
     const hasChildren = folder.children.length > 0 || folder.bookmarks.length > 0;
     const isDropTarget = Boolean(draggedBookmark && folder.id && folder.id !== draggedBookmark.parentId);
@@ -1605,17 +1624,19 @@ export function ManageBookmarks() {
             {canDragBookmark(bookmark.id) ? <GripVertical aria-hidden="true" /> : null}
           </span>
           <BookmarkFavicon title={bookmark.title} url={bookmark.url} />
-          <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
-          {(() => {
-            const match = impressionResultById.get(bookmark.id);
-            if (!match?.matchHint || !isImpressionMatch(match)) return null;
-            return (
-              <span className="bookmark-tree-row__match" title={match.matchHint}>
-                <span>{getImpressionMatchIcon(match)} {match.matchHint}</span>
-                {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
-              </span>
-            );
-          })()}
+          <span className="bookmark-tree-row__content">
+            <span className="bookmark-tree-row__title" title={bookmark.title}>{bookmark.title}</span>
+            {(() => {
+              const match = impressionResultById.get(bookmark.id);
+              if (!match?.matchHint || !isImpressionMatch(match)) return null;
+              return (
+                <span className="bookmark-tree-row__match" title={match.matchHint}>
+                  <span>{getImpressionMatchIcon(match)} {match.matchHint}</span>
+                  {match.healed && <i className="impression-healed-badge"><Zap aria-hidden="true" />已记住该印象</i>}
+                </span>
+              );
+            })()}
+          </span>
           {bookmark.url && (
             <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="extension-link-icon" aria-label="打开书签">
               <ExternalLink className="w-3 h-3" />

@@ -4256,6 +4256,15 @@ label.bookmark-task-row__label:has(input:enabled) {
   object-fit: contain;
 }
 
+.bookmark-tree-row__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+}
+
 .bookmark-tree-row__title {
   min-width: 0;
   flex: 1;
@@ -4273,12 +4282,9 @@ label.bookmark-task-row__label:has(input:enabled) {
 }
 
 .bookmark-tree-row__match {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 46%;
   color: var(--remarks-purple);
   font-size: 11px;
   line-height: 1.3;
